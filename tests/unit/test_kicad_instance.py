@@ -159,3 +159,30 @@ def test_a_started_window_serves_its_socket_under_the_temp_folder(
         assert manager.started_socket() == manager.default_socket()
     else:
         assert manager.started_socket() == f"ipc://{tmp_path / 'kicad' / 'api.sock'}"
+
+
+def test_auto_mode_keeps_every_kicad_the_server_runs_off_the_persons_settings(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """KQ8: kicad-cli runs (exports, checks, the 3D model) use the private settings folder."""
+    import os
+
+    from kicad_mcp.instance import manager
+
+    monkeypatch.setattr(manager, "_cli_candidates", lambda _configured: [])
+    monkeypatch.setenv(manager.HOME_ENV, str(tmp_path / "home"))
+    monkeypatch.delenv("KICAD_CONFIG_HOME", raising=False)
+
+    monkeypatch.setenv(manager.INSTANCE_ENV, "attach")
+    assert manager.InstanceManager().isolate_settings(None) == ""
+    assert "KICAD_CONFIG_HOME" not in os.environ
+
+    monkeypatch.setenv(manager.INSTANCE_ENV, "auto")
+    used = manager.InstanceManager().isolate_settings(None)
+    assert used == str(tmp_path / "home" / "config")
+    assert os.environ["KICAD_CONFIG_HOME"] == used
+    assert any((tmp_path / "home" / "config").glob("*/kicad_common.json"))
+
+    monkeypatch.setenv("KICAD_CONFIG_HOME", str(tmp_path / "mine"))
+    assert manager.InstanceManager().isolate_settings(None) == ""
+    assert os.environ["KICAD_CONFIG_HOME"] == str(tmp_path / "mine")

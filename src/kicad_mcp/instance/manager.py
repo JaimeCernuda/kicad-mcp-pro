@@ -265,6 +265,24 @@ class InstanceManager:
         self._status = InstanceStatus(mode=_mode())
         atexit.register(self.stop)
 
+    def isolate_settings(self, configured_cli: Path | None) -> str:
+        """In ``auto`` mode, keep every KiCad this server runs off the person's settings.
+
+        The window or headless server it starts already uses the private settings folder;
+        this points ``KICAD_CONFIG_HOME`` there for the whole process too, so ``kicad-cli``
+        exports, checks and the 3D model do not rewrite the person's ``pcbnew.json`` and
+        friends. A ``KICAD_CONFIG_HOME`` the person set is kept. Returns the folder used,
+        or ``""`` when nothing was changed.
+        """
+        if _mode() != "auto" or os.environ.get("KICAD_CONFIG_HOME"):
+            return ""
+        clis = _cli_candidates(configured_cli)
+        cli = clis[0] if clis else None
+        config = _home() / "config"
+        config_home.seed(config, _version(cli) if cli is not None else None, cli)
+        os.environ["KICAD_CONFIG_HOME"] = str(config)
+        return str(config)
+
     # ------------------------------------------------------------------ reading
 
     def status(self) -> InstanceStatus:

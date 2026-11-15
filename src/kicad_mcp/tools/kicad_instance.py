@@ -23,6 +23,8 @@ _CASE_WORDS = {
 def register(mcp: FastMCP) -> None:
     """Register the instance status tool."""
 
+    get_instance_manager().isolate_settings(get_config().kicad_cli)
+
     @mcp.tool()
     @headless_compatible
     def kicad_session_status(start: bool = False) -> str:
