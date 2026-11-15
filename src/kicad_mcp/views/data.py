@@ -343,11 +343,15 @@ def compare_data(parts: list[str], category: str = "") -> dict[str, Any]:
 
 _SUMMARY_COUNTS = (
     ("footprints", re.compile(r"^\s*\(footprint\s", re.M)),
-    ("nets", re.compile(r"^\s*\(net\s+\d+", re.M)),
     ("tracks", re.compile(r"^\s*\(segment\s", re.M)),
 )
+# A net as a file declares it, ``(net 3 "GND")``, or as KiCad 10 writes a live board,
+# ``(net "GND")``; the unnamed net is not counted.
+_NET_NAME = re.compile(r'\(net\s+(?:\d+\s+)?"([^"]+)"\s*\)')
 
 
 def board_summary(text: str) -> dict[str, int]:
     """Counts a view's opening result reports to the model."""
-    return {name: len(pattern.findall(text)) for name, pattern in _SUMMARY_COUNTS}
+    counts = {name: len(pattern.findall(text)) for name, pattern in _SUMMARY_COUNTS}
+    counts["nets"] = len(set(_NET_NAME.findall(text)))
+    return counts

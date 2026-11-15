@@ -171,4 +171,16 @@ def test_board_summary_counts() -> None:
     text = (
         '(kicad_pcb\n  (net 0 "")\n  (net 1 "GND")\n  (footprint "R")\n  (segment (start 0 0))\n)'
     )
-    assert data.board_summary(text) == {"footprints": 1, "nets": 2, "tracks": 1}
+    assert data.board_summary(text) == {"footprints": 1, "nets": 1, "tracks": 1}
+
+
+def test_the_summary_counts_nets_by_name_in_file_and_live_board_text() -> None:
+    from kicad_mcp.views.data import board_summary
+
+    file_text = '(kicad_pcb\n  (net 0 "")\n  (net 1 "GND")\n  (net 2 "VCC")\n  (segment (net 1))\n)'
+    live_text = (
+        '(kicad_pcb\n  (footprint "R"\n    (pad "1" smd (net "GND"))\n'
+        '    (pad "2" smd (net "")))\n  (segment (net "GND"))\n)'
+    )
+    assert board_summary(file_text)["nets"] == 2
+    assert board_summary(live_text) == {"footprints": 1, "tracks": 1, "nets": 1}
