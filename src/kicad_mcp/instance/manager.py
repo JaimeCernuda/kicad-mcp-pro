@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import contextlib
+import getpass
 import os
 import platform
 import shutil
@@ -78,7 +79,17 @@ def _home() -> Path:
     raw = os.environ.get(HOME_ENV, "").strip()
     if raw:
         return Path(raw).expanduser()
-    return Path.home() / ".cache" / "kicad-mcp" / "instance"
+    # The managed KiCad is a disposable child of this server and its config home is seeded
+    # on every start, so it lives in the per-user temp folder: writable on every OS and
+    # under sandboxes that leave the home folder read-only.
+    return Path(tempfile.gettempdir()) / f"kicad-mcp-{_user()}" / "instance"
+
+
+def _user() -> str:
+    try:
+        return getpass.getuser()
+    except Exception:  # noqa: BLE001 - no login name (a container without passwd entry)
+        return str(os.getuid()) if hasattr(os, "getuid") else "user"
 
 
 def _start_timeout() -> float:
