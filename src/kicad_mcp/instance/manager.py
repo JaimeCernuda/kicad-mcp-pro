@@ -110,16 +110,23 @@ def default_socket() -> str:
     return "ipc:///tmp/kicad/api.sock"
 
 
-def started_socket() -> str:
+def private_temp(home: Path) -> Path:
+    """The temp folder a KiCad window started by this server gets, and no other process."""
+    return home / "tmp"
+
+
+def started_socket(home: Path) -> str:
     """The socket a KiCad window started by this server serves.
 
-    KiCad puts its API socket under its temp folder (``$TMPDIR/kicad/api.sock``), and a
-    window started here inherits this process's temp folder, which a sandboxed client may
-    point away from ``/tmp``.
+    KiCad puts its API socket under its temp folder (``<temp>/kicad/api.sock``), so every
+    KiCad that shares a temp folder shares that path, and one that exits deletes the file,
+    leaving another KiCad bound to a socket nobody can reach (seen when a second KiCad was
+    started with the same temp folder). The window started here gets a temp folder of its own
+    (:func:`private_temp`), so its socket is this server's alone.
     """
     if platform.system() == "Windows":
-        return default_socket()
-    return f"ipc://{Path(tempfile.gettempdir()) / 'kicad' / 'api.sock'}"
+        return f"ipc://{private_temp(home)}\\kicad\\api.sock"
+    return f"ipc://{private_temp(home) / 'kicad' / 'api.sock'}"
 
 
 def _socket_url(path_or_url: str) -> str:
@@ -401,7 +408,7 @@ class InstanceManager:
             argv = [xvfb, "-a", "-s", "-screen 0 1600x1000x24", *argv]
             case = XVFB
         version = _version(cli) if cli is not None else ""
-        return self._launch(argv, case, board, home, version, cli, started_socket(), status)
+        return self._launch(argv, case, board, home, version, cli, started_socket(home), status)
 
     def _launch_headless(
         self, cli: Path, board: Path, home: Path, status: InstanceStatus
@@ -431,6 +438,10 @@ class InstanceManager:
         config = home / "config"
         config_home.seed(config, version, cli)
         env = {**os.environ, "KICAD_CONFIG_HOME": str(config)}
+        if case != HEADLESS:  # a window's socket follows its temp folder: give it its own
+            temp = private_temp(home)
+            temp.mkdir(parents=True, exist_ok=True)
+            env.update(TMPDIR=str(temp), TMP=str(temp), TEMP=str(temp))
         log = home / f"kicad-{case}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         status.config_home, status.version, status.case = str(config), version, case
@@ -541,8 +552,8 @@ def stop_left_over(home: Path) -> bool:
         pid, server = int(data["pid"]), int(data["server"])
     except (OSError, ValueError, KeyError, TypeError):
         return False
-    if server != os.getpid() and processes.command_line(server):
-        return False  # another live server owns it
+    if server == os.getpid() or processes.command_line(server):
+        return False  # this server's own KiCad, or another live server's
     stopped = False
     if processes.alive(pid) and processes.is_kicad(pid):
         processes.stop_tree(pid)

@@ -147,20 +147,27 @@ def test_status_tool_reports_the_case_and_what_to_do() -> None:
     assert '"case":' in text
 
 
-def test_a_started_window_serves_its_socket_under_the_temp_folder(
-    monkeypatch, tmp_path: Path
-) -> None:
-    """KiCad's window puts its API socket in its temp folder; a sandboxed client may move it."""
+def test_a_started_window_gets_a_private_temp_folder_and_socket(tmp_path: Path) -> None:
+    """KiCad's window puts its socket in its temp folder; ours gets a folder of its own, so no
+    other KiCad sharing a temp folder can take or delete that socket."""
     import platform
-    import tempfile
 
     from kicad_mcp.instance import manager
 
-    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
-    if platform.system() == "Windows":
-        assert manager.started_socket() == manager.default_socket()
-    else:
-        assert manager.started_socket() == f"ipc://{tmp_path / 'kicad' / 'api.sock'}"
+    home = tmp_path / "instance"
+    assert manager.private_temp(home) == home / "tmp"
+    if platform.system() != "Windows":
+        assert manager.started_socket(home) == f"ipc://{home / 'tmp' / 'kicad' / 'api.sock'}"
+
+
+def test_the_sweep_never_stops_this_servers_own_kicad(tmp_path: Path) -> None:
+    import json
+    import os
+
+    from kicad_mcp.instance import manager
+
+    (tmp_path / manager._RECORD).write_text(json.dumps({"pid": 1, "server": os.getpid()}))
+    assert manager.stop_left_over(tmp_path) is False
 
 
 def test_auto_mode_keeps_every_kicad_the_server_runs_off_the_persons_settings(
@@ -274,15 +281,24 @@ def test_kicad_requests_go_one_at_a_time(monkeypatch) -> None:
                 state["in_flight"] -= 1
             return command
 
-    class _KiCad:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            self._client = _Client()
+    def _init(self: object, *args: object, **kwargs: object) -> None:
+        self._client = _Client()  # type: ignore[attr-defined]
 
-    monkeypatch.setattr(connection, "KiCad", _KiCad)
-    kicad = connection._one_request_at_a_time()
+    monkeypatch.setattr(connection.KiCad, "__init__", _init)
+    kicad = connection._OneRequestAtATime()
     threads = [threading.Thread(target=kicad._client.send, args=(n, None)) for n in range(8)]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
     assert state["most"] == 1
+
+
+def test_the_serialized_client_still_receives_the_socket_path() -> None:
+    """The session passes only the arguments the factory declares; losing ``socket_path``
+    connected every tool to KiCad's default socket instead of the started KiCad's."""
+    from kicad_mcp import connection
+    from kicad_mcp.kicad.session import KiCadSession
+
+    session = KiCadSession(client_factory=connection._OneRequestAtATime)
+    assert "socket_path" in session._constructor_params()

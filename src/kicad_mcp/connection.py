@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -30,24 +31,30 @@ _connection_generation = 0
 _IPC_LOCK = threading.Lock()
 
 
-def _one_request_at_a_time(*args: object, **kwargs: object) -> KiCad:
+class _OneRequestAtATime(KiCad):
     """A kipy client whose requests go to KiCad one at a time.
 
     KiCad's IPC API is one request/reply socket. Tool calls running at once (a client that
     moves 21 footprints in parallel) shared it, and replies were cancelled ("Error
-    receiving reply from KiCad: Operation canceled").
+    receiving reply from KiCad: Operation canceled"). The constructor keeps kipy's own
+    signature: the session passes only the arguments the factory declares, so a factory
+    without ``socket_path`` silently connected to KiCad's default socket instead.
     """
-    kicad = KiCad(*args, **kwargs)  # type: ignore[arg-type]
-    client = getattr(kicad, "_client", None)
-    send = getattr(client, "send", None)
-    if send is not None:
 
-        def serialized(command: object, response_type: object) -> object:
-            with _IPC_LOCK:
-                return send(command, response_type)
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        client = getattr(self, "_client", None)
+        send = getattr(client, "send", None)
+        if send is not None:
 
-        client.send = serialized  # type: ignore[union-attr]
-    return kicad
+            def serialized(command: object, response_type: object) -> object:
+                with _IPC_LOCK:
+                    return send(command, response_type)
+
+            client.send = serialized  # type: ignore[union-attr]
+
+
+_OneRequestAtATime.__init__.__signature__ = inspect.signature(KiCad.__init__)  # type: ignore[attr-defined]
 
 
 def _get_session() -> KiCadSession:
@@ -55,7 +62,7 @@ def _get_session() -> KiCadSession:
     global _session
     with _lock:
         if _session is None:
-            _session = KiCadSession(client_factory=_one_request_at_a_time, logger=logger)
+            _session = KiCadSession(client_factory=_OneRequestAtATime, logger=logger)
         return _session
 
 
