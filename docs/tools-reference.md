@@ -159,7 +159,7 @@ Built-in prompt helpers for the critic/fixer loop:
 
 Machine-maintained catalog. Refresh with `pnpm run docs:tools`.
 
-Total public tools: 392.
+Total public tools: 395.
 
 | Tool | Profile(s) | Read-Only | Destructive | Open-World | Idempotent | Headless | Requires KiCad Running | Summary |
 |---|---|---:|---:|---:|---:|---:|---:|---|
@@ -346,6 +346,7 @@ Total public tools: 392.
 | `pcb_group_by_function` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | no | no | no | yes | no | Cluster existing footprints into named functional groups. This KiCad MCP Pro tool supports production EDA automation... |
 | `pcb_highlight_net` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | no | no | no | no | no | Attempt to highlight a net in the GUI when supported. |
 | `pcb_import_board` | agent_full, expert, full | no | yes | yes | no | yes | no | Import a non-KiCad PCB file to KiCad format. |
+| `pcb_import_outline_dxf` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | yes | no | no | yes | Draw a board outline and its holes from a DXF file (for example from an enclosure). |
 | `pcb_list_test_points` | agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager | no | no | no | no | yes | no | List all registered test points for the active project. This KiCad MCP Pro tool supports production EDA automation wo... |
 | `pcb_move_component` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | no | no | yes | Move a component, preserving its angle unless rotation_deg is explicitly provided. |
 | `pcb_move_footprint` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | no | no | yes | Move a footprint, preserving its angle unless rotation_deg is explicitly provided. |
@@ -364,8 +365,10 @@ Total public tools: 392.
 | `pcb_save` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | no | no | yes | no | no | Save the active board. This KiCad MCP Pro tool supports production EDA automation workflows for MCP clients. |
 | `pcb_score_placement` | agent_full, analysis, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, pcb, pcb_layout, power, release_manager, schematic, schematic_authoring | no | no | no | no | yes | no | Score PCB placement quality and explain both hard failures and softer warnings. |
 | `pcb_set_board_outline` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | yes | no | no | Draw a rectangular board outline on Edge.Cuts. This KiCad MCP Pro tool supports production EDA automation workflows f... |
+| `pcb_set_board_outline_shape` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | yes | no | yes | Draw a closed board outline on Edge.Cuts from points, with optional arcs. |
 | `pcb_set_design_rules` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | yes | yes | no | Write board-level manufacturing constraints into the active .kicad_dru file. |
 | `pcb_set_footprint_layer` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | yes | no | yes | Set the footprint copper side. This KiCad MCP Pro tool supports production EDA automation workflows for MCP clients. |
+| `pcb_set_footprint_locked` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | yes | no | yes | Lock or unlock a footprint so interactive moves cannot (or can) drag it. |
 | `pcb_set_keepout_zone` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | yes | no | yes | Add a rectangular PCB keepout / rule area to the active board. |
 | `pcb_set_net_class` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | yes | no | no | Assign a net class when the runtime supports it. This KiCad MCP Pro tool supports production EDA automation workflows... |
 | `pcb_set_origin` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | yes | no | yes | Set the board origin (drill origin) in millimeters. |
@@ -741,6 +744,7 @@ Total public tools: 392.
 - `pcb_group_by_function`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `pcb_highlight_net`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=no; requiresKiCadRunning=no.
 - `pcb_import_board`: profiles=agent_full, expert, full; readOnly=no; destructive=yes; openWorld=yes; idempotent=no; headless=yes; requiresKiCadRunning=no.
+- `pcb_import_outline_dxf`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=yes; idempotent=no; headless=no; requiresKiCadRunning=yes.
 - `pcb_list_test_points`: profiles=agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `pcb_move_component`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=no; headless=no; requiresKiCadRunning=yes.
 - `pcb_move_footprint`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=no; headless=no; requiresKiCadRunning=yes.
@@ -759,8 +763,10 @@ Total public tools: 392.
 - `pcb_save`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
 - `pcb_score_placement`: profiles=agent_full, analysis, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, pcb, pcb_layout, power, release_manager, schematic, schematic_authoring; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `pcb_set_board_outline`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `pcb_set_board_outline_shape`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=yes.
 - `pcb_set_design_rules`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `pcb_set_footprint_layer`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=yes.
+- `pcb_set_footprint_locked`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=yes.
 - `pcb_set_keepout_zone`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=yes.
 - `pcb_set_net_class`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
 - `pcb_set_origin`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=yes.

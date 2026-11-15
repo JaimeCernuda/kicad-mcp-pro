@@ -333,7 +333,7 @@
         },
         "pcb_write": {
           "availableCount": 1,
-          "blockedCount": 49,
+          "blockedCount": 52,
           "canarySurfaces": [
             "write"
           ],
@@ -347,9 +347,9 @@
           ],
           "selectedBackends": {
             "local-engine": 1,
-            "unavailable": 49
+            "unavailable": 52
           },
-          "toolCount": 50
+          "toolCount": 53
         },
         "power_integrity": {
           "availableCount": 8,
@@ -657,7 +657,7 @@
           "toolCount": 27
         },
         "pcb_write": {
-          "availableCount": 50,
+          "availableCount": 53,
           "blockedCount": 0,
           "canarySurfaces": [
             "write"
@@ -671,10 +671,10 @@
             "transactional-pcb-file"
           ],
           "selectedBackends": {
-            "kicad-gui-ipc": 49,
+            "kicad-gui-ipc": 52,
             "local-engine": 1
           },
-          "toolCount": 50
+          "toolCount": 53
         },
         "power_integrity": {
           "availableCount": 8,
@@ -982,7 +982,7 @@
           "toolCount": 27
         },
         "pcb_write": {
-          "availableCount": 50,
+          "availableCount": 53,
           "blockedCount": 0,
           "canarySurfaces": [
             "write"
@@ -996,10 +996,10 @@
             "transactional-pcb-file"
           ],
           "selectedBackends": {
-            "kicad-11-headless-ipc": 49,
+            "kicad-11-headless-ipc": 52,
             "local-engine": 1
           },
-          "toolCount": 50
+          "toolCount": 53
         },
         "power_integrity": {
           "availableCount": 8,
@@ -1199,7 +1199,7 @@
     "previewBaseline": "11.x",
     "publicSupportClaim": "KiCad 11 remains preview until native canaries pass.",
     "stableBaseline": "10.0.x",
-    "toolCount": 392
+    "toolCount": 395
   },
   "tools": [
     {
@@ -5595,6 +5595,30 @@
       "writesFiles": true
     },
     {
+      "category": "pcb_write",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": false,
+          "backend": "unavailable",
+          "mutationGuard": "ipc-transaction-or-atomic-parse-validation"
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "kicad-gui-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "kicad-11-headless-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        }
+      },
+      "runtime": "kicad_ipc",
+      "tier": "write",
+      "tool": "pcb_import_outline_dxf",
+      "writesFiles": true
+    },
+    {
       "category": "pcb_read",
       "routes": {
         "degradedNoKiCad": {
@@ -6047,6 +6071,30 @@
       },
       "runtime": "kicad_ipc",
       "tier": "write",
+      "tool": "pcb_set_board_outline_shape",
+      "writesFiles": true
+    },
+    {
+      "category": "pcb_write",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": false,
+          "backend": "unavailable",
+          "mutationGuard": "ipc-transaction-or-atomic-parse-validation"
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "kicad-gui-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "kicad-11-headless-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        }
+      },
+      "runtime": "kicad_ipc",
+      "tier": "write",
       "tool": "pcb_set_design_rules",
       "writesFiles": false
     },
@@ -6072,6 +6120,30 @@
       "runtime": "kicad_ipc",
       "tier": "write",
       "tool": "pcb_set_footprint_layer",
+      "writesFiles": true
+    },
+    {
+      "category": "pcb_write",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": false,
+          "backend": "unavailable",
+          "mutationGuard": "ipc-transaction-or-atomic-parse-validation"
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "kicad-gui-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "kicad-11-headless-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        }
+      },
+      "runtime": "kicad_ipc",
+      "tier": "write",
+      "tool": "pcb_set_footprint_locked",
       "writesFiles": true
     },
     {

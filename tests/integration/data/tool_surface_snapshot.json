@@ -4090,6 +4090,27 @@
     "requires_kicad_running": false
   },
   {
+    "destructive": true,
+    "experimental": false,
+    "headless": false,
+    "idempotent": false,
+    "name": "pcb_import_outline_dxf",
+    "open_world": true,
+    "profiles": [
+      "agent_full",
+      "builder",
+      "expert",
+      "full",
+      "high_speed",
+      "pcb",
+      "pcb_layout",
+      "pcb_only",
+      "power"
+    ],
+    "read_only": false,
+    "requires_kicad_running": true
+  },
+  {
     "destructive": false,
     "experimental": false,
     "headless": true,
@@ -4526,6 +4547,27 @@
   {
     "destructive": true,
     "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "pcb_set_board_outline_shape",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "builder",
+      "expert",
+      "full",
+      "high_speed",
+      "pcb",
+      "pcb_layout",
+      "pcb_only",
+      "power"
+    ],
+    "read_only": false,
+    "requires_kicad_running": true
+  },
+  {
+    "destructive": true,
+    "experimental": false,
     "headless": true,
     "idempotent": true,
     "name": "pcb_set_design_rules",
@@ -4550,6 +4592,27 @@
     "headless": false,
     "idempotent": true,
     "name": "pcb_set_footprint_layer",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "builder",
+      "expert",
+      "full",
+      "high_speed",
+      "pcb",
+      "pcb_layout",
+      "pcb_only",
+      "power"
+    ],
+    "read_only": false,
+    "requires_kicad_running": true
+  },
+  {
+    "destructive": true,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "pcb_set_footprint_locked",
     "open_world": false,
     "profiles": [
       "agent_full",
