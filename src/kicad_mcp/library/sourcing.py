@@ -13,6 +13,7 @@ from ..utils.component_search import (
     ComponentSearchClient,
     format_price,
     normalize_lcsc_code,
+    stock_text,
 )
 from ..utils.derating import _worst, avl_check, derating_check
 from .parametric import sourcing_hint
@@ -197,9 +198,11 @@ def _sourcing_policy_checks(
     checks: list[_PolicyCheck] = [
         (
             "stock",
-            "PASS" if part.stock >= min_stock else "FAIL",
-            f"stock {part.stock:,} / required {min_stock:,}",
-            "Select an alternative part with sufficient stock.",
+            ("PASS" if part.stock >= min_stock else "FAIL") if part.stock_reported else "WARN",
+            f"stock {stock_text(part)} / required {min_stock:,}",
+            "Select an alternative part with sufficient stock."
+            if part.stock_reported
+            else "Confirm stock with the distributor or a source that reports it.",
         )
     ]
     if max_unit_price is not None:
@@ -452,7 +455,7 @@ class LibrarySourcingService:
             f"- MPN: {part.mpn}",
             f"- Package: {part.package or '(none)'}",
             f"- Description: {part.description or '(none)'}",
-            f"- Stock: {part.stock:,}",
+            f"- Stock: {stock_text(part)}",
             f"- Unit price: {price}",
             f"- Basic: {'yes' if part.is_basic else 'no'}",
             f"- Preferred: {'yes' if part.is_preferred else 'no'}",
@@ -541,7 +544,8 @@ class LibrarySourcingService:
         extended = part.price * total_quantity if part.price is not None else None
         line = (
             f"- {', '.join(references)} | {part.lcsc_code} | {part.mpn} | qty {total_quantity} | "
-            f"stock {part.stock:,} | unit {_format_optional_price(part.price, part.currency)} | "
+            f"stock {stock_text(part)} | "
+            f"unit {_format_optional_price(part.price, part.currency)} | "
             f"ext {_format_optional_price(extended, part.currency)}"
         )
         return line, extended or 0.0, part.currency
@@ -593,7 +597,7 @@ class LibrarySourcingService:
                 continue
             lines.append(
                 f"- {mpn}: {part.lcsc_code} | {part.mpn} | "
-                f"stock {part.stock:,} | {_format_optional_price(part.price, part.currency)}"
+                f"stock {stock_text(part)} | {_format_optional_price(part.price, part.currency)}"
             )
         return "\n".join(lines)
 
@@ -618,7 +622,7 @@ class LibrarySourcingService:
                 continue
             lines.append(
                 f"- {row['reference']}: {part.lcsc_code} | {part.mpn} | "
-                f"stock {part.stock:,} | {_format_optional_price(part.price, part.currency)}"
+                f"stock {stock_text(part)} | {_format_optional_price(part.price, part.currency)}"
             )
         return "\n".join(lines)
 

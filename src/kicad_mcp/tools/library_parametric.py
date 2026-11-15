@@ -9,7 +9,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..library.parametric import ParametricService, SourcingAnswer
-from ..utils.component_search import ComponentRecord
+from ..utils.component_search import ComponentRecord, stock_text
 from ..utils.part_specs import PartSpec
 from .metadata import headless_compatible
 
@@ -57,7 +57,7 @@ def format_search(category: str, answer: SourcingAnswer) -> str:
         price = f"{record.price:g}" if record.price is not None else "?"
         lines.append(
             f"- {record.mpn} ({code}, {record.source}) package={record.package or '?'} "
-            f"stock={record.stock} price={price}; {_key_specs(record)}"
+            f"stock={stock_text(record)} price={price}; {_key_specs(record)}"
         )
     for name, names in answer.unmatched.items():
         lines.append(

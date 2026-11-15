@@ -161,7 +161,7 @@ def bom_data(quantity: int = 1, sourcing: bool = True) -> dict[str, Any]:
                 "lcsc": row.get("lcsc", ""),
                 "manufacturer": row.get("manufacturer", ""),
                 "dnp": populate in ("dnp", "no", "false", "0"),
-                "stock": record.stock if record else None,
+                "stock": record.stock if record and record.stock_reported else None,
                 "price": (record.price * 1.0) if record and record.price is not None else None,
                 "currency": record.currency if record else "",
                 "lifecycle": record.lifecycle if record else "",
@@ -320,7 +320,7 @@ def parts_data(
             "lcsc": record.lcsc_code,
             "source": record.source,
             "package": record.package,
-            "stock": record.stock,
+            "stock": record.stock if record.stock_reported else None,
             "price": record.price,
             "specs": [
                 {"name": s.name, "display": s.display, "source": s.source} for s in record.specs

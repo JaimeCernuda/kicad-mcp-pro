@@ -37,6 +37,7 @@ from ..utils.component_search import (
     NexarClient,
     format_price,
     normalize_lcsc_code,
+    stock_text,
 )
 from ..utils.library_tables import parse_lib_table as _shared_parse_lib_table
 from ..utils.library_tables import resolve_kicad_env
@@ -333,7 +334,7 @@ def _format_component_lines(
     limit = max_items or get_config().max_items_per_response
     lines = [heading]
     for item in results[:limit]:
-        stock = f"{item.stock:,}"
+        stock = stock_text(item)
         price = format_price(item.price, item.currency)
         basic = "basic" if item.is_basic else "extended"
         preferred = " preferred" if item.is_preferred else ""

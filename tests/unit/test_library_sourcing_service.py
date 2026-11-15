@@ -284,3 +284,30 @@ def test_stock_availability_preserves_reference_lookup_rendering() -> None:
         "- R1: C40 | MPN-C40 | stock 42 | (n/a)\n"
         "- D1: unresolved (LED; add an LCSC field)"
     )
+
+
+def test_stock_a_source_did_not_report_is_not_called_zero() -> None:
+    from dataclasses import replace
+
+    from kicad_mcp.utils.component_search import _record_from_jlcsearch
+
+    # jlcsearch's lookup by LCSC code answers "stock": null for parts it stocks by the million.
+    looked_up = _record_from_jlcsearch(
+        {"lcsc": 23186, "mfr": "0603WAF5101T5E", "package": "0603", "stock": None}
+    )
+    assert looked_up.stock_reported is False
+    assert _record_from_jlcsearch({"lcsc": 1, "stock": 0}).stock_reported is True
+
+    part = replace(_record(code="C10"), stock=0, stock_reported=False)
+    service = _service(FakeClient(parts={"C10": part}))
+    details = service.get_component_details("C10")
+    assert "- Stock: not reported by jlcsearch" in details
+    report = service.check_sourcing_policy(
+        "C10",
+        min_stock=10,
+        max_unit_price=None,
+        allowed_lifecycle=None,
+        require_rohs=False,
+    )
+    assert report.verdict == "WARN"
+    assert "stock not reported by jlcsearch / required 10" in report.text

@@ -56,6 +56,14 @@ class ComponentRecord:
     currency: str = ""
     # Every attribute the provider reported, normalized (see ``utils.part_specs``).
     specs: tuple[PartSpec, ...] = ()
+    # False when the provider answered without a stock figure: ``stock`` is then 0 but means
+    # "not reported", not "none in stock" (jlcsearch's lookup by LCSC code returns null).
+    stock_reported: bool = True
+
+
+def stock_text(record: ComponentRecord) -> str:
+    """The record's stock for a reader: the count, or that its source did not report one."""
+    return f"{record.stock:,}" if record.stock_reported else f"not reported by {record.source}"
 
 
 class ComponentSearchClient(Protocol):
@@ -207,6 +215,7 @@ def _record_from_jlcsearch(item: dict[str, Any]) -> ComponentRecord:
         package=str(item.get("package", "")),
         description=str(item.get("description", "")),
         stock=int(item.get("stock", 0) or 0),
+        stock_reported=item.get("stock") is not None,
         price=float(item["price"]) if item.get("price") is not None else None,
         is_basic=bool(item.get("is_basic", False)),
         is_preferred=bool(item.get("is_preferred", False)),
@@ -413,6 +422,7 @@ def _record_from_jlcpcb_detail_page(html: str, lcsc_code: str) -> ComponentRecor
         package=package,
         description=description,
         stock=int(stock_match.group(1).replace(",", "")) if stock_match else 0,
+        stock_reported=stock_match is not None,
         price=float(price_match.group(1)) if price_match else None,
         is_basic="basic" in library_type and "extended" not in library_type,
         is_preferred=False,
