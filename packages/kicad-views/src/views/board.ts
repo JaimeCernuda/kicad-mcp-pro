@@ -99,6 +99,7 @@ function round(value: number): number {
 
 function describe(selection: Selection | null): string {
     if (!selection) return "Nothing is selected on the board.";
+    if (selection.kind === "net") return `Selected on the board: net ${selection.net}.`;
     const parts = [`Selected on the board: ${selection.kind}`];
     if (selection.reference) parts.push(selection.reference);
     if (selection.net) parts.push(`net ${selection.net}`);
