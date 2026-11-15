@@ -633,6 +633,17 @@ def _stackup_layer_material(normalized_name: str, raw_material: object) -> str:
 
 
 def _stackup_layer_type(normalized_name: str, raw_type: object) -> str:
+    if isinstance(raw_type, int) and not isinstance(raw_type, bool):
+        # A live KiCad reports the layer type as its API enum (1 copper, 2 dielectric...).
+        from kipy.proto.board import board_pb2  # noqa: PLC0415
+
+        try:
+            enum_name = board_pb2.BoardStackupLayerType.Name(raw_type)
+        except ValueError:
+            enum_name = ""
+        raw_type = enum_name.removeprefix("BSLT_").casefold()
+        if raw_type in ("unknown", "undefined"):
+            raw_type = ""
     layer_type = str(raw_type or "")
     if layer_type:
         return layer_type
@@ -642,6 +653,9 @@ def _stackup_layer_type(normalized_name: str, raw_type: object) -> str:
 def _stackup_layer_name(index: int, raw_layer: object) -> tuple[str, str]:
     if isinstance(raw_layer, int):
         name = BoardLayer.Name(raw_layer).removeprefix("BL_")
+        if name in ("UNDEFINED", "UNKNOWN"):
+            # A dielectric has no board layer of its own; KiCad names it by its position.
+            name = f"dielectric_{index}"
     else:
         name = str(raw_layer or f"dielectric_{index}")
     normalized_name = name.replace(".", "_")

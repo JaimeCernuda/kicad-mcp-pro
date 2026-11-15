@@ -6937,9 +6937,18 @@ def _set_native_dnp_flag(block: str, native_value: str, reference: str) -> str:
     insert_point = block.rfind("\t\t(instances")
     if insert_point == -1:
         insert_point = block.rfind("\n\t)")
-    if insert_point == -1:
+    if insert_point != -1:
+        return block[:insert_point] + f"\t\t(dnp {native_value})\n" + block[insert_point:]
+    # A schematic indented with spaces (KiCad reads any whitespace): put the flag before the
+    # block's own closing parenthesis, indented like the block's first property.
+    close = block.rstrip().rfind(")")
+    indent = re.search(r"\n([ \t]+)\(", block)
+    if close <= 0 or indent is None:
         raise ValueError(f"Could not update native DNP on '{reference}' in the schematic.")
-    return block[:insert_point] + f"\t\t(dnp {native_value})\n" + block[insert_point:]
+    pad = indent.group(1)
+    head = block[:close].rstrip()
+    closing = block[len(head) : close]  # the whitespace before the block's ")"
+    return f"{head}\n{pad}(dnp {native_value}){closing}{block[close:]}"
 
 
 def _set_symbol_dnp_text_fallback(

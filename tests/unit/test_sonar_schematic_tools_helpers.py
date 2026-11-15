@@ -143,3 +143,18 @@ def test_autoplace_visible_fields_preserves_missing_and_unchanged_blocks(
     )
     assert changed is True
     assert result == "block-Reference-12.0-15.0-0-Value-18.0-15.0-90"
+
+
+def test_dnp_is_added_to_a_symbol_indented_with_spaces() -> None:
+    """KiCad reads schematics indented with spaces; the fallback looked only for tabs and
+    "Not fitted" failed on such a file (KiCad ledger, KQ16)."""
+    from kicad_mcp.tools.schematic import _set_native_dnp_flag
+
+    block = (
+        '(symbol\n    (lib_id "Fixture:C1")\n    (at 20 18 0)\n'
+        '    (property "Reference" "C1")\n    (uuid "00000000-0000-0000-0000-000000000003")\n  )'
+    )
+    updated = _set_native_dnp_flag(block, "yes", "C1")
+    assert updated.endswith("\n    (dnp yes)\n  )")
+    assert updated.count("(dnp yes)") == 1
+    assert _set_native_dnp_flag(updated, "no", "C1").count("(dnp no)") == 1
