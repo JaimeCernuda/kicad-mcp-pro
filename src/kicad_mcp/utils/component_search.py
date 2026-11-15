@@ -215,9 +215,14 @@ def _record_from_jlcsearch(item: dict[str, Any]) -> ComponentRecord:
 
 
 class JLCSearchClient:
-    """Zero-auth live search against jlcsearch.tscircuit.com."""
+    """Zero-auth live search against jlcsearch.tscircuit.com.
 
-    BASE = "https://jlcsearch.tscircuit.com"
+    ``KICAD_MCP_JLCSEARCH_URL`` points it at another jlcsearch deployment.
+    """
+
+    BASE = (os.environ.get("KICAD_MCP_JLCSEARCH_URL") or "https://jlcsearch.tscircuit.com").rstrip(
+        "/"
+    )
     JLCPCB_BASE = "https://jlcpcb.com"
 
     def search(
