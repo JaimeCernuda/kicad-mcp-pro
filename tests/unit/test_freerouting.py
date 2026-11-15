@@ -113,16 +113,54 @@ def test_run_freerouting_falls_back_to_jar_when_docker_missing(
     assert result.routed_pct == 50.0
 
 
-def test_run_freerouting_jar_requires_jar_path(sample_project: Path) -> None:
+def test_without_docker_or_a_jar_the_error_says_how_to_install(
+    sample_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When FreeRouting cannot be installed here (and Docker is not running), the user is
+    told how to install it."""
+    from kicad_mcp.routing import freerouting_install
+
     dsn_path = sample_project / "board.dsn"
-    ses_path = sample_project / "board.ses"
     dsn_path.write_text("dsn", encoding="utf-8")
 
-    runner = FreeRoutingRunner()
-    with pytest.raises(RuntimeError) as exc_info:
-        runner.run_freerouting(dsn_path, ses_path, use_docker=False)
+    def cannot(_jar: object = None) -> object:
+        raise freerouting_install.FreeRoutingInstallError("No network here.")
 
-    assert "FreeRouting JAR path is required" in str(exc_info.value)
+    monkeypatch.setattr(freerouting_install, "ensure", cannot)
+    monkeypatch.setattr("kicad_mcp.utils.freerouting._docker_available", lambda _exe: False)
+    with pytest.raises(freerouting_install.FreeRoutingInstallError) as exc_info:
+        FreeRoutingRunner().run_freerouting(dsn_path, sample_project / "b.ses", use_docker=False)
+    message = str(exc_info.value)
+    assert "No network here." in message
+    assert "KICAD_MCP_FREEROUTING_JAR" in message and "Java 21" in message
+
+
+def test_without_docker_the_installed_jar_and_java_run(
+    sample_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from kicad_mcp.routing import freerouting_install
+
+    dsn_path = sample_project / "board.dsn"
+    ses_path = sample_project / "board.ses"
+    dsn_path.write_text("(pcb (net A))", encoding="utf-8")
+    jar = sample_project / "fr.jar"
+    java = sample_project / "jre" / "bin" / "java"
+    installed = freerouting_install.Installed(jar=jar, java=java, notes=("Installed.",))
+    monkeypatch.setattr(freerouting_install, "ensure", lambda _jar=None: installed)
+    monkeypatch.setattr("kicad_mcp.utils.freerouting._docker_available", lambda _exe: False)
+    observed: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        observed.append(cmd)
+        ses_path.write_text("ses", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("kicad_mcp.utils.freerouting.subprocess.run", fake_run)
+    runner = FreeRoutingRunner()
+    result = runner.run_freerouting(dsn_path, ses_path, use_docker=True)
+    assert result.mode == "jar"
+    assert observed[0][:3] == [str(java), "-jar", str(jar)]
+    assert runner.install_notes == ("Installed.",)
 
 
 def test_stage_ses_copies_session(sample_project: Path, tmp_path: Path) -> None:

@@ -37,6 +37,7 @@ class FreeRoutingResult:
     wall_seconds: float
     stdout_tail: str
     ses_path: Path
+    notes: tuple[str, ...] = ()  # what was installed to run FreeRouting here
 
 
 def _sanitize_text(text: str) -> str:
@@ -119,7 +120,20 @@ def _parse_routed_pct(text: str, total_nets: int, unrouted_nets: list[str], ses_
 
 
 def _docker_available(executable: str) -> bool:
-    return shutil.which(executable) is not None
+    """Docker is installed and its daemon answers (an installed but stopped Docker is not)."""
+    if shutil.which(executable) is None:
+        return False
+    try:
+        result = subprocess.run(  # noqa: S603
+            [executable, "info", "--format", "{{.ServerVersion}}"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 class FreeRoutingRunner:
@@ -136,6 +150,7 @@ class FreeRoutingRunner:
         self._docker_image = docker_image or cfg.freerouting_image
         self._docker_executable = docker_executable or cfg.docker_executable
         self._java_executable = java_executable or cfg.java_executable
+        self.install_notes: tuple[str, ...] = ()
 
     def _cli_export_dsn(self, kicad_cli: str | Path, pcb_path: Path, target: Path) -> bool:
         """Attempt the headless ``kicad-cli pcb export specctra`` command.
@@ -322,15 +337,23 @@ class FreeRoutingRunner:
         thread_count: int,
         ignore_arg: str,
     ) -> tuple[str, list[str]]:
-        selected_docker = use_docker
-        if selected_docker and not _docker_available(self._docker_executable):
-            if jar_path is None:
-                raise RuntimeError(
-                    "Docker was requested for FreeRouting but was not found, and no "
-                    "FreeRouting JAR fallback is configured. Install Docker or set "
-                    "KICAD_MCP_FREEROUTING_JAR."
-                )
-            selected_docker = False
+        # A configured JAR, else Docker when asked for and running, else FreeRouting and a
+        # Java 21 runtime installed here, else Docker anyway, else how the user installs it.
+        from ..routing import freerouting_install  # noqa: PLC0415 - keeps utils free of routing at import
+
+        docker_ready = _docker_available(self._docker_executable)
+        selected_docker = jar_path is None and use_docker and docker_ready
+        java: str | None = None
+        if not selected_docker and jar_path is None:  # a configured JAR runs as configured
+            try:
+                installed = freerouting_install.ensure(jar_path)
+            except freerouting_install.FreeRoutingInstallError:
+                if not docker_ready:
+                    raise
+                selected_docker = True
+            else:
+                jar_path, java = installed.jar, str(installed.java)
+                self.install_notes = installed.notes
 
         if selected_docker:
             return "docker", self._build_docker_command(
@@ -341,7 +364,7 @@ class FreeRoutingRunner:
                 thread_count=thread_count,
                 ignore_arg=ignore_arg,
             )
-        return "jar", self._build_jar_command(
+        command = self._build_jar_command(
             jar_path=jar_path,
             dsn_path=dsn_path,
             output=output,
@@ -350,6 +373,9 @@ class FreeRoutingRunner:
             thread_count=thread_count,
             ignore_arg=ignore_arg,
         )
+        if java is not None:
+            command[0] = java
+        return "jar", command
 
     def _execute_process(
         self,
@@ -454,6 +480,7 @@ class FreeRoutingRunner:
             wall_seconds=round(wall_seconds, 3),
             stdout_tail=_tail(sanitized_stdout),
             ses_path=output,
+            notes=self.install_notes,
         )
 
     def stage_ses(self, ses_path: Path) -> Path:

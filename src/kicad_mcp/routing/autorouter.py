@@ -181,7 +181,8 @@ def _build_autoroute_success(
                 f"FreeRouting routed and applied: {seg_count} segment(s), "
                 f"{via_count} via(s), {net_count} net(s).\n"
                 f"Mode: {route_stats.mode}\n"
-                f"DSN: {relative_path(dsn_file)}\n"
+                + "".join(f"{note}\n" for note in route_stats.notes)
+                + f"DSN: {relative_path(dsn_file)}\n"
                 f"SES: {relative_path(ses_path_obj)}\n"
                 f"Routed: {route_stats.routed_pct:.2f}% ({route_stats.total_nets} "
                 f"net(s), {len(route_stats.unrouted_nets)} unrouted)\n"
