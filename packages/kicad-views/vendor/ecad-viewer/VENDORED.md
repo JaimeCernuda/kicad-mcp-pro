@@ -36,3 +36,10 @@ Each is marked `kicad-views` in the code and offered upstream.
   `(at x y r)`. Without it every footprint of a KiCad 11 board (the headless `api-server`
   case) was drawn at the origin. A footprint with no `at` takes its position and rotation
   from `transform`.
+- `packages/kicad-parser/src/board_parser.ts`, `packages/ecad-viewer-app/src/kicad/board.ts`:
+  KiCad 10 (file version 20260206) has no net table and names every net reference,
+  `(net "GND")`, on pads, tracks, vias and zones, where older files wrote `(net 3 "GND")`
+  and numbered tracks. Read as a number, every item of a board KiCad 10 saved was on net 0:
+  net selection, greying and the "Selected on the board: net …" line did nothing. A net
+  reference now takes a name, and `numberNamedNets` numbers the named nets once (keeping a
+  file's own numbers, net 0 "no net"). `npm run check:parse` checks every fixture's nets.

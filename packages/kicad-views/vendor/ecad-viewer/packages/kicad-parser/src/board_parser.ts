@@ -123,13 +123,21 @@ function parseNet(expr: Parseable): B.I_Net {
     ) as unknown as B.I_Net;
 }
 
+/** A net reference's value: a number, or (KiCad 10, file version 20260206 and later) a name. */
+function netValue(_obj: unknown, _name: string, e: unknown): number | string | undefined {
+    return typeof e === "number" || typeof e === "string" ? e : undefined;
+}
+
 function parseNetReference(expr: Parseable): B.I_Net {
-    return parse_expr(
+    const net = parse_expr(
         expr,
         P.start("net"),
-        P.positional("number", T.number),
+        P.positional("number", netValue),
         P.positional("name", T.string),
-    ) as unknown as B.I_Net;
+    ) as unknown as { number?: number | string; name?: string };
+    // KiCad 10 writes (net "GND"): the name alone. The board numbers it (numberNamedNets).
+    if (typeof net.number === "string") return { name: net.number } as unknown as B.I_Net;
+    return net as unknown as B.I_Net;
 }
 
 function parseLine(expr: Parseable, start: string): B.I_Line {
@@ -541,7 +549,7 @@ function parseZone(expr: Parseable): B.I_Zone {
         expr,
         P.start("zone"),
         P.atom("locked"),
-        P.pair("net", T.number),
+        P.pair("net", netValue),
         P.pair("net_name", T.string),
         P.pair("name", T.string),
         P.pair("layer", T.string),
@@ -669,7 +677,7 @@ function parseLineSegment(expr: Parseable): B.I_LineSegment {
         P.vec2("end"),
         P.pair("width", T.number),
         P.pair("layer", T.string),
-        P.pair("net", T.number),
+        P.pair("net", netValue),
         P.atom("locked"),
         P.pair("tstamp", T.string),
         P.pair("uuid", T.string),
@@ -685,7 +693,7 @@ function parseArcSegment(expr: Parseable): B.I_ArcSegment {
         P.vec2("end"),
         P.pair("width", T.number),
         P.pair("layer", T.string),
-        P.pair("net", T.number),
+        P.pair("net", netValue),
         P.atom("locked"),
         P.pair("tstamp", T.string),
         P.pair("uuid", T.string),
@@ -704,7 +712,7 @@ function parseVia(expr: Parseable): B.I_Via {
         P.atom("keep_end_layers"),
         P.atom("locked"),
         P.atom("free"),
-        P.pair("net", T.number),
+        P.pair("net", netValue),
         P.pair("tstamp", T.string),
         P.pair("uuid", T.string),
         P.atom("type", ["blind", "micro", "through-hole"]),
