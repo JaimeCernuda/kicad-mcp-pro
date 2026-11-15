@@ -230,3 +230,25 @@ def test_the_summary_counts_nets_by_name_in_file_and_live_board_text() -> None:
     )
     assert board_summary(file_text)["nets"] == 2
     assert board_summary(live_text) == {"footprints": 1, "tracks": 1, "nets": 1}
+
+
+def test_a_view_given_the_project_file_uses_its_folder(
+    sample_project: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import shutil
+
+    from kicad_mcp.config import get_config
+
+    other = tmp_path / "other"
+    shutil.copytree(sample_project, other)
+    get_config().apply_project(sample_project)
+    monkeypatch.setattr(data, "live_board_text", lambda: None)
+    server = _server(monkeypatch, enabled=False)
+    # Models name the project by its .kicad_pro as often as by its folder.
+    result = _tools(server)["view_schematic"].fn(project=str(other / "demo.kicad_pro"))
+    assert get_config().project_dir == other.resolve()
+    assert get_config().sch_file == (other / "demo.kicad_sch").resolve()
+    assert result.content[0].text.startswith("Opened the schematic view")
+    with pytest.raises(ValueError, match="does not exist"):
+        _tools(server)["view_board"].fn(project=str(tmp_path / "gone" / "x.kicad_pro"))
+    assert get_config().project_dir == other.resolve()  # a bad name changes nothing

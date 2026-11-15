@@ -74,6 +74,11 @@ def _use_project(project: str) -> None:
         return
     cfg = get_config()
     target = Path(project).expanduser()
+    # A project, board or schematic file names its folder; the folder is the project.
+    if target.suffix in (".kicad_pro", ".kicad_pcb", ".kicad_sch"):
+        target = target.parent
+    if not target.is_dir():
+        raise ValueError(f"The project folder {target} does not exist.")
     current = Path(cfg.project_dir) if cfg.project_dir is not None else None
     if current is not None and target.resolve() == current.resolve():
         return
