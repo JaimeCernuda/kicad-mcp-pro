@@ -1115,14 +1115,10 @@ export class Property {
     }
 
     get effects(): Effects {
-        if (this.#effects) {
-            return this.#effects;
-        } else if (this.parent instanceof SchematicSymbol) {
-            this.#effects = new Effects();
-        } else {
-            // log.warn(`Couldn't determine Effects for Property ${this.name}`); // Removed log import
-        }
-        return this.#effects!;
+        // kicad-views: a property that states no effects takes KiCad's defaults whatever it
+        // belongs to; a sheet's property without effects stopped the schematic from drawing.
+        this.#effects ??= new Effects();
+        return this.#effects;
     }
 
     set effects(e: Effects) {

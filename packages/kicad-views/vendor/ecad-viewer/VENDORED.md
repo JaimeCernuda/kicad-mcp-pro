@@ -21,6 +21,8 @@ Each is marked `kicad-views` in the code and offered upstream.
 | `src/3d-viewer/online_3d_viewer.ts` | The model-ready listener is removed when the viewer leaves the page; a model that fails to load raises `Online3dViewerFailed` (`3d:viewer:failed`) and can be tried again; the model URL is not revoked here | The board view replaces the element on every edit, so old viewers kept loading models; a failed load left the 3D tab spinning with no message; the view reuses its URL |
 | `src/viewers/base/events.ts` | `Online3dViewerFailed` | The event above |
 | `src/3d-viewer/viewer.ts` | A model whose bytes the page registered (`globalThis.__ecadModelBytes`, by its object URL) is parsed from memory instead of fetched | Fetching an object URL is a connection: a host's Content Security Policy (`connect-src 'self'`) blocked it, and the 3D tab never loaded |
+| `src/kicanvas/project.ts` | An "orphan" sheet's page gets its file name, not `"schematic"` (an argument left over from KiCanvas's `ProjectPage`, which took a type first) | A schematic whose sheets have no instances (a hand-written or older file) named every page's file "schematic", which has no document, and the view never drew (KiCad ledger, KQ20, `multi-sheet-schematic`) |
+| `src/kicad/schematic.ts` | A property that states no effects takes KiCad's default effects whatever it belongs to | A sheet's property without `(effects ...)` threw `reading 'hide'` while painting, so the schematic stopped drawing (KQ20) |
 
 ## Known
 
