@@ -168,6 +168,8 @@ def test_view_board_answers_in_text_for_a_host_without_apps(
     assert "board from the board file" in text
     # The view's data calls name the project even if the server restarts in between.
     assert result.structured_content["arguments"]["project"] == str(sample_project.resolve())
+    # The view opens on the drawing unless asked for 3D.
+    assert result.structured_content["arguments"]["mode"] == "board"
 
 
 def test_a_reopened_view_finds_the_project_after_a_restart(

@@ -265,9 +265,7 @@ export class Viewer {
 
             const blobURLs: string[] = [];
 
-            loader.load(
-                url,
-                (gltf) => {
+            const onLoad = (gltf: any) => {
                     // window.VIEWER.json = gltf;
 
                     const scene = gltf.scene || gltf.scenes[0];
@@ -289,10 +287,25 @@ export class Viewer {
                     // DRACOLoader.releaseDecoderModule();
 
                     resolve(gltf);
-                },
-                undefined,
-                reject,
-            );
+            };
+
+            // kicad-views: a model whose bytes the page registered (by its object URL) is
+            // parsed from memory. Fetching an object URL is a connection, and a host's
+            // Content Security Policy (connect-src 'self') blocks it.
+            const registered = (
+                globalThis as { __ecadModelBytes?: Map<string, ArrayBuffer> }
+            ).__ecadModelBytes?.get(url);
+            if (registered) {
+                loader.parse(registered.slice(0), "", (gltf) => {
+                    try {
+                        onLoad(gltf);
+                    } catch (error) {
+                        reject(error);
+                    }
+                }, reject);
+            } else {
+                loader.load(url, onLoad, undefined, reject);
+            }
         });
     }
 

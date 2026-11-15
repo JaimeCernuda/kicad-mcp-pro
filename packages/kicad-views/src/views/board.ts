@@ -111,6 +111,21 @@ function describe(selection: Selection | null): string {
 /** How long the board view waits for the 3D export (the server allows kicad-cli 180 s). */
 const GLB_TIMEOUT_MS = 240_000;
 
+/** The first element named ``tag`` under ``root``, looking inside shadow roots. */
+function deepFind(root: Element | ShadowRoot | null, tag: string): Element | null {
+    if (!root) return null;
+    if (root instanceof Element && root.shadowRoot) {
+        const inside = deepFind(root.shadowRoot, tag);
+        if (inside) return inside;
+    }
+    for (const el of root.querySelectorAll("*")) {
+        if (el.tagName === tag) return el;
+        const inner = el.shadowRoot ? deepFind(el.shadowRoot, tag) : null;
+        if (inner) return inner;
+    }
+    return null;
+}
+
 function nextFrame(): Promise<void> {
     return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 }
@@ -134,8 +149,22 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
     let moveMode = false;
     // The 3D model: one export kept as bytes; each ecad-viewer element gets its own URL,
     // released when the element goes (an edit replaces the element).
-    let glb: Blob | null = null;
+    let glb: ArrayBuffer | null = null;
     let elementGlbUrl: string | null = null;
+    // The 3D viewer parses a model registered here from memory instead of fetching its
+    // URL, which a host's Content Security Policy can block (vendored viewer.ts).
+    const models = ((globalThis as { __ecadModelBytes?: Map<string, ArrayBuffer> }).__ecadModelBytes ??=
+        new Map<string, ArrayBuffer>());
+    const modelUrl = (bytes: ArrayBuffer): string => {
+        const url = URL.createObjectURL(new Blob([bytes], { type: "model/gltf-binary" }));
+        models.set(url, bytes);
+        return url;
+    };
+    const releaseModel = (url: string | null): void => {
+        if (!url) return;
+        models.delete(url);
+        URL.revokeObjectURL(url);
+    };
     // Fit again when the view changes size, until the person moves the board themselves.
     let autoFit = true;
     const buttons: Record<string, HTMLButtonElement> = {};
@@ -177,12 +206,12 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
         const saved = camera ? { center: camera.center.copy?.() ?? camera.center, zoom: camera.zoom } : null;
         const next = ecadElement("ecad-viewer", { style: "position:absolute;inset:0;height:auto;max-height:none;aspect-ratio:auto" });
         next.append(ecadElement("ecad-blob", { filename: data.board_name, content: data.text }));
-        const nextGlbUrl = glb ? URL.createObjectURL(glb) : null;
+        const nextGlbUrl = glb ? modelUrl(glb) : null;
         if (nextGlbUrl) next.append(ecadElement("ecad-3d-source", { src: nextGlbUrl }));
         host.append(next);
         const nextViewer = await waitViewer(next);
         element?.remove();
-        if (elementGlbUrl) URL.revokeObjectURL(elementGlbUrl);
+        releaseModel(elementGlbUrl);
         element = next;
         elementGlbUrl = nextGlbUrl;
         viewer = nextViewer;
@@ -376,6 +405,17 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
             return textResult(`Visible layers: ${[...wanted].join(", ")}.`);
         },
     });
+    bridge.tools.set("show", {
+        name: "show",
+        description:
+            "Switch the board view between the board drawing (mode board) and the 3D model with component bodies (mode 3d); in 3D it returns a PNG of what the view shows.",
+        inputSchema: {
+            type: "object",
+            properties: { mode: { type: "string", enum: ["board", "3d"] } },
+            required: ["mode"],
+        },
+        run: async (args) => showMode(String(args.mode ?? "board")),
+    });
     bridge.tools.set("capture", {
         name: "capture",
         description: "Return a PNG of what the board view shows now.",
@@ -407,6 +447,42 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
             };
         },
     });
+
+    /** The ecad-viewer tab button (PCB, 3D, BOM) of the element shown now. */
+    function tabButton(kind: string): HTMLElement | null {
+        const header = deepFind(element, "TAB-HEADER");
+        const tabs = [...(header?.shadowRoot?.querySelectorAll("tab-button") ?? [])] as HTMLElement[];
+        return tabs.find((tab) => tab.textContent?.trim() === kind) ?? null;
+    }
+
+    /** Switch the view between the board drawing and the 3D model, as the tabs do. */
+    async function showMode(mode: string): Promise<ToolResult> {
+        const kind = mode === "3d" ? "3D" : "PCB";
+        const tab = tabButton(kind);
+        if (!tab) throw new Error(`The view has no ${kind} tab.`);
+        tab.click();
+        if (kind === "PCB") {
+            await nextFrame();
+            fitBoard();
+            return textResult("Showing the board drawing.");
+        }
+        for (let i = 0; i < 120; i += 1) {
+            const viewer3d = deepFind(element, "ECAD-3D-VIEWER") as any;
+            if (viewer3d?._loaded && viewer3d.style.display !== "none") {
+                await nextFrame();
+                const container = viewer3d._viewer_container;
+                container?.render?.();
+                const canvas = container?.renderer?.domElement as HTMLCanvasElement | undefined;
+                const png = canvas ? dataUrlToBase64(canvas.toDataURL("image/png")) : "";
+                const text = "Showing the board in 3D (the person can turn it with the mouse).";
+                return png
+                    ? { content: [{ type: "image", data: png, mimeType: "image/png" }, { type: "text", text }] }
+                    : textResult(text);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        throw new Error(glb ? "The 3D model did not finish loading." : "The 3D model is not exported yet.");
+    }
 
     /** Frame the whole board outline. ecad-viewer's zoom_to_board only sets the camera,
      * so the board is drawn again here. */
@@ -519,9 +595,9 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
         glbBusy = true;
         try {
             const data = await bridge.callData<{ glb_base64: string }>("view_data_glb", project, GLB_TIMEOUT_MS);
-            glb = new Blob([base64Bytes(data.glb_base64)], { type: "model/gltf-binary" });
-            const url = URL.createObjectURL(glb);
-            if (elementGlbUrl) URL.revokeObjectURL(elementGlbUrl);
+            glb = base64Bytes(data.glb_base64).buffer;
+            const url = modelUrl(glb);
+            releaseModel(elementGlbUrl);
             elementGlbUrl = url;
             const ecad = element as any;
             if (ecad?.project) ecad.project.ov_3d_url = url;
@@ -536,7 +612,9 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
             }
         }
     };
-    void refreshGlb();
+    void refreshGlb().then(() => {
+        if (project.mode === "3d") void showMode("3d").catch((error) => frame.say(String(error), "error"));
+    });
     followRevisions(bridge, project, () => shown, async () => {
         await load(true);
         void refreshGlb();

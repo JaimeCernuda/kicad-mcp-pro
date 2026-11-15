@@ -20,6 +20,7 @@ Each is marked `kicad-views` in the code and offered upstream.
 | `src/kicad/schematic.ts` | A symbol whose library symbol is missing (no `lib_symbols` section, or no entry) draws a placeholder box | Parser fix: the view failed to load such a schematic (`Cannot read properties of undefined (reading 'by_name')`); found on the fork's `clean-led-kicad10` fixture |
 | `src/3d-viewer/online_3d_viewer.ts` | The model-ready listener is removed when the viewer leaves the page; a model that fails to load raises `Online3dViewerFailed` (`3d:viewer:failed`) and can be tried again; the model URL is not revoked here | The board view replaces the element on every edit, so old viewers kept loading models; a failed load left the 3D tab spinning with no message; the view reuses its URL |
 | `src/viewers/base/events.ts` | `Online3dViewerFailed` | The event above |
+| `src/3d-viewer/viewer.ts` | A model whose bytes the page registered (`globalThis.__ecadModelBytes`, by its object URL) is parsed from memory instead of fetched | Fetching an object URL is a connection: a host's Content Security Policy (`connect-src 'self'`) blocked it, and the 3D tab never loaded |
 
 ## Known
 

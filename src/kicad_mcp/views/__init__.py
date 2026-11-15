@@ -138,13 +138,15 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(meta=_meta("board"))
     def view_board(
-        project: str = "", layers: list[str] | None = None, focus: str = ""
+        project: str = "", layers: list[str] | None = None, focus: str = "", mode: str = "board"
     ) -> CallToolResult:
         """Open the board in a view the person can see and work in: layers, nets, 2D and 3D.
 
-        ``focus`` centres a reference (U1), a net (GND) or nothing in the new view. Each call
-        opens another view. A view that is already open follows every edit and offers its own
-        tools (``focus``, ``set_layers``, ``select``, ``capture``) to steer it in place. The view
+        ``mode`` ``3d`` opens on the 3D model with component bodies, which the person can turn;
+        ``board`` (the default) on the drawing. ``focus`` centres a reference (U1), a net (GND)
+        or nothing in the new view. Each call opens another view. A view that is already open
+        follows every edit and offers its own tools (``show`` to switch between the drawing and
+        3D, ``focus``, ``set_layers``, ``select``, ``capture``) to steer it in place. The view
         shows the live KiCad's board; the person can drag, rotate, flip and lock footprints
         there, and what they select reaches you as context.
         """
@@ -156,7 +158,7 @@ def register(mcp: FastMCP) -> None:
             f"{counts['footprints']} footprints, {counts['nets']} nets, {counts['tracks']} track "
             f"segments; board from the {origin}."
         )
-        return opened("board", extra, layers=layers or [], focus=focus)
+        return opened("board", extra, layers=layers or [], focus=focus, mode=mode)
 
     @mcp.tool(meta=_meta("schematic"))
     def view_schematic(project: str = "", sheet: str = "", focus: str = "") -> CallToolResult:
