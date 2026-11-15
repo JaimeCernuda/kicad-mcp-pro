@@ -56,3 +56,27 @@ def test_grouped_rows_keep_the_first_datasheet_a_group_has() -> None:
 
     assert group["references"] == ["C1", "C2"]
     assert group["datasheet"] == "https://x/c.pdf"
+
+
+def test_an_empty_placed_field_takes_the_embedded_library_symbols_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url = "http://www.ti.com/lit/ds/symlink/lm75b.pdf"
+    text = (
+        "(kicad_sch (lib_symbols "
+        f'(symbol "board:LM75B" (property "Datasheet" "{url}") (symbol "LM75B_0_1" (pin)))'
+        '(symbol "Device:R" (property "Datasheet" "~")))'
+        '(symbol (lib_id "board:LM75B") (property "Reference" "U3") (property "Value" "LM75B")'
+        ' (property "Footprint" "Pkg:SOT") (property "Datasheet" ""))'
+        '(symbol (lib_id "Device:R") (property "Reference" "R1") (property "Value" "10k")'
+        ' (property "Footprint" "Pkg:SOT") (property "Datasheet" ""))'
+        ")"
+    )
+    symbols = [
+        {"reference": "U3", "value": "LM75B", "footprint": "Pkg:SOT", "lib_id": "board:LM75B"},
+        {"reference": "R1", "value": "10k", "footprint": "Pkg:SOT", "lib_id": "Device:R"},
+    ]
+    rows = {row["reference"]: row for row in _rows(tmp_path, monkeypatch, text, symbols)}
+
+    assert rows["U3"]["datasheet"] == url
+    assert rows["R1"]["datasheet"] == ""  # KiCad's "~" is no link

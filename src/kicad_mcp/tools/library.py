@@ -476,6 +476,7 @@ def _parse_schematic_symbols_and_blocks(
     raw_content = sch_file.read_text(encoding="utf-8", errors="ignore")
     _init_component_rows(parsed["symbols"], rows_by_reference)
 
+    library_datasheets: dict[str, str] = {}
     search_start = 0
     while True:
         block_start = raw_content.find("(symbol", search_start)
@@ -484,6 +485,22 @@ def _parse_schematic_symbols_and_blocks(
         block, consumed = _extract_block(raw_content, block_start)
         search_start = block_start + max(consumed, 1)
         _apply_symbol_block(block, rows_by_reference)
+        _note_library_datasheet(block, library_datasheets)
+    # A placed symbol often leaves its Datasheet field empty; the library symbol the
+    # schematic embeds (lib_symbols) still has the link.
+    for row in rows_by_reference.values():
+        if not row.get("datasheet") and row.get("lib_id") in library_datasheets:
+            row["datasheet"] = library_datasheets[row["lib_id"]]
+
+
+def _note_library_datasheet(block: str, out: dict[str, str]) -> None:
+    """Record an embedded library symbol's Datasheet link by its name (its lib_id)."""
+    if '(lib_id "' in block:
+        return
+    name = re.match(r'\(symbol\s+"((?:\\.|[^"\\])*)"', block)
+    link = _symbol_property(block, "Datasheet").strip()
+    if name and link and link != "~":
+        out.setdefault(name.group(1), link)
 
 
 def _schematic_component_rows() -> list[dict[str, str]]:
