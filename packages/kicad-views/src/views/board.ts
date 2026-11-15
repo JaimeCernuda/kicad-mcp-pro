@@ -24,6 +24,13 @@ interface Selection {
     rotation_deg?: number;
 }
 
+/** A pad's position on the board: KiCad keeps it relative to its footprint, in the
+ * footprint's frame, rotated counter-clockwise on screen with y pointing down. */
+export function padOnBoard(pad: { x: number; y: number }, at: { x: number; y: number }, rotationDeg: number): { x: number; y: number } {
+    const a = (rotationDeg * Math.PI) / 180;
+    return { x: at.x + pad.x * Math.cos(a) + pad.y * Math.sin(a), y: at.y - pad.x * Math.sin(a) + pad.y * Math.cos(a) };
+}
+
 function itemSelection(raw: any, viewer: AnyViewer): Selection | null {
     if (!raw) return null;
     const item = raw.item ?? raw;
@@ -43,12 +50,14 @@ function itemSelection(raw: any, viewer: AnyViewer): Selection | null {
         };
     }
     if (type === "Pad") {
+        const parent = item.parent?.at?.position;
+        const onBoard = pos && parent ? padOnBoard(pos, parent, Number(item.parent.at?.rotation ?? 0)) : pos;
         return {
             kind: "pad",
             reference: item.parent?.reference ? `${item.parent.reference}.${item.number}` : String(item.number ?? ""),
             net: item.net?.name ?? netName(item.net?.number),
             layer: item.parent?.layer,
-            position_mm: where,
+            position_mm: onBoard ? { x: round(onBoard.x), y: round(onBoard.y) } : undefined,
         };
     }
     if (type === "LineSegment" || type === "ArcSegment") {
