@@ -109,6 +109,18 @@ def default_socket() -> str:
     return "ipc:///tmp/kicad/api.sock"
 
 
+def started_socket() -> str:
+    """The socket a KiCad window started by this server serves.
+
+    KiCad puts its API socket under its temp folder (``$TMPDIR/kicad/api.sock``), and a
+    window started here inherits this process's temp folder, which a sandboxed client may
+    point away from ``/tmp``.
+    """
+    if platform.system() == "Windows":
+        return default_socket()
+    return f"ipc://{Path(tempfile.gettempdir()) / 'kicad' / 'api.sock'}"
+
+
 def _socket_url(path_or_url: str) -> str:
     return path_or_url if "://" in path_or_url else f"ipc://{path_or_url}"
 
@@ -357,7 +369,7 @@ class InstanceManager:
             argv = [xvfb, "-a", "-s", "-screen 0 1600x1000x24", *argv]
             case = XVFB
         version = _version(cli) if cli is not None else ""
-        return self._launch(argv, case, board, home, version, cli, default_socket(), status)
+        return self._launch(argv, case, board, home, version, cli, started_socket(), status)
 
     def _launch_headless(
         self, cli: Path, board: Path, home: Path, status: InstanceStatus

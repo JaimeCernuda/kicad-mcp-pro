@@ -143,3 +143,19 @@ def test_status_tool_reports_the_case_and_what_to_do() -> None:
     text = tool.fn()
     assert text.startswith("KiCad instance:")
     assert '"case":' in text
+
+
+def test_a_started_window_serves_its_socket_under_the_temp_folder(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """KiCad's window puts its API socket in its temp folder; a sandboxed client may move it."""
+    import platform
+    import tempfile
+
+    from kicad_mcp.instance import manager
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    if platform.system() == "Windows":
+        assert manager.started_socket() == manager.default_socket()
+    else:
+        assert manager.started_socket() == f"ipc://{tmp_path / 'kicad' / 'api.sock'}"
