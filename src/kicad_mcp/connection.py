@@ -27,12 +27,35 @@ _kicad: object | None = None
 _connection_generation = 0
 
 
+_IPC_LOCK = threading.Lock()
+
+
+def _one_request_at_a_time(*args: object, **kwargs: object) -> KiCad:
+    """A kipy client whose requests go to KiCad one at a time.
+
+    KiCad's IPC API is one request/reply socket. Tool calls running at once (a client that
+    moves 21 footprints in parallel) shared it, and replies were cancelled ("Error
+    receiving reply from KiCad: Operation canceled").
+    """
+    kicad = KiCad(*args, **kwargs)  # type: ignore[arg-type]
+    client = getattr(kicad, "_client", None)
+    send = getattr(client, "send", None)
+    if send is not None:
+
+        def serialized(command: object, response_type: object) -> object:
+            with _IPC_LOCK:
+                return send(command, response_type)
+
+        client.send = serialized  # type: ignore[union-attr]
+    return kicad
+
+
 def _get_session() -> KiCadSession:
     """Return the process-wide KiCad session adapter."""
     global _session
     with _lock:
         if _session is None:
-            _session = KiCadSession(client_factory=KiCad, logger=logger)
+            _session = KiCadSession(client_factory=_one_request_at_a_time, logger=logger)
         return _session
 
 

@@ -252,3 +252,37 @@ def test_a_development_build_is_used_only_when_named(monkeypatch, tmp_path: Path
     assert manager._cli_candidates(None) == []  # only a nightly: not picked unasked
     monkeypatch.setenv("KICAD_CLI_PATH", str(nightly))
     assert manager._cli_candidates(nightly) == [nightly]  # named: used
+
+
+def test_kicad_requests_go_one_at_a_time(monkeypatch) -> None:
+    """KiCad's IPC is one request/reply socket; parallel tool calls must not share it at once."""
+    import threading
+    import time
+
+    from kicad_mcp import connection
+
+    state = {"in_flight": 0, "most": 0}
+    guard = threading.Lock()
+
+    class _Client:
+        def send(self, command: object, response_type: object) -> object:
+            with guard:
+                state["in_flight"] += 1
+                state["most"] = max(state["most"], state["in_flight"])
+            time.sleep(0.01)
+            with guard:
+                state["in_flight"] -= 1
+            return command
+
+    class _KiCad:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self._client = _Client()
+
+    monkeypatch.setattr(connection, "KiCad", _KiCad)
+    kicad = connection._one_request_at_a_time()
+    threads = [threading.Thread(target=kicad._client.send, args=(n, None)) for n in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert state["most"] == 1
