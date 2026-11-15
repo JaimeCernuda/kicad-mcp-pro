@@ -26,6 +26,7 @@ from kicad_mcp.utils.component_search import (
 from kicad_mcp.utils.part_specs import (
     PartSpec,
     SpecFilter,
+    canonical_name,
     merge_specs,
     specs_from_description,
     specs_from_jlcsearch,
@@ -92,6 +93,8 @@ class SourcingAnswer:
 
     records: list[ComponentRecord] = field(default_factory=list)
     outcomes: list[SourceOutcome] = field(default_factory=list)
+    # A filter whose name no returned part has, with the spec names those parts do have.
+    unmatched: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def answered_by(self) -> list[str]:
@@ -305,6 +308,10 @@ class ParametricService:
             except (RuntimeError, ValueError, OSError) as exc:
                 answer.outcomes.append(SourceOutcome(source, False, reason=_reason(exc)))
                 continue
+            seen = {spec.name for item in found for spec in item.specs}
+            for item in parsed:
+                if found and canonical_name(item.name) not in seen:
+                    answer.unmatched[item.name] = sorted(seen)
             kept = [item for item in found if _matches(item, parsed, min_stock, package)]
             kept.sort(key=lambda item: (item.price is None, item.price or 0.0, -item.stock))
             answer.outcomes.append(SourceOutcome(source, True, count=len(kept)))

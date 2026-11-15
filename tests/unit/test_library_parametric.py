@@ -289,3 +289,32 @@ def test_failed_sourcing_results_name_the_sources_that_could_be_set_up(monkeypat
         )
         == ""
     )
+
+
+def test_a_description_names_volts_and_amps_as_ratings_only_for_passives() -> None:
+    cap = {spec.name: spec.display for spec in specs_from_description("10uF 25V X7R", "x")}
+    ldo = {spec.name: spec.display for spec in specs_from_description("3.3V 200mA LDO", "x")}
+    assert cap["voltage_rating"] == "25V"
+    assert ldo == {"voltage": "3.3V", "current": "200mA"}  # an output, not a rating
+
+
+def test_a_parsed_description_only_fills_what_its_source_does_not_report() -> None:
+    from kicad_mcp.utils.part_specs import merge_specs
+
+    reported = specs_from_jlcsearch(CAP_ROWS[0])
+    parsed = specs_from_description("10uF 25V X7R 0805", "jlcsearch")
+    merged = merge_specs((reported, parsed))
+    names = [spec.name for spec in merged]
+    assert len(names) == len(set(names))  # no name twice from jlcsearch
+    assert all(
+        not spec.source.endswith(":description") for spec in merged if spec.name == "capacitance"
+    )
+
+
+def test_a_filter_name_no_part_has_is_named_with_the_names_they_do_have() -> None:
+    service, _ = _service()
+    answer = service.search("capacitors", [{"name": "voltage", "op": ">=", "value": "25V"}])
+    assert answer.records == []
+    assert "voltage" in answer.unmatched and "voltage_rating" in answer.unmatched["voltage"]
+    text = library_parametric.format_search("capacitors", answer)
+    assert "No part returned has a spec named 'voltage'" in text and "voltage_rating" in text

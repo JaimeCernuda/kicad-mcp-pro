@@ -364,17 +364,23 @@ def specs_from_description(description: str, source: str) -> tuple[PartSpec, ...
     """
     label = f"{source}:description"
     rows: dict[str, PartSpec] = {}
+    tokens = [
+        (token, *parse_quantity(token.replace("ohm", "Ω")))
+        for token in _DESCRIPTION_TOKEN.findall(description or "")
+    ]
+    # A passive's only volts and amps are its ratings; an IC's are an output, an input or a
+    # quiescent draw, which the unit alone cannot tell apart, so they keep plain names.
+    passive = any(unit in ("F", "Ω", "H") for _token, _number, unit in tokens)
     unit_names = {
         "F": "capacitance",
-        "V": "voltage_rating",
+        "V": "voltage_rating" if passive else "voltage",
         "Ω": "resistance",
         "H": "inductance",
         "W": "power_rating",
         "%": "tolerance",
-        "A": "current_rating",
+        "A": "current_rating" if passive else "current",
     }
-    for token in _DESCRIPTION_TOKEN.findall(description or ""):
-        number, unit = parse_quantity(token.replace("ohm", "Ω"))
+    for token, number, unit in tokens:
         name = unit_names.get(unit)
         if name and name not in rows:
             rows[name] = PartSpec(name, token.strip(), number, unit, label, "description")
@@ -471,7 +477,8 @@ def merge_specs(groups: Iterable[Iterable[PartSpec]]) -> tuple[PartSpec, ...]:
     """Every spec of every source, ordered by name; nothing is dropped.
 
     Two sources reporting the same attribute both stay, each with its source, so a
-    reader sees agreement or disagreement.
+    reader sees agreement or disagreement; a source's parsed description fills only what
+    that source does not report.
     """
     seen: set[tuple[str, str, str]] = set()
     rows: list[PartSpec] = []
@@ -482,6 +489,15 @@ def merge_specs(groups: Iterable[Iterable[PartSpec]]) -> tuple[PartSpec, ...]:
                 continue
             seen.add(key)
             rows.append(found)
+    # A value parsed from a description only fills a gap: it goes when the same source
+    # reports that spec itself.
+    reported = {(row.name, row.source) for row in rows if not row.source.endswith(":description")}
+    rows = [
+        row
+        for row in rows
+        if not row.source.endswith(":description")
+        or (row.name, row.source.removesuffix(":description")) not in reported
+    ]
     return tuple(sorted(rows, key=lambda row: (row.name, row.source)))
 
 
