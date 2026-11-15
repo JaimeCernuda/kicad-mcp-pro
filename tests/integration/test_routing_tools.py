@@ -61,6 +61,9 @@ async def test_route_autoroute_freerouting_smoke_handles_large_dsn(
                 stdout="gerbers positions ipc2581 svg dxf step render spice",
                 stderr="",
             )
+        if "-do" not in cmd:
+            # KiCad's own Python (DSN export, SES apply): unavailable here.
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="no pcbnew")
         ses_path = Path(cmd[cmd.index("-do") + 1])
         if "docker" in cmd[0]:
             ses_path = sample_project / "output" / "routing" / ses_path.name
