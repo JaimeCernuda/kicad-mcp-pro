@@ -90,7 +90,24 @@ def _safe_output_filename(raw_name: str, *, default_name: str) -> str:
 
 
 def _resolve_output_file(subdir: str, raw_name: str, *, default_name: str) -> Path:
-    return _ensure_output_dir(subdir) / _safe_output_filename(raw_name, default_name=default_name)
+    """Where an export writes: a file name goes to the output folder.
+
+    An absolute path inside the workspace is written exactly there. Some hosts turn the
+    file name a model gave into an absolute path in the host's own folder before the call
+    arrives; any other absolute path therefore keeps only its file name and goes to the
+    output folder, and the export's answer names the path it wrote. Relative paths with
+    folders or traversal are still refused.
+    """
+    raw = (raw_name or "").strip()
+    candidate = Path(raw).expanduser() if raw else None
+    if candidate is not None and candidate.is_absolute():
+        target = candidate.resolve()
+        _safe_output_filename(target.name, default_name=default_name)
+        if target.is_relative_to(get_config().workspace.resolve()):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            return target
+        raw = target.name
+    return _ensure_output_dir(subdir) / _safe_output_filename(raw, default_name=default_name)
 
 
 def _human_size(size_bytes: int) -> str:

@@ -207,10 +207,11 @@ def register_compliance(mcp: FastMCP, deps: LibrarySourcingDependencies) -> None
     def lib_check_derating(
         kind: str,
         parameter: str,
-        rated_value: float,
+        rated_value: float | None,
         operating_value: float,
         manufacturer: str = "",
         approved_vendors: list[str] | None = None,
+        part: str = "",
     ) -> str:
         """Check a part choice for reliability derating and approved-vendor (AVL) compliance.
 
@@ -219,8 +220,18 @@ def register_compliance(mcp: FastMCP, deps: LibrarySourcingDependencies) -> None
         and — when ``approved_vendors`` is given — that ``manufacturer`` is on the
         approved-vendor list. Returns one PASS/WARN/FAIL verdict. Derating factors
         are conservative general-practice values, not a specific MIL/IPC mandate.
+        With ``rated_value`` null, give ``part`` and the rating is read from the part's
+        specs (``lib_get_component_specs``), with the source named in the result.
         """
-        return deps.service.check_derating_compliance(
+        rated_from = ""
+        if rated_value is None:
+            from ..library.parametric import rating_from_specs  # noqa: PLC0415
+
+            found = rating_from_specs(part, parameter)
+            if isinstance(found, str):
+                return f"Derating check failed: {found}"
+            rated_value, rated_from = found.number or 0.0, f"{found.display} [{found.source}]"
+        verdict = deps.service.check_derating_compliance(
             kind,
             parameter,
             rated_value,
@@ -228,6 +239,7 @@ def register_compliance(mcp: FastMCP, deps: LibrarySourcingDependencies) -> None
             manufacturer,
             approved_vendors,
         )
+        return f"{verdict}\n- Rated value from specs: {rated_from}" if rated_from else verdict
 
 
 def register_part_selection(mcp: FastMCP, deps: LibrarySourcingDependencies) -> None:

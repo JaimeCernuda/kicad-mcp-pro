@@ -39,6 +39,10 @@ _READ_ONLY_PREFIXES = (
     "lib_recommend_",
     "lib_check_",
     "lib_find_",
+    "lib_search_",
+    "lib_compare_",
+    "view_",
+    "kicad_session_status",
     "mfg_check_",
 )
 # Independently reviewed file-backed analysis tools whose names are not

@@ -17,6 +17,14 @@ from html.parser import HTMLParser
 from http.client import HTTPMessage
 from typing import IO, Any, Protocol, cast
 
+from kicad_mcp.utils.part_specs import (
+    PartSpec,
+    specs_from_description,
+    specs_from_digikey,
+    specs_from_mouser,
+    specs_from_nexar,
+)
+
 # Transport seam: (url, body, headers) -> decoded JSON. Injectable so the live
 # distributor clients can be unit-tested without touching the network.
 HttpPostJson = Callable[[str, bytes, dict[str, str]], dict[str, Any]]
@@ -46,6 +54,16 @@ class ComponentRecord:
     # ISO 4217 code of ``price`` (e.g. "EUR"); empty when the provider does not
     # report one. Providers quoting USD may leave it empty.
     currency: str = ""
+    # Every attribute the provider reported, normalized (see ``utils.part_specs``).
+    specs: tuple[PartSpec, ...] = ()
+    # False when the provider answered without a stock figure: ``stock`` is then 0 but means
+    # "not reported", not "none in stock" (jlcsearch's lookup by LCSC code returns null).
+    stock_reported: bool = True
+
+
+def stock_text(record: ComponentRecord) -> str:
+    """The record's stock for a reader: the count, or that its source did not report one."""
+    return f"{record.stock:,}" if record.stock_reported else f"not reported by {record.source}"
 
 
 class ComponentSearchClient(Protocol):
@@ -197,16 +215,23 @@ def _record_from_jlcsearch(item: dict[str, Any]) -> ComponentRecord:
         package=str(item.get("package", "")),
         description=str(item.get("description", "")),
         stock=int(item.get("stock", 0) or 0),
+        stock_reported=item.get("stock") is not None,
         price=float(item["price"]) if item.get("price") is not None else None,
         is_basic=bool(item.get("is_basic", False)),
         is_preferred=bool(item.get("is_preferred", False)),
+        specs=specs_from_description(str(item.get("description", "")), "jlcsearch"),
     )
 
 
 class JLCSearchClient:
-    """Zero-auth live search against jlcsearch.tscircuit.com."""
+    """Zero-auth live search against jlcsearch.tscircuit.com.
 
-    BASE = "https://jlcsearch.tscircuit.com"
+    ``KICAD_MCP_JLCSEARCH_URL`` points it at another jlcsearch deployment.
+    """
+
+    BASE = (os.environ.get("KICAD_MCP_JLCSEARCH_URL") or "https://jlcsearch.tscircuit.com").rstrip(
+        "/"
+    )
     JLCPCB_BASE = "https://jlcpcb.com"
 
     def search(
@@ -397,6 +422,7 @@ def _record_from_jlcpcb_detail_page(html: str, lcsc_code: str) -> ComponentRecor
         package=package,
         description=description,
         stock=int(stock_match.group(1).replace(",", "")) if stock_match else 0,
+        stock_reported=stock_match is not None,
         price=float(price_match.group(1)) if price_match else None,
         is_basic="basic" in library_type and "extended" not in library_type,
         is_preferred=False,
@@ -489,6 +515,7 @@ def _record_from_nexar(part: dict[str, Any]) -> ComponentRecord:
         lifecycle=lifecycle,
         rohs=rohs,
         datasheet_url=datasheet_url,
+        specs=specs_from_nexar(part.get("specs")),
     )
 
 
@@ -633,6 +660,7 @@ def _record_from_digikey(product: dict[str, Any]) -> ComponentRecord:
         is_basic=False,
         is_preferred=False,
         datasheet_url=datasheet_url,
+        specs=specs_from_digikey(product.get("Parameters")),
     )
 
 
@@ -842,6 +870,7 @@ def _record_from_mouser(part: dict[str, Any]) -> ComponentRecord:
         lifecycle=str(part.get("LifecycleStatus", "")),
         rohs=str(part.get("ROHSStatus", "")),
         datasheet_url=str(part.get("DataSheetUrl", "")),
+        specs=specs_from_mouser(part.get("ProductAttributes")),
     )
 
 

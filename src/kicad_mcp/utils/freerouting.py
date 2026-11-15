@@ -37,6 +37,7 @@ class FreeRoutingResult:
     wall_seconds: float
     stdout_tail: str
     ses_path: Path
+    notes: tuple[str, ...] = ()  # what was installed to run FreeRouting here
 
 
 def _sanitize_text(text: str) -> str:
@@ -119,7 +120,20 @@ def _parse_routed_pct(text: str, total_nets: int, unrouted_nets: list[str], ses_
 
 
 def _docker_available(executable: str) -> bool:
-    return shutil.which(executable) is not None
+    """Docker is installed and its daemon answers (an installed but stopped Docker is not)."""
+    if shutil.which(executable) is None:
+        return False
+    try:
+        result = subprocess.run(  # noqa: S603
+            [executable, "info", "--format", "{{.ServerVersion}}"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 class FreeRoutingRunner:
@@ -136,6 +150,7 @@ class FreeRoutingRunner:
         self._docker_image = docker_image or cfg.freerouting_image
         self._docker_executable = docker_executable or cfg.docker_executable
         self._java_executable = java_executable or cfg.java_executable
+        self.install_notes: tuple[str, ...] = ()
 
     def _cli_export_dsn(self, kicad_cli: str | Path, pcb_path: Path, target: Path) -> bool:
         """Attempt the headless ``kicad-cli pcb export specctra`` command.
@@ -160,6 +175,34 @@ class FreeRoutingRunner:
                 return True
         return False
 
+    def _python_export_dsn(self, kicad_cli: str | Path, pcb_path: Path, target: Path) -> bool:
+        """Export the DSN through KiCad's own Python module (``pcbnew.ExportSpecctraDSN``).
+
+        KiCad 10's CLI has no Specctra export (KiCad 11 adds it), but its scripting module
+        has had one for years. The interpreter is the one KiCad ships beside its CLI
+        (Windows, macOS) or the system Python that has KiCad's module (Linux packages).
+        Returns True only if a non-empty DSN file was produced.
+        """
+        script = (
+            "import sys, pcbnew; "
+            "b = pcbnew.LoadBoard(sys.argv[1]); "
+            "sys.exit(0 if pcbnew.ExportSpecctraDSN(b, sys.argv[2]) else 1)"
+        )
+        for python in _kicad_pythons(kicad_cli):
+            try:
+                result = subprocess.run(  # noqa: S603
+                    [str(python), "-c", script, str(pcb_path), str(target)],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if result.returncode == 0 and target.exists() and target.stat().st_size > 0:
+                return True
+        return False
+
     def export_dsn(self, pcb_path: Path, dsn_path: Path) -> Path:
         """Export a Specctra DSN for FreeRouting, or raise a clear manual-step error.
 
@@ -177,6 +220,8 @@ class FreeRoutingRunner:
 
         caps = get_cli_capabilities(cfg.kicad_cli)
         if caps.supports_specctra_export and self._cli_export_dsn(cfg.kicad_cli, pcb_path, target):
+            return target
+        if self._python_export_dsn(cfg.kicad_cli, pcb_path, target):
             return target
 
         candidates = [
@@ -223,6 +268,11 @@ class FreeRoutingRunner:
             "-w",
             "/work",
             self._docker_image,
+            # The image's entrypoint runs its arguments as a command, and its default command
+            # starts the API server, so the CLI run names the JAR itself.
+            "java",
+            "-jar",
+            "/app/freerouting-executable.jar",
             "-de",
             dsn_arg,
             "-do",
@@ -287,15 +337,23 @@ class FreeRoutingRunner:
         thread_count: int,
         ignore_arg: str,
     ) -> tuple[str, list[str]]:
-        selected_docker = use_docker
-        if selected_docker and not _docker_available(self._docker_executable):
-            if jar_path is None:
-                raise RuntimeError(
-                    "Docker was requested for FreeRouting but was not found, and no "
-                    "FreeRouting JAR fallback is configured. Install Docker or set "
-                    "KICAD_MCP_FREEROUTING_JAR."
-                )
-            selected_docker = False
+        # A configured JAR, else Docker when asked for and running, else FreeRouting and a
+        # Java 21 runtime installed here, else Docker anyway, else how the user installs it.
+        from ..routing import freerouting_install  # noqa: PLC0415 - keeps utils free of routing at import
+
+        docker_ready = _docker_available(self._docker_executable)
+        selected_docker = jar_path is None and use_docker and docker_ready
+        java: str | None = None
+        if not selected_docker and jar_path is None:  # a configured JAR runs as configured
+            try:
+                installed = freerouting_install.ensure(jar_path)
+            except freerouting_install.FreeRoutingInstallError:
+                if not docker_ready:
+                    raise
+                selected_docker = True
+            else:
+                jar_path, java = installed.jar, str(installed.java)
+                self.install_notes = installed.notes
 
         if selected_docker:
             return "docker", self._build_docker_command(
@@ -306,7 +364,7 @@ class FreeRoutingRunner:
                 thread_count=thread_count,
                 ignore_arg=ignore_arg,
             )
-        return "jar", self._build_jar_command(
+        command = self._build_jar_command(
             jar_path=jar_path,
             dsn_path=dsn_path,
             output=output,
@@ -315,6 +373,9 @@ class FreeRoutingRunner:
             thread_count=thread_count,
             ignore_arg=ignore_arg,
         )
+        if java is not None:
+            command[0] = java
+        return "jar", command
 
     def _execute_process(
         self,
@@ -419,6 +480,7 @@ class FreeRoutingRunner:
             wall_seconds=round(wall_seconds, 3),
             stdout_tail=_tail(sanitized_stdout),
             ses_path=output,
+            notes=self.install_notes,
         )
 
     def stage_ses(self, ses_path: Path) -> Path:
@@ -446,3 +508,71 @@ class FreeRoutingRunner:
             "SES import. Open the PCB in KiCad's PCB Editor and run File > Import > Specctra "
             "Session to apply the routing, then save the board."
         )
+
+
+def _kicad_pythons(kicad_cli: str | Path) -> list[Path]:
+    """Interpreters that can import KiCad's ``pcbnew`` module, the CLI's own first."""
+    cli = Path(str(kicad_cli))
+    if not cli.is_absolute():
+        cli = Path(shutil.which(str(cli)) or cli)
+    folder = cli.resolve().parent if cli.exists() else cli.parent
+    found = [
+        folder / "python.exe",  # Windows: KiCad's bin folder
+        folder / "python3",
+        folder.parent
+        / "Frameworks"
+        / "Python.framework"
+        / "Versions"
+        / "Current"
+        / "bin"
+        / "python3",
+    ]
+    # A server run from its own virtual environment finds that environment's python3 first;
+    # Linux packages put KiCad's module in the system Python.
+    for name in (shutil.which("python3"), "/usr/bin/python3"):
+        if name and Path(name) not in found:
+            found.append(Path(name))
+    return [path for path in found if path.exists()]
+
+
+def import_ses_with_kicad(pcb_text: str, ses_path: Path, kicad_cli: str | Path) -> str:
+    """``pcb_text`` with ``ses_path``'s routing applied by KiCad's own Python module.
+
+    The board text is written to a scratch file, loaded with ``pcbnew.LoadBoard``, routed
+    with ``pcbnew.ImportSpecctraSES`` and saved, so KiCad itself writes the tracks and vias
+    in its current format (named nets included). Raises ``ValueError`` when no KiCad Python
+    can do it.
+    """
+    script = (
+        "import sys, pcbnew; "
+        "b = pcbnew.LoadBoard(sys.argv[1]); "
+        "ok = pcbnew.ImportSpecctraSES(b, sys.argv[2]); "
+        "ok = ok and b.Save(sys.argv[1]); "
+        "sys.exit(0 if ok else 1)"
+    )
+    import tempfile  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory(prefix="kicad-ses-") as scratch:
+        board = Path(scratch) / "board.kicad_pcb"
+        board.write_text(pcb_text, encoding="utf-8")
+        errors: list[str] = []
+        for python in _kicad_pythons(kicad_cli):
+            try:
+                result = subprocess.run(  # noqa: S603
+                    [str(python), "-c", script, str(board), str(ses_path.resolve())],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                errors.append(f"{python}: {exc}")
+                continue
+            if result.returncode == 0:
+                return board.read_text(encoding="utf-8")
+            errors.append(f"{python}: {(result.stderr or result.stdout).strip()[-200:]}")
+    raise ValueError(
+        "KiCad's Python module could not import the SES ("
+        + ("; ".join(errors) or "no KiCad Python found")
+        + ")."
+    )

@@ -138,7 +138,18 @@ async def _apply_ses_headless(
 
         def apply_ses(current: str) -> str:
             nonlocal applied_route
-            updated, applied_route = apply_ses_to_pcb(current, ses_text)
+            try:
+                updated, applied_route = apply_ses_to_pcb(current, ses_text)
+            except ValueError as exc:
+                if "named-only net encoding" not in str(exc):
+                    raise
+                # KiCad 10 names nets on pads and copper; KiCad's own SES import writes them.
+                from ..config import get_config  # noqa: PLC0415
+                from ..utils.freerouting import import_ses_with_kicad  # noqa: PLC0415
+                from ..utils.router_core import parse_ses  # noqa: PLC0415
+
+                applied_route = parse_ses(ses_text)
+                updated = import_ses_with_kicad(current, ses_path_obj, get_config().kicad_cli)
             if not applied_route.segments and not applied_route.vias:
                 raise _NoRouteError
             if updated == current:
@@ -181,7 +192,8 @@ def _build_autoroute_success(
                 f"FreeRouting routed and applied: {seg_count} segment(s), "
                 f"{via_count} via(s), {net_count} net(s).\n"
                 f"Mode: {route_stats.mode}\n"
-                f"DSN: {relative_path(dsn_file)}\n"
+                + "".join(f"{note}\n" for note in route_stats.notes)
+                + f"DSN: {relative_path(dsn_file)}\n"
                 f"SES: {relative_path(ses_path_obj)}\n"
                 f"Routed: {route_stats.routed_pct:.2f}% ({route_stats.total_nets} "
                 f"net(s), {len(route_stats.unrouted_nets)} unrouted)\n"

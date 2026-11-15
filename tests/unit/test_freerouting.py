@@ -113,16 +113,54 @@ def test_run_freerouting_falls_back_to_jar_when_docker_missing(
     assert result.routed_pct == 50.0
 
 
-def test_run_freerouting_jar_requires_jar_path(sample_project: Path) -> None:
+def test_without_docker_or_a_jar_the_error_says_how_to_install(
+    sample_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When FreeRouting cannot be installed here (and Docker is not running), the user is
+    told how to install it."""
+    from kicad_mcp.routing import freerouting_install
+
     dsn_path = sample_project / "board.dsn"
-    ses_path = sample_project / "board.ses"
     dsn_path.write_text("dsn", encoding="utf-8")
 
-    runner = FreeRoutingRunner()
-    with pytest.raises(RuntimeError) as exc_info:
-        runner.run_freerouting(dsn_path, ses_path, use_docker=False)
+    def cannot(_jar: object = None) -> object:
+        raise freerouting_install.FreeRoutingInstallError("No network here.")
 
-    assert "FreeRouting JAR path is required" in str(exc_info.value)
+    monkeypatch.setattr(freerouting_install, "ensure", cannot)
+    monkeypatch.setattr("kicad_mcp.utils.freerouting._docker_available", lambda _exe: False)
+    with pytest.raises(freerouting_install.FreeRoutingInstallError) as exc_info:
+        FreeRoutingRunner().run_freerouting(dsn_path, sample_project / "b.ses", use_docker=False)
+    message = str(exc_info.value)
+    assert "No network here." in message
+    assert "KICAD_MCP_FREEROUTING_JAR" in message and "Java 21" in message
+
+
+def test_without_docker_the_installed_jar_and_java_run(
+    sample_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from kicad_mcp.routing import freerouting_install
+
+    dsn_path = sample_project / "board.dsn"
+    ses_path = sample_project / "board.ses"
+    dsn_path.write_text("(pcb (net A))", encoding="utf-8")
+    jar = sample_project / "fr.jar"
+    java = sample_project / "jre" / "bin" / "java"
+    installed = freerouting_install.Installed(jar=jar, java=java, notes=("Installed.",))
+    monkeypatch.setattr(freerouting_install, "ensure", lambda _jar=None: installed)
+    monkeypatch.setattr("kicad_mcp.utils.freerouting._docker_available", lambda _exe: False)
+    observed: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        observed.append(cmd)
+        ses_path.write_text("ses", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("kicad_mcp.utils.freerouting.subprocess.run", fake_run)
+    runner = FreeRoutingRunner()
+    result = runner.run_freerouting(dsn_path, ses_path, use_docker=True)
+    assert result.mode == "jar"
+    assert observed[0][:3] == [str(java), "-jar", str(jar)]
+    assert runner.install_notes == ("Installed.",)
 
 
 def test_stage_ses_copies_session(sample_project: Path, tmp_path: Path) -> None:
@@ -177,3 +215,81 @@ def test_routed_percent_parser_retains_fallback_on_unrecognized_status() -> None
 
     assert _parse_routed_pct("25% negotiating", 8, ["N1", "N2"], False) == 75.0
     assert _parse_routed_pct("no percent", 0, [], True) == 100.0
+
+
+def test_the_docker_run_names_the_jar_the_image_runs() -> None:
+    """The image's entrypoint runs its arguments as a command; its default command is the
+    API server, so a CLI run must name the JAR (or it fails: 'exec: -d: invalid option')."""
+    from pathlib import Path
+
+    from kicad_mcp.utils.freerouting import FreeRoutingRunner
+
+    command = FreeRoutingRunner()._build_docker_command(
+        dsn_path=Path("/w/board.dsn"),
+        output=Path("/w/board.ses"),
+        drc_output=None,
+        max_passes=5,
+        thread_count=1,
+        ignore_arg="",
+    )
+    image = command.index(FreeRoutingRunner()._docker_image)
+    assert command[image + 1 : image + 4] == ["java", "-jar", "/app/freerouting-executable.jar"]
+    assert command[image + 4] == "-de"
+
+
+def test_kicad_10_exports_the_dsn_through_its_python_module(monkeypatch, tmp_path) -> None:
+    """KiCad 10's CLI has no Specctra export; KiCad's own Python module does."""
+    import subprocess
+    from pathlib import Path
+
+    from kicad_mcp.utils import freerouting
+
+    target = tmp_path / "board.dsn"
+    python = tmp_path / "python3"
+    python.write_text("")
+    calls: list[list[str]] = []
+
+    def run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        target.write_text("(pcb board)")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(freerouting, "_kicad_pythons", lambda _cli: [python])
+    monkeypatch.setattr(freerouting.subprocess, "run", run)
+    runner = freerouting.FreeRoutingRunner()
+    assert runner._python_export_dsn("/usr/bin/kicad-cli", Path("b.kicad_pcb"), target)
+    assert calls[0][0] == str(python) and "ExportSpecctraDSN" in calls[0][2]
+
+
+def test_a_named_net_board_takes_the_routes_through_kicads_own_import(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """KiCad 10 names nets on pads and copper; the fork's writer refuses that format, so
+    KiCad's own SES import applies the routing instead of leaving a manual GUI step."""
+    import anyio
+
+    from kicad_mcp.routing import autorouter
+    from kicad_mcp.utils import freerouting
+
+    board = tmp_path / "b.kicad_pcb"
+    board.write_text('(kicad_pcb (footprint "R" (pad "1" smd (net "GND"))))', encoding="utf-8")
+    ses = tmp_path / "b.ses"
+    ses.write_text(
+        "(session b (routes (network_out (net GND (wire (path F.Cu 2000 0 0 10000 0))))))",
+        encoding="utf-8",
+    )
+    calls: list[Path] = []
+
+    def fake_import(pcb_text: str, ses_path: Path, kicad_cli: object) -> str:
+        calls.append(ses_path)
+        return pcb_text.rstrip(")") + ' (segment (net "GND")))'
+
+    monkeypatch.setattr(freerouting, "import_ses_with_kicad", fake_import)
+
+    def writer(mutate):  # noqa: ANN001, ANN202
+        board.write_text(mutate(board.read_text(encoding="utf-8")), encoding="utf-8")
+        return str(board)
+
+    pcb, route, error = anyio.run(autorouter._apply_ses_headless, ses, writer)
+    assert error is None and pcb == board and calls == [ses]
+    assert '(segment (net "GND"))' in board.read_text(encoding="utf-8")

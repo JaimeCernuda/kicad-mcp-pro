@@ -37,6 +37,7 @@ from ..utils.component_search import (
     NexarClient,
     format_price,
     normalize_lcsc_code,
+    stock_text,
 )
 from ..utils.library_tables import parse_lib_table as _shared_parse_lib_table
 from ..utils.library_tables import resolve_kicad_env
@@ -333,7 +334,7 @@ def _format_component_lines(
     limit = max_items or get_config().max_items_per_response
     lines = [heading]
     for item in results[:limit]:
-        stock = f"{item.stock:,}"
+        stock = stock_text(item)
         price = format_price(item.price, item.currency)
         basic = "basic" if item.is_basic else "extended"
         preferred = " preferred" if item.is_preferred else ""
@@ -621,8 +622,22 @@ def register(mcp: FastMCP) -> None:
         ),
     )
 
+    from . import library_footprints_klt  # noqa: PLC0415
+
+    library_footprints_klt.register(mcp)
+
     library_sourcing.register_compliance(mcp, sourcing_deps)
 
     library_local_authoring.register_pin_table_generator(mcp, local_authoring_deps)
 
     library_sourcing.register_part_selection(mcp, sourcing_deps)
+
+    from ..library.parametric import ParametricService  # noqa: PLC0415
+    from . import library_parametric  # noqa: PLC0415
+
+    library_parametric.register(
+        mcp,
+        library_parametric.LibraryParametricDependencies(
+            service=ParametricService(_component_search_client)
+        ),
+    )

@@ -171,6 +171,7 @@ class KiCadMCPConfig(BaseSettings):
     max_items_per_response: int = Field(default=200, ge=1, le=2000)
     max_text_response_chars: int = Field(default=50000, ge=1000, le=500000)
     _project_dir_explicit: bool = False
+    _restored_project: Path | None = None
 
     @classmethod
     def settings_customise_sources(
@@ -650,6 +651,45 @@ class KiCadMCPConfig(BaseSettings):
                 self._project_dir_explicit,
             ) = previous
             raise
+        if explicit:
+            from .project import last_project  # noqa: PLC0415
+
+            last_project.remember(
+                {
+                    "project_dir": self.project_dir,
+                    "project_file": self.project_file,
+                    "pcb_file": self.pcb_file,
+                    "sch_file": self.sch_file,
+                    "output_dir": self.output_dir,
+                },
+                self.workspace_root,
+            )
+
+    def restore_last_project(self) -> None:
+        """Pick up the project ``kicad_set_project`` last set here, when nothing names one."""
+        if self._project_dir_explicit:
+            return
+        from .project import last_project  # noqa: PLC0415
+
+        found = last_project.recall(self.workspace_root)
+        if found is None:
+            return
+        try:
+            self.apply_project(
+                found["project_dir"],
+                project_file=found.get("project_file"),
+                pcb_file=found.get("pcb_file"),
+                sch_file=found.get("sch_file"),
+                output_dir=found.get("output_dir"),
+            )
+        except (OSError, ValueError):
+            return
+        self._restored_project = self.project_dir
+
+    @property
+    def restored_project(self) -> Path | None:
+        """The project picked up from the last session's record, if this server did."""
+        return self._restored_project
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -702,6 +742,7 @@ def get_config() -> KiCadMCPConfig:
     with _config_lock:
         if _config is None:
             _config = KiCadMCPConfig()
+            _config.restore_last_project()
     return _config
 
 

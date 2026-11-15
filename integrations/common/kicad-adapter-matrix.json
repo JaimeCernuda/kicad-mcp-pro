@@ -214,6 +214,19 @@
       "preferredBackends": [
         "git"
       ]
+    },
+    "views": {
+      "canarySurfaces": [
+        "read"
+      ],
+      "description": "MCP Apps views of the board, schematic, BOM, checks, stackup and parts (with KICAD_MCP_ENABLE_APPS=1), and the data tools they read.",
+      "fallbackPolicy": "Read the live board over IPC; fall back to the project files.",
+      "kicad11Support": "independent",
+      "mutationGuard": null,
+      "preferredBackends": [
+        "kicad-gui-ipc",
+        "kicad-cli"
+      ]
     }
   },
   "scenarios": {
@@ -271,7 +284,7 @@
           "toolCount": 31
         },
         "library": {
-          "availableCount": 24,
+          "availableCount": 31,
           "blockedCount": 6,
           "canarySurfaces": [
             "read",
@@ -285,11 +298,11 @@
             "network"
           ],
           "selectedBackends": {
-            "local-engine": 13,
-            "local-filesystem": 11,
+            "local-engine": 18,
+            "local-filesystem": 13,
             "unavailable": 6
           },
-          "toolCount": 30
+          "toolCount": 37
         },
         "manufacturing": {
           "availableCount": 0,
@@ -333,7 +346,7 @@
         },
         "pcb_write": {
           "availableCount": 1,
-          "blockedCount": 49,
+          "blockedCount": 52,
           "canarySurfaces": [
             "write"
           ],
@@ -347,9 +360,9 @@
           ],
           "selectedBackends": {
             "local-engine": 1,
-            "unavailable": 49
+            "unavailable": 52
           },
-          "toolCount": 50
+          "toolCount": 53
         },
         "power_integrity": {
           "availableCount": 8,
@@ -371,7 +384,7 @@
           "toolCount": 8
         },
         "project": {
-          "availableCount": 31,
+          "availableCount": 32,
           "blockedCount": 0,
           "canarySurfaces": [
             "read"
@@ -384,10 +397,10 @@
             "kicad-cli"
           ],
           "selectedBackends": {
-            "local-engine": 16,
+            "local-engine": 17,
             "local-filesystem": 15
           },
-          "toolCount": 31
+          "toolCount": 32
         },
         "release_export": {
           "availableCount": 0,
@@ -526,6 +539,24 @@
             "git": 6
           },
           "toolCount": 6
+        },
+        "views": {
+          "availableCount": 15,
+          "blockedCount": 0,
+          "canarySurfaces": [
+            "read"
+          ],
+          "fallbackPolicy": "Read the live board over IPC; fall back to the project files.",
+          "kicad11Support": "independent",
+          "mutationGuard": null,
+          "preferredBackends": [
+            "kicad-gui-ipc",
+            "kicad-cli"
+          ],
+          "selectedBackends": {
+            "local-engine": 15
+          },
+          "toolCount": 15
         }
       },
       "context": {
@@ -596,7 +627,7 @@
           "toolCount": 31
         },
         "library": {
-          "availableCount": 30,
+          "availableCount": 37,
           "blockedCount": 0,
           "canarySurfaces": [
             "read",
@@ -610,11 +641,11 @@
             "network"
           ],
           "selectedBackends": {
-            "local-engine": 13,
-            "local-filesystem": 11,
+            "local-engine": 18,
+            "local-filesystem": 13,
             "network": 6
           },
-          "toolCount": 30
+          "toolCount": 37
         },
         "manufacturing": {
           "availableCount": 23,
@@ -657,7 +688,7 @@
           "toolCount": 27
         },
         "pcb_write": {
-          "availableCount": 50,
+          "availableCount": 53,
           "blockedCount": 0,
           "canarySurfaces": [
             "write"
@@ -671,10 +702,10 @@
             "transactional-pcb-file"
           ],
           "selectedBackends": {
-            "kicad-gui-ipc": 49,
+            "kicad-gui-ipc": 52,
             "local-engine": 1
           },
-          "toolCount": 50
+          "toolCount": 53
         },
         "power_integrity": {
           "availableCount": 8,
@@ -696,7 +727,7 @@
           "toolCount": 8
         },
         "project": {
-          "availableCount": 31,
+          "availableCount": 32,
           "blockedCount": 0,
           "canarySurfaces": [
             "read"
@@ -709,10 +740,10 @@
             "kicad-cli"
           ],
           "selectedBackends": {
-            "local-engine": 16,
+            "local-engine": 17,
             "local-filesystem": 15
           },
-          "toolCount": 31
+          "toolCount": 32
         },
         "release_export": {
           "availableCount": 2,
@@ -851,6 +882,24 @@
             "git": 6
           },
           "toolCount": 6
+        },
+        "views": {
+          "availableCount": 15,
+          "blockedCount": 0,
+          "canarySurfaces": [
+            "read"
+          ],
+          "fallbackPolicy": "Read the live board over IPC; fall back to the project files.",
+          "kicad11Support": "independent",
+          "mutationGuard": null,
+          "preferredBackends": [
+            "kicad-gui-ipc",
+            "kicad-cli"
+          ],
+          "selectedBackends": {
+            "local-engine": 15
+          },
+          "toolCount": 15
         }
       },
       "context": {
@@ -921,7 +970,7 @@
           "toolCount": 31
         },
         "library": {
-          "availableCount": 30,
+          "availableCount": 37,
           "blockedCount": 0,
           "canarySurfaces": [
             "read",
@@ -935,11 +984,11 @@
             "network"
           ],
           "selectedBackends": {
-            "local-engine": 13,
-            "local-filesystem": 11,
+            "local-engine": 18,
+            "local-filesystem": 13,
             "network": 6
           },
-          "toolCount": 30
+          "toolCount": 37
         },
         "manufacturing": {
           "availableCount": 23,
@@ -982,7 +1031,7 @@
           "toolCount": 27
         },
         "pcb_write": {
-          "availableCount": 50,
+          "availableCount": 53,
           "blockedCount": 0,
           "canarySurfaces": [
             "write"
@@ -996,10 +1045,10 @@
             "transactional-pcb-file"
           ],
           "selectedBackends": {
-            "kicad-11-headless-ipc": 49,
+            "kicad-11-headless-ipc": 52,
             "local-engine": 1
           },
-          "toolCount": 50
+          "toolCount": 53
         },
         "power_integrity": {
           "availableCount": 8,
@@ -1021,7 +1070,7 @@
           "toolCount": 8
         },
         "project": {
-          "availableCount": 31,
+          "availableCount": 32,
           "blockedCount": 0,
           "canarySurfaces": [
             "read"
@@ -1034,10 +1083,10 @@
             "kicad-cli"
           ],
           "selectedBackends": {
-            "local-engine": 16,
+            "local-engine": 17,
             "local-filesystem": 15
           },
-          "toolCount": 31
+          "toolCount": 32
         },
         "release_export": {
           "availableCount": 2,
@@ -1176,6 +1225,24 @@
             "git": 6
           },
           "toolCount": 6
+        },
+        "views": {
+          "availableCount": 15,
+          "blockedCount": 0,
+          "canarySurfaces": [
+            "read"
+          ],
+          "fallbackPolicy": "Read the live board over IPC; fall back to the project files.",
+          "kicad11Support": "independent",
+          "mutationGuard": null,
+          "preferredBackends": [
+            "kicad-gui-ipc",
+            "kicad-cli"
+          ],
+          "selectedBackends": {
+            "local-engine": 15
+          },
+          "toolCount": 15
         }
       },
       "context": {
@@ -1195,11 +1262,11 @@
   },
   "schemaVersion": "1.0.0",
   "summary": {
-    "categoryCount": 16,
+    "categoryCount": 17,
     "previewBaseline": "11.x",
     "publicSupportClaim": "KiCad 11 remains preview until native canaries pass.",
     "stableBaseline": "10.0.x",
-    "toolCount": 388
+    "toolCount": 414
   },
   "tools": [
     {
@@ -3143,6 +3210,30 @@
       },
       "runtime": "none",
       "tier": "read",
+      "tool": "kicad_session_status",
+      "writesFiles": false
+    },
+    {
+      "category": "project",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
       "tool": "kicad_set_project",
       "writesFiles": false
     },
@@ -3294,6 +3385,30 @@
       "category": "library",
       "routes": {
         "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "lib_check_footprint",
+      "writesFiles": false
+    },
+    {
+      "category": "library",
+      "routes": {
+        "degradedNoKiCad": {
           "available": false,
           "backend": "unavailable",
           "mutationGuard": null
@@ -3343,6 +3458,30 @@
       "routes": {
         "degradedNoKiCad": {
           "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "lib_compare_parts",
+      "writesFiles": false
+    },
+    {
+      "category": "library",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
           "backend": "local-filesystem",
           "mutationGuard": "isolated-library-output-validation"
         },
@@ -3385,6 +3524,54 @@
       "tier": "read",
       "tool": "lib_find_alternative_parts",
       "writesFiles": false
+    },
+    {
+      "category": "library",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-filesystem",
+          "mutationGuard": "isolated-library-output-validation"
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-filesystem",
+          "mutationGuard": "isolated-library-output-validation"
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-filesystem",
+          "mutationGuard": "isolated-library-output-validation"
+        }
+      },
+      "runtime": "none",
+      "tier": "write",
+      "tool": "lib_generate_footprint",
+      "writesFiles": true
+    },
+    {
+      "category": "library",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-filesystem",
+          "mutationGuard": "isolated-library-output-validation"
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-filesystem",
+          "mutationGuard": "isolated-library-output-validation"
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-filesystem",
+          "mutationGuard": "isolated-library-output-validation"
+        }
+      },
+      "runtime": "none",
+      "tier": "write",
+      "tool": "lib_generate_footprint_custom",
+      "writesFiles": true
     },
     {
       "category": "library",
@@ -3503,6 +3690,30 @@
       },
       "runtime": "none",
       "tier": "read",
+      "tool": "lib_get_component_specs",
+      "writesFiles": false
+    },
+    {
+      "category": "library",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
       "tool": "lib_get_datasheet_url",
       "writesFiles": false
     },
@@ -3576,6 +3787,30 @@
       "runtime": "none",
       "tier": "read",
       "tool": "lib_get_symbol_info",
+      "writesFiles": false
+    },
+    {
+      "category": "library",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "lib_list_footprint_families",
       "writesFiles": false
     },
     {
@@ -3768,6 +4003,30 @@
       "runtime": "none",
       "tier": "read",
       "tool": "lib_search_footprints",
+      "writesFiles": false
+    },
+    {
+      "category": "library",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "lib_search_parametric",
       "writesFiles": false
     },
     {
@@ -5499,6 +5758,30 @@
       "writesFiles": true
     },
     {
+      "category": "pcb_write",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": false,
+          "backend": "unavailable",
+          "mutationGuard": "ipc-transaction-or-atomic-parse-validation"
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "kicad-gui-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "kicad-11-headless-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        }
+      },
+      "runtime": "kicad_ipc",
+      "tier": "write",
+      "tool": "pcb_import_outline_dxf",
+      "writesFiles": true
+    },
+    {
       "category": "pcb_read",
       "routes": {
         "degradedNoKiCad": {
@@ -5951,6 +6234,30 @@
       },
       "runtime": "kicad_ipc",
       "tier": "write",
+      "tool": "pcb_set_board_outline_shape",
+      "writesFiles": true
+    },
+    {
+      "category": "pcb_write",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": false,
+          "backend": "unavailable",
+          "mutationGuard": "ipc-transaction-or-atomic-parse-validation"
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "kicad-gui-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "kicad-11-headless-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        }
+      },
+      "runtime": "kicad_ipc",
+      "tier": "write",
       "tool": "pcb_set_design_rules",
       "writesFiles": false
     },
@@ -5976,6 +6283,30 @@
       "runtime": "kicad_ipc",
       "tier": "write",
       "tool": "pcb_set_footprint_layer",
+      "writesFiles": true
+    },
+    {
+      "category": "pcb_write",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": false,
+          "backend": "unavailable",
+          "mutationGuard": "ipc-transaction-or-atomic-parse-validation"
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "kicad-gui-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "kicad-11-headless-ipc",
+          "mutationGuard": "ipc-transaction-and-postcondition-check"
+        }
+      },
+      "runtime": "kicad_ipc",
+      "tier": "write",
+      "tool": "pcb_set_footprint_locked",
       "writesFiles": true
     },
     {
@@ -10513,6 +10844,366 @@
       "tier": "publish",
       "tool": "vcs_tag_release",
       "writesFiles": true
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_board",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_bom",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_checks",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_data_board",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_data_bom",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_data_checks",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_data_compare",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_data_glb",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_data_parts",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_data_schematic",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_data_stackup",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_parts",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_schematic",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_stackup",
+      "writesFiles": false
+    },
+    {
+      "category": "views",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "view_wait_revision",
+      "writesFiles": false
     }
   ]
 }

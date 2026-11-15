@@ -228,6 +228,13 @@ def _fixers_for_gate_for_reporting(gate_name: str) -> Sequence[FixerActionLike]:
 
 def register(mcp: FastMCP) -> None:
     """Register project management tools."""
+    from . import kicad_instance  # noqa: PLC0415
+
+    kicad_instance.register(mcp)
+
+    from ..views import register as register_views  # noqa: PLC0415
+
+    register_views(mcp)
 
     context_service = ProjectContextService(
         scan_project_dir=scan_project_dir,

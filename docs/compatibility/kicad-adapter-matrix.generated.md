@@ -12,12 +12,12 @@ redirected to a file parser.
 | `dfm` | 3 | `independent` | `local-engine` | `read` | — |
 | `emc` | 8 | `independent` | `local-engine` | `write` | `validated-design-file-write` |
 | `export` | 31 | `preview` | `kicad-cli` | `export` | `isolated-output-validation` |
-| `library` | 30 | `independent` | `local-engine` → `network` | `read`, `write` | `isolated-library-output-validation` |
+| `library` | 37 | `independent` | `local-engine` → `network` | `read`, `write` | `isolated-library-output-validation` |
 | `manufacturing` | 23 | `partial` | `kicad-cli` → `local-filesystem` | `read`, `write`, `export` | `isolated-output-and-source-preservation` |
 | `pcb_read` | 27 | `preview` | `kicad-11-headless-ipc` → `kicad-gui-ipc` → `local-filesystem` | `read` | — |
-| `pcb_write` | 50 | `preview` | `kicad-11-headless-ipc` → `kicad-gui-ipc` → `transactional-pcb-file` | `write` | `ipc-transaction-or-atomic-parse-validation` |
+| `pcb_write` | 53 | `preview` | `kicad-11-headless-ipc` → `kicad-gui-ipc` → `transactional-pcb-file` | `write` | `ipc-transaction-or-atomic-parse-validation` |
 | `power_integrity` | 8 | `independent` | `local-engine` | `read`, `write` | `validated-design-rule-write` |
-| `project` | 31 | `independent` | `local-engine` → `kicad-cli` | `read` | — |
+| `project` | 32 | `independent` | `local-engine` → `kicad-cli` | `read` | — |
 | `release_export` | 2 | `preview` | `kicad-cli` | `export` | `human-gated-isolated-output-validation` |
 | `routing` | 15 | `partial` | `freerouting` → `transactional-pcb-file` | `write`, `export` | `transactional-board-write-and-route-validation` |
 | `schematic` | 93 | `partial` | `kicad-11-headless-ipc` → `kicad-gui-ipc` → `guarded-schematic-file` → `kicad-cli` | `read`, `write`, `export` | `atomic-roundtrip-loss-detection` |
@@ -25,14 +25,15 @@ redirected to a file parser.
 | `simulation` | 11 | `not-applicable` | `ngspice` | `read`, `write` | `isolated-simulation-artifacts` |
 | `validation` | 38 | `partial` | `kicad-cli` → `local-engine` | `read`, `export` | — |
 | `version_control` | 6 | `independent` | `git` | `read`, `write` | `git-checkpoint-and-confirmation` |
+| `views` | 15 | `independent` | `kicad-gui-ipc` → `kicad-cli` | `read` | — |
 
 ## Reference scenarios
 
 | Scenario | Available tools | Blocked tools | Selected backends |
 | --- | ---: | ---: | --- |
-| `kicad10Gui` | 388 | 0 | `freerouting`: 1, `git`: 6, `guarded-schematic-file`: 69, `kicad-cli`: 59, `kicad-gui-ipc`: 51, `local-engine`: 95, `local-filesystem`: 77, `network`: 6, `ngspice`: 11, `transactional-pcb-file`: 13 |
-| `kicad11Headless` | 388 | 0 | `freerouting`: 1, `git`: 6, `guarded-schematic-file`: 69, `kicad-11-headless-ipc`: 51, `kicad-cli`: 59, `local-engine`: 95, `local-filesystem`: 77, `network`: 6, `ngspice`: 11, `transactional-pcb-file`: 13 |
-| `degradedNoKiCad` | 260 | 128 | `git`: 6, `guarded-schematic-file`: 69, `local-engine`: 95, `local-filesystem`: 77, `transactional-pcb-file`: 13, `unavailable`: 128 |
+| `kicad10Gui` | 414 | 0 | `freerouting`: 1, `git`: 6, `guarded-schematic-file`: 69, `kicad-cli`: 59, `kicad-gui-ipc`: 54, `local-engine`: 116, `local-filesystem`: 79, `network`: 6, `ngspice`: 11, `transactional-pcb-file`: 13 |
+| `kicad11Headless` | 414 | 0 | `freerouting`: 1, `git`: 6, `guarded-schematic-file`: 69, `kicad-11-headless-ipc`: 54, `kicad-cli`: 59, `local-engine`: 116, `local-filesystem`: 79, `network`: 6, `ngspice`: 11, `transactional-pcb-file`: 13 |
+| `degradedNoKiCad` | 283 | 131 | `git`: 6, `guarded-schematic-file`: 69, `local-engine`: 116, `local-filesystem`: 79, `transactional-pcb-file`: 13, `unavailable`: 131 |
 
 ## Mutation safety
 

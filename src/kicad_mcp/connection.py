@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -27,12 +28,46 @@ _kicad: object | None = None
 _connection_generation = 0
 
 
+_IPC_LOCK = threading.Lock()
+
+
+class _OneRequestAtATime:
+    """Build kipy clients whose requests go to KiCad one at a time.
+
+    KiCad's IPC API is one request/reply socket. Tool calls running at once (a client that
+    moves 21 footprints in parallel) shared it, and replies were cancelled ("Error
+    receiving reply from KiCad: Operation canceled"). The session passes only the arguments
+    the factory declares, so ``__init__`` carries kipy's own signature (a factory without
+    ``socket_path`` silently connected to KiCad's default socket instead), and ``KiCad`` is
+    looked up when a client is built, so it can be replaced.
+    """
+
+    def __new__(cls, *args: object, **kwargs: object) -> KiCad:  # type: ignore[misc]
+        kicad = KiCad(*args, **kwargs)  # type: ignore[arg-type]
+        client = getattr(kicad, "_client", None)
+        send = getattr(client, "send", None)
+        if send is not None:
+
+            def serialized(command: object, response_type: object) -> object:
+                with _IPC_LOCK:
+                    return send(command, response_type)
+
+            client.send = serialized  # type: ignore[union-attr]
+        return kicad
+
+    def __init__(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - never runs
+        """Declares kipy's constructor signature (set below) for the session."""
+
+
+_OneRequestAtATime.__init__.__signature__ = inspect.signature(KiCad.__init__)  # type: ignore[attr-defined]
+
+
 def _get_session() -> KiCadSession:
     """Return the process-wide KiCad session adapter."""
     global _session
     with _lock:
         if _session is None:
-            _session = KiCadSession(client_factory=KiCad, logger=logger)
+            _session = KiCadSession(client_factory=_OneRequestAtATime, logger=logger)
         return _session
 
 
@@ -50,8 +85,36 @@ def _connection_error(exc: KiCadMcpError) -> KiCadConnectionError:
     )
 
 
+def _ensure_instance() -> bool:
+    """With ``KICAD_MCP_KICAD_INSTANCE=auto``, attach to or start a KiCad for the board.
+
+    Returns whether a KiCad now answers, after pointing the connection at it.
+    """
+    from .instance import get_instance_manager  # noqa: PLC0415
+    from .instance.manager import _mode  # noqa: PLC0415
+
+    if _mode() != "auto":
+        return False
+    cfg = get_config()
+    status = get_instance_manager().ensure(cfg.pcb_file, cfg.kicad_cli)
+    if not status.socket:
+        raise KiCadConnectionError(f"{status.problem}\n{status.next_step}".strip())
+    cfg.kicad_socket_path = status.socket
+    reset_connection()
+    return True
+
+
 def get_kicad() -> KiCad:
     """Return a thread-safe KiCad IPC connection."""
+    try:
+        return _get_kicad()
+    except KiCadConnectionError:
+        if not _ensure_instance():
+            raise
+        return _get_kicad()
+
+
+def _get_kicad() -> KiCad:
     global _kicad
     _ = get_config()
     try:
@@ -64,7 +127,16 @@ def get_kicad() -> KiCad:
 
 
 def get_board() -> Board:
-    """Return the active board from KiCad."""
+    """Return the active board from KiCad, starting KiCad when the server may."""
+    try:
+        return _get_board()
+    except KiCadConnectionError:
+        if not _ensure_instance():
+            raise
+        return _get_board()
+
+
+def _get_board() -> Board:
     try:
         return cast(Board, _get_session().board())
     except KiCadConnectionError:

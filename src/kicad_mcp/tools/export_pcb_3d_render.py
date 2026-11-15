@@ -59,7 +59,8 @@ def register(mcp: FastMCP, dependencies: ExportPcb3dRenderDependencies) -> None:
         Parameters
         ----------
         output_file : str
-            Output file name (PNG or JPG). Defaults to ``render.png``.
+            A file name only, no folders (``render_top.png``; PNG or JPG). The image is
+            written to the project's output folder and returned, so you can look at it.
         side : str
             View direction: ``top``, ``bottom``, ``front``, ``back``, ``left``, ``right``.
         zoom : float

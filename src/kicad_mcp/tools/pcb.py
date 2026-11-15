@@ -5547,6 +5547,9 @@ def _register_placement_critique_tools(mcp: FastMCP) -> None:
 
 def register(mcp: FastMCP) -> None:
     """Register PCB tools."""
+    from . import pcb_outline_tools  # noqa: PLC0415
+
+    pcb_outline_tools.register(mcp)
 
     pcb_board_inspection.register(
         mcp,

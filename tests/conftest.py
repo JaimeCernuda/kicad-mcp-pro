@@ -538,3 +538,11 @@ def ipc_with_open_board(
         return_value=state,
     ):
         yield board
+
+
+@pytest.fixture(autouse=True)
+def _isolated_last_project(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep the remembered-project record (project/last_project.py) out of the real home."""
+    monkeypatch.setenv("KICAD_MCP_STATE_DIR", str(tmp_path_factory.mktemp("kicad-mcp-state")))

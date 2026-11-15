@@ -147,6 +147,7 @@ def test_server_info_contract_matches_protocol_schema(monkeypatch, sample_projec
         "emc",
         "simulation",
         "version_control",
+        "views",
     }
     assert adapter_routing["categories"]["pcb_write"]["selectedBackends"]["kicad-gui-ipc"]
     assert capabilities == {
