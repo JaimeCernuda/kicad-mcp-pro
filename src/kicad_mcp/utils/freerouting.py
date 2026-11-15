@@ -160,6 +160,34 @@ class FreeRoutingRunner:
                 return True
         return False
 
+    def _python_export_dsn(self, kicad_cli: str | Path, pcb_path: Path, target: Path) -> bool:
+        """Export the DSN through KiCad's own Python module (``pcbnew.ExportSpecctraDSN``).
+
+        KiCad 10's CLI has no Specctra export (KiCad 11 adds it), but its scripting module
+        has had one for years. The interpreter is the one KiCad ships beside its CLI
+        (Windows, macOS) or the system Python that has KiCad's module (Linux packages).
+        Returns True only if a non-empty DSN file was produced.
+        """
+        script = (
+            "import sys, pcbnew; "
+            "b = pcbnew.LoadBoard(sys.argv[1]); "
+            "sys.exit(0 if pcbnew.ExportSpecctraDSN(b, sys.argv[2]) else 1)"
+        )
+        for python in _kicad_pythons(kicad_cli):
+            try:
+                result = subprocess.run(  # noqa: S603
+                    [str(python), "-c", script, str(pcb_path), str(target)],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if result.returncode == 0 and target.exists() and target.stat().st_size > 0:
+                return True
+        return False
+
     def export_dsn(self, pcb_path: Path, dsn_path: Path) -> Path:
         """Export a Specctra DSN for FreeRouting, or raise a clear manual-step error.
 
@@ -177,6 +205,8 @@ class FreeRoutingRunner:
 
         caps = get_cli_capabilities(cfg.kicad_cli)
         if caps.supports_specctra_export and self._cli_export_dsn(cfg.kicad_cli, pcb_path, target):
+            return target
+        if self._python_export_dsn(cfg.kicad_cli, pcb_path, target):
             return target
 
         candidates = [
@@ -223,6 +253,11 @@ class FreeRoutingRunner:
             "-w",
             "/work",
             self._docker_image,
+            # The image's entrypoint runs its arguments as a command, and its default command
+            # starts the API server, so the CLI run names the JAR itself.
+            "java",
+            "-jar",
+            "/app/freerouting-executable.jar",
             "-de",
             dsn_arg,
             "-do",
@@ -446,3 +481,28 @@ class FreeRoutingRunner:
             "SES import. Open the PCB in KiCad's PCB Editor and run File > Import > Specctra "
             "Session to apply the routing, then save the board."
         )
+
+
+def _kicad_pythons(kicad_cli: str | Path) -> list[Path]:
+    """Interpreters that can import KiCad's ``pcbnew`` module, the CLI's own first."""
+    cli = Path(str(kicad_cli))
+    if not cli.is_absolute():
+        cli = Path(shutil.which(str(cli)) or cli)
+    folder = cli.resolve().parent if cli.exists() else cli.parent
+    found = [
+        folder / "python.exe",  # Windows: KiCad's bin folder
+        folder / "python3",
+        folder.parent
+        / "Frameworks"
+        / "Python.framework"
+        / "Versions"
+        / "Current"
+        / "bin"
+        / "python3",
+    ]
+    # A server run from its own virtual environment finds that environment's python3 first;
+    # Linux packages put KiCad's module in the system Python.
+    for name in (shutil.which("python3"), "/usr/bin/python3"):
+        if name and Path(name) not in found:
+            found.append(Path(name))
+    return [path for path in found if path.exists()]

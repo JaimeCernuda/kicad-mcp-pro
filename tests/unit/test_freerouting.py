@@ -177,3 +177,47 @@ def test_routed_percent_parser_retains_fallback_on_unrecognized_status() -> None
 
     assert _parse_routed_pct("25% negotiating", 8, ["N1", "N2"], False) == 75.0
     assert _parse_routed_pct("no percent", 0, [], True) == 100.0
+
+
+def test_the_docker_run_names_the_jar_the_image_runs() -> None:
+    """The image's entrypoint runs its arguments as a command; its default command is the
+    API server, so a CLI run must name the JAR (or it fails: 'exec: -d: invalid option')."""
+    from pathlib import Path
+
+    from kicad_mcp.utils.freerouting import FreeRoutingRunner
+
+    command = FreeRoutingRunner()._build_docker_command(
+        dsn_path=Path("/w/board.dsn"),
+        output=Path("/w/board.ses"),
+        drc_output=None,
+        max_passes=5,
+        thread_count=1,
+        ignore_arg="",
+    )
+    image = command.index(FreeRoutingRunner()._docker_image)
+    assert command[image + 1 : image + 4] == ["java", "-jar", "/app/freerouting-executable.jar"]
+    assert command[image + 4] == "-de"
+
+
+def test_kicad_10_exports_the_dsn_through_its_python_module(monkeypatch, tmp_path) -> None:
+    """KiCad 10's CLI has no Specctra export; KiCad's own Python module does."""
+    import subprocess
+    from pathlib import Path
+
+    from kicad_mcp.utils import freerouting
+
+    target = tmp_path / "board.dsn"
+    python = tmp_path / "python3"
+    python.write_text("")
+    calls: list[list[str]] = []
+
+    def run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        target.write_text("(pcb board)")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(freerouting, "_kicad_pythons", lambda _cli: [python])
+    monkeypatch.setattr(freerouting.subprocess, "run", run)
+    runner = freerouting.FreeRoutingRunner()
+    assert runner._python_export_dsn("/usr/bin/kicad-cli", Path("b.kicad_pcb"), target)
+    assert calls[0][0] == str(python) and "ExportSpecctraDSN" in calls[0][2]
