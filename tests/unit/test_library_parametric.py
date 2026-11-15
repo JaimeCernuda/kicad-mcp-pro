@@ -71,7 +71,7 @@ class _Client:
         self.records = records
         self.fail = fail
 
-    def search(self, keyword: str, **_kwargs: Any) -> list[ComponentRecord]:
+    def search(self, keyword: str, **_kwargs: object) -> list[ComponentRecord]:
         if self.fail:
             raise self.fail
         return self.records
@@ -83,7 +83,7 @@ class _Client:
 
 
 def _service(
-    *, env: dict[str, str] | None = None, jlc_fail: Exception | None = None, **clients: Any
+    *, env: dict[str, str] | None = None, jlc_fail: Exception | None = None, **clients: _Client
 ):
     calls: list[tuple[str, dict[str, object]]] = []
 
@@ -93,7 +93,7 @@ def _service(
             raise jlc_fail
         return {"capacitors": CAP_ROWS}
 
-    def client_for(source: str) -> Any:
+    def client_for(source: str) -> _Client:
         return clients[source]
 
     service = ParametricService(
@@ -128,7 +128,7 @@ def test_not_a_quantity() -> None:
     assert parse_quantity("10pcs") == (None, "")
 
 
-def test_100nF_equals_0_1uF() -> None:
+def test_100nf_equals_0_1uf() -> None:
     spec = specs_from_description("100nF 50V X7R", "x")
     assert SpecFilter.from_mapping({"name": "capacitance", "value": "0.1", "unit": "uF"}).matches(
         spec
