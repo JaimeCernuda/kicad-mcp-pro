@@ -127,7 +127,7 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
         const data = await bridge.callData<BoardData>("view_data_board", project);
         const camera = keepCamera && viewer?.viewport?.camera;
         const saved = camera ? { center: camera.center.copy?.() ?? camera.center, zoom: camera.zoom } : null;
-        const next = ecadElement("ecad-viewer", { style: "position:absolute;inset:0" });
+        const next = ecadElement("ecad-viewer", { style: "position:absolute;inset:0;height:auto;max-height:none;aspect-ratio:auto" });
         next.append(ecadElement("ecad-blob", { filename: data.board_name, content: data.text }));
         if (glbUrl) next.append(ecadElement("ecad-3d-source", { src: glbUrl }));
         host.append(next);

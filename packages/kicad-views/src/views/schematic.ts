@@ -62,7 +62,7 @@ export async function schematicView(bridge: Bridge, root: HTMLElement, project: 
 
     const load = async () => {
         const data = await bridge.callData<SchematicData>("view_data_schematic", project);
-        const next = ecadElement("ecad-viewer", { style: "position:absolute;inset:0" }) as any;
+        const next = ecadElement("ecad-viewer", { style: "position:absolute;inset:0;height:auto;max-height:none;aspect-ratio:auto" }) as any;
         for (const file of data.files) next.append(ecadElement("ecad-blob", { filename: file.name, content: file.text }));
         host.append(next);
         const nextViewer = await waitViewer(next);
