@@ -59,8 +59,15 @@ def board_data() -> dict[str, Any]:
     text = live_board_text()
     if text is not None:
         return {"board_name": board.name, "text": text, "source": "live"}
-    from ..instance import get_instance_manager  # noqa: PLC0415
 
+    from ..instance import get_instance_manager  # noqa: PLC0415
+    from ..instance.board_file import file_problem  # noqa: PLC0415
+
+    problem = file_problem(board)
+    if problem:  # ecad-viewer would draw a cut-short file as an empty board
+        raise ValueError(
+            f"{problem} Restore it from the project's -backups folder or version control."
+        )
     status = get_instance_manager().status()
     reason = status.problem or "no KiCad instance serves this board"
     return {
@@ -76,6 +83,11 @@ def schematic_data() -> dict[str, Any]:
     paths = schematic_paths()
     if not paths:
         raise ValueError("The project has no schematic (.kicad_sch).")
+    from ..instance.board_file import file_problem  # noqa: PLC0415
+
+    problems = [problem for path in paths if (problem := file_problem(path))]
+    if problems:
+        raise ValueError(" ".join(problems))
     files = [
         {
             "name": str(path.relative_to(root)) if path.is_relative_to(root) else path.name,
@@ -165,7 +177,8 @@ def bom_data(quantity: int = 1, sourcing: bool = True) -> dict[str, Any]:
                 "price": (record.price * 1.0) if record and record.price is not None else None,
                 "currency": record.currency if record else "",
                 "lifecycle": record.lifecycle if record else "",
-                "datasheet": record.datasheet_url if record else "",
+                # The distributor's link when it has one, else the symbol's own field.
+                "datasheet": (record.datasheet_url if record else "") or row.get("datasheet", ""),
                 "specs": [
                     {"name": spec.name, "display": spec.display, "source": spec.source}
                     for spec in specs

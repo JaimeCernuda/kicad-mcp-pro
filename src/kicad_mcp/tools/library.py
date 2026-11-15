@@ -397,6 +397,7 @@ def _init_component_rows(
                 "mpn": "",
                 "manufacturer": "",
                 "populate": "",
+                "datasheet": "",
             },
         )
 
@@ -422,6 +423,7 @@ def _update_component_row_properties(
     lcsc_code: str,
     mpn: str,
     manufacturer: str,
+    datasheet: str = "",
 ) -> None:
     if lcsc_code:
         row["lcsc"] = normalize_lcsc_code(lcsc_code)
@@ -429,6 +431,8 @@ def _update_component_row_properties(
         row["mpn"] = mpn
     if manufacturer:
         row["manufacturer"] = manufacturer
+    if datasheet:
+        row["datasheet"] = datasheet
     row["populate"] = _resolve_populate_property(block, row.get("populate", ""))
 
 
@@ -455,9 +459,13 @@ def _apply_symbol_block(block: str, rows_by_reference: dict[str, dict[str, str]]
     lcsc_code = _symbol_property(block, "LCSC") or _symbol_property(block, "LCSC Part")
     mpn = _symbol_property(block, "MPN") or _symbol_property(block, "Manufacturer Part Number")
     manufacturer = _symbol_property(block, "Manufacturer") or _symbol_property(block, "MFR")
+    # KiCad writes "~" for an empty Datasheet field.
+    datasheet = _symbol_property(block, "Datasheet").strip()
+    if datasheet == "~":
+        datasheet = ""
 
     for row in instance_rows:
-        _update_component_row_properties(row, block, lcsc_code, mpn, manufacturer)
+        _update_component_row_properties(row, block, lcsc_code, mpn, manufacturer, datasheet)
 
 
 def _parse_schematic_symbols_and_blocks(
@@ -518,9 +526,12 @@ def _group_bom_rows(symbol_rows: list[dict[str, str]]) -> list[dict[str, Any]]:
                 "populate": row.get("populate", ""),
                 "value": row["value"],
                 "footprint": row["footprint"],
+                "datasheet": row.get("datasheet", ""),
                 "references": [],
             },
         )
+        if not entry["datasheet"] and row.get("datasheet"):
+            entry["datasheet"] = row["datasheet"]
         cast(list[str], entry["references"]).append(row["reference"])
     return list(grouped.values())
 

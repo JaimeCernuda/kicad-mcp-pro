@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from . import config_home, processes
+from .board_file import file_problem
 
 #: ``attach`` (the default): only connect to a KiCad the user started.
 #: ``auto``: attach, or start KiCad when none serves the board.
@@ -380,6 +381,15 @@ class InstanceManager:
                 status.next_step = (
                     "Open the board in KiCad with Preferences > Plugins > Enable KiCad API on, "
                     f"or set {INSTANCE_ENV}=auto to let the server start KiCad."
+                )
+                self._status = status
+                return status
+            problem = file_problem(board)
+            if problem:  # KiCad would stop on a dialog nobody sees; say what is wrong
+                status.problem = f"KiCad was not started: {problem}"
+                status.next_step = (
+                    "Restore the board from the project's -backups folder or from version "
+                    "control; KiCad cannot open it as it is."
                 )
                 self._status = status
                 return status
