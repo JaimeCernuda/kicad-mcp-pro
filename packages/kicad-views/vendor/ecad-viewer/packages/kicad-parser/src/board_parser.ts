@@ -576,7 +576,31 @@ function parseZone(expr: Parseable): B.I_Zone {
     ) as unknown as B.I_Zone;
 }
 
+// KiCad 11 (file version 20261025) writes a footprint's place as
+// (transform (translate x y) (rotate r) (scale 1 1)) instead of (at x y r).
+function parseTransform(expr: Parseable): { x: number; y: number; rotation: number } {
+    const parsed = parse_expr(
+        expr,
+        P.start("transform"),
+        P.item("translate", (e: Parseable) =>
+            parse_expr(e, P.start("translate"), P.positional("x", T.number), P.positional("y", T.number)),
+        ),
+        P.pair("rotate", T.number),
+    ) as any;
+    return { x: parsed.translate?.x ?? 0, y: parsed.translate?.y ?? 0, rotation: parsed.rotate ?? 0 };
+}
+
 function parseFootprint(expr: Parseable): B.I_Footprint {
+    const footprint = parseFootprintExpr(expr) as any;
+    if (!footprint.at && footprint.transform) {
+        const t = footprint.transform;
+        footprint.at = { position: { x: t.x, y: t.y }, rotation: t.rotation, unlocked: false };
+    }
+    delete footprint.transform;
+    return footprint as B.I_Footprint;
+}
+
+function parseFootprintExpr(expr: Parseable): B.I_Footprint {
     return parse_expr(
         expr,
         P.start("footprint"),
@@ -590,6 +614,7 @@ function parseFootprint(expr: Parseable): B.I_Footprint {
         P.pair("tedit", T.string),
         P.pair("tstamp", T.string),
         P.item("at", parseAt),
+        P.item("transform", parseTransform),
         P.pair("uuid", T.string),
         P.pair("descr", T.string),
         P.pair("tags", T.string),

@@ -26,3 +26,8 @@ Each is marked `kicad-views` in the code and offered upstream.
   not produce them, and an empty CSP would block the fetch.
 - A page whose container is `<div id="app">` breaks ecad-viewer: it reads `window.app` as
   its mode, and browsers expose element ids on `window`. The views use `id="kicad-views"`.
+- `packages/kicad-parser/src/board_parser.ts`: KiCad 11 (file version 20261025) writes a
+  footprint's place as `(transform (translate x y) (rotate r) (scale 1 1))` instead of
+  `(at x y r)`. Without it every footprint of a KiCad 11 board (the headless `api-server`
+  case) was drawn at the origin. A footprint with no `at` takes its position and rotation
+  from `transform`.
