@@ -622,6 +622,10 @@ def register(mcp: FastMCP) -> None:
         ),
     )
 
+    from . import library_footprints_klt  # noqa: PLC0415
+
+    library_footprints_klt.register(mcp)
+
     library_sourcing.register_compliance(mcp, sourcing_deps)
 
     library_local_authoring.register_pin_table_generator(mcp, local_authoring_deps)

@@ -159,7 +159,7 @@ Built-in prompt helpers for the critic/fixer loop:
 
 Machine-maintained catalog. Refresh with `pnpm run docs:tools`.
 
-Total public tools: 410.
+Total public tools: 414.
 
 | Tool | Profile(s) | Read-Only | Destructive | Open-World | Idempotent | Headless | Requires KiCad Running | Summary |
 |---|---|---:|---:|---:|---:|---:|---:|---|
@@ -251,11 +251,14 @@ Total public tools: 410.
 | `lib_bulk_assign_3d_models` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Bulk-assign a 3D model to multiple footprints matching a pattern. |
 | `lib_certify_footprint` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Certify a footprint against package, documentation, and standard checks (#201). |
 | `lib_check_derating` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Check a part choice for reliability derating and approved-vendor (AVL) compliance. |
+| `lib_check_footprint` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Check a footprint against KiCad's library conventions and the datasheet's pads. |
 | `lib_check_sourcing_policy` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Return a structured sourcing policy verdict for one live part. |
 | `lib_check_stock_availability` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Check live stock availability by schematic reference or part number. |
 | `lib_compare_parts` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Compare parts side by side on the attributes given (every attribute by default). |
 | `lib_create_custom_symbol` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Create a simple custom symbol in the active project directory. |
 | `lib_find_alternative_parts` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Find nearby alternative parts for the supplied LCSC code. This KiCad MCP Pro tool supports production EDA automation... |
+| `lib_generate_footprint` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Generate a footprint and its 3D body from a datasheet with a Library Tools family. |
+| `lib_generate_footprint_custom` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Generate a footprint for a part no family covers, from a script written for it. |
 | `lib_generate_footprint_ipc7351` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Generate an IPC-7351B compliant KiCad footprint (.kicad_mod) and save it. |
 | `lib_generate_symbol_from_pintable` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Generate a KiCad symbol (.kicad_sym) from a pin table and save it. |
 | `lib_get_bom_with_pricing` | agent_full, builder, default, expert, full, review, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Generate a live BOM summary with unit and extended pricing. |
@@ -265,6 +268,7 @@ Total public tools: 410.
 | `lib_get_footprint_3d_model` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Return the configured 3D model path for a footprint. This KiCad MCP Pro tool supports production EDA automation workf... |
 | `lib_get_footprint_info` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Return details for a single footprint. This KiCad MCP Pro tool supports production EDA automation workflows for MCP c... |
 | `lib_get_symbol_info` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Return details for a single symbol. This KiCad MCP Pro tool supports production EDA automation workflows for MCP clie... |
+| `lib_list_footprint_families` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | List KiCad Library Tools' footprint generator families, or show one family's format. |
 | `lib_list_footprints` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | List footprints in a specific library. This KiCad MCP Pro tool supports production EDA automation workflows for MCP c... |
 | `lib_list_libraries` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | List configured symbol and footprint libraries. This KiCad MCP Pro tool supports production EDA automation workflows... |
 | `lib_rebuild_index` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Rebuild the in-memory symbol search index. This KiCad MCP Pro tool supports production EDA automation workflows for M... |
@@ -664,11 +668,14 @@ Total public tools: 410.
 - `lib_bulk_assign_3d_models`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `lib_certify_footprint`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `lib_check_derating`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
+- `lib_check_footprint`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_check_sourcing_policy`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_check_stock_availability`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_compare_parts`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_create_custom_symbol`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `lib_find_alternative_parts`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
+- `lib_generate_footprint`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
+- `lib_generate_footprint_custom`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `lib_generate_footprint_ipc7351`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `lib_generate_symbol_from_pintable`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `lib_get_bom_with_pricing`: profiles=agent_full, builder, default, expert, full, review, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
@@ -678,6 +685,7 @@ Total public tools: 410.
 - `lib_get_footprint_3d_model`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_get_footprint_info`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_get_symbol_info`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
+- `lib_list_footprint_families`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_list_footprints`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_list_libraries`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_rebuild_index`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
