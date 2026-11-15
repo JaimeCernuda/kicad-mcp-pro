@@ -17,6 +17,14 @@ from html.parser import HTMLParser
 from http.client import HTTPMessage
 from typing import IO, Any, Protocol, cast
 
+from kicad_mcp.utils.part_specs import (
+    PartSpec,
+    specs_from_description,
+    specs_from_digikey,
+    specs_from_mouser,
+    specs_from_nexar,
+)
+
 # Transport seam: (url, body, headers) -> decoded JSON. Injectable so the live
 # distributor clients can be unit-tested without touching the network.
 HttpPostJson = Callable[[str, bytes, dict[str, str]], dict[str, Any]]
@@ -46,6 +54,8 @@ class ComponentRecord:
     # ISO 4217 code of ``price`` (e.g. "EUR"); empty when the provider does not
     # report one. Providers quoting USD may leave it empty.
     currency: str = ""
+    # Every attribute the provider reported, normalized (see ``utils.part_specs``).
+    specs: tuple[PartSpec, ...] = ()
 
 
 class ComponentSearchClient(Protocol):
@@ -200,6 +210,7 @@ def _record_from_jlcsearch(item: dict[str, Any]) -> ComponentRecord:
         price=float(item["price"]) if item.get("price") is not None else None,
         is_basic=bool(item.get("is_basic", False)),
         is_preferred=bool(item.get("is_preferred", False)),
+        specs=specs_from_description(str(item.get("description", "")), "jlcsearch"),
     )
 
 
@@ -489,6 +500,7 @@ def _record_from_nexar(part: dict[str, Any]) -> ComponentRecord:
         lifecycle=lifecycle,
         rohs=rohs,
         datasheet_url=datasheet_url,
+        specs=specs_from_nexar(part.get("specs")),
     )
 
 
@@ -633,6 +645,7 @@ def _record_from_digikey(product: dict[str, Any]) -> ComponentRecord:
         is_basic=False,
         is_preferred=False,
         datasheet_url=datasheet_url,
+        specs=specs_from_digikey(product.get("Parameters")),
     )
 
 
@@ -842,6 +855,7 @@ def _record_from_mouser(part: dict[str, Any]) -> ComponentRecord:
         lifecycle=str(part.get("LifecycleStatus", "")),
         rohs=str(part.get("ROHSStatus", "")),
         datasheet_url=str(part.get("DataSheetUrl", "")),
+        specs=specs_from_mouser(part.get("ProductAttributes")),
     )
 
 

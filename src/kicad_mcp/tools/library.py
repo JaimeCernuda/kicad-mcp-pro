@@ -626,3 +626,13 @@ def register(mcp: FastMCP) -> None:
     library_local_authoring.register_pin_table_generator(mcp, local_authoring_deps)
 
     library_sourcing.register_part_selection(mcp, sourcing_deps)
+
+    from ..library.parametric import ParametricService  # noqa: PLC0415
+    from . import library_parametric  # noqa: PLC0415
+
+    library_parametric.register(
+        mcp,
+        library_parametric.LibraryParametricDependencies(
+            service=ParametricService(_component_search_client)
+        ),
+    )

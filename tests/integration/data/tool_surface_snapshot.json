@@ -1965,6 +1965,26 @@
     "experimental": false,
     "headless": true,
     "idempotent": false,
+    "name": "lib_compare_parts",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "builder",
+      "expert",
+      "full",
+      "schematic",
+      "schematic_authoring",
+      "schematic_only",
+      "simulation"
+    ],
+    "read_only": false,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": true,
+    "idempotent": false,
     "name": "lib_create_custom_symbol",
     "open_world": false,
     "profiles": [
@@ -2068,6 +2088,26 @@
     "headless": true,
     "idempotent": true,
     "name": "lib_get_component_details",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "builder",
+      "expert",
+      "full",
+      "schematic",
+      "schematic_authoring",
+      "schematic_only",
+      "simulation"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": true,
+    "idempotent": true,
+    "name": "lib_get_component_specs",
     "open_world": false,
     "profiles": [
       "agent_full",
@@ -2308,6 +2348,26 @@
     "headless": true,
     "idempotent": true,
     "name": "lib_search_footprints",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "builder",
+      "expert",
+      "full",
+      "schematic",
+      "schematic_authoring",
+      "schematic_only",
+      "simulation"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": true,
+    "idempotent": true,
+    "name": "lib_search_parametric",
     "open_world": false,
     "profiles": [
       "agent_full",

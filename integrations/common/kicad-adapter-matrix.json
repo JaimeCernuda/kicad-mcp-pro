@@ -271,7 +271,7 @@
           "toolCount": 31
         },
         "library": {
-          "availableCount": 24,
+          "availableCount": 27,
           "blockedCount": 6,
           "canarySurfaces": [
             "read",
@@ -285,11 +285,11 @@
             "network"
           ],
           "selectedBackends": {
-            "local-engine": 13,
-            "local-filesystem": 11,
+            "local-engine": 15,
+            "local-filesystem": 12,
             "unavailable": 6
           },
-          "toolCount": 30
+          "toolCount": 33
         },
         "manufacturing": {
           "availableCount": 0,
@@ -596,7 +596,7 @@
           "toolCount": 31
         },
         "library": {
-          "availableCount": 30,
+          "availableCount": 33,
           "blockedCount": 0,
           "canarySurfaces": [
             "read",
@@ -610,11 +610,11 @@
             "network"
           ],
           "selectedBackends": {
-            "local-engine": 13,
-            "local-filesystem": 11,
+            "local-engine": 15,
+            "local-filesystem": 12,
             "network": 6
           },
-          "toolCount": 30
+          "toolCount": 33
         },
         "manufacturing": {
           "availableCount": 23,
@@ -921,7 +921,7 @@
           "toolCount": 31
         },
         "library": {
-          "availableCount": 30,
+          "availableCount": 33,
           "blockedCount": 0,
           "canarySurfaces": [
             "read",
@@ -935,11 +935,11 @@
             "network"
           ],
           "selectedBackends": {
-            "local-engine": 13,
-            "local-filesystem": 11,
+            "local-engine": 15,
+            "local-filesystem": 12,
             "network": 6
           },
-          "toolCount": 30
+          "toolCount": 33
         },
         "manufacturing": {
           "availableCount": 23,
@@ -1199,7 +1199,7 @@
     "previewBaseline": "11.x",
     "publicSupportClaim": "KiCad 11 remains preview until native canaries pass.",
     "stableBaseline": "10.0.x",
-    "toolCount": 388
+    "toolCount": 391
   },
   "tools": [
     {
@@ -3359,6 +3359,30 @@
       },
       "runtime": "none",
       "tier": "write",
+      "tool": "lib_compare_parts",
+      "writesFiles": true
+    },
+    {
+      "category": "library",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-filesystem",
+          "mutationGuard": "isolated-library-output-validation"
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-filesystem",
+          "mutationGuard": "isolated-library-output-validation"
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-filesystem",
+          "mutationGuard": "isolated-library-output-validation"
+        }
+      },
+      "runtime": "none",
+      "tier": "write",
       "tool": "lib_create_custom_symbol",
       "writesFiles": true
     },
@@ -3480,6 +3504,30 @@
       "runtime": "network",
       "tier": "read",
       "tool": "lib_get_component_details",
+      "writesFiles": false
+    },
+    {
+      "category": "library",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "lib_get_component_specs",
       "writesFiles": false
     },
     {
@@ -3768,6 +3816,30 @@
       "runtime": "none",
       "tier": "read",
       "tool": "lib_search_footprints",
+      "writesFiles": false
+    },
+    {
+      "category": "library",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "local-engine",
+          "mutationGuard": null
+        }
+      },
+      "runtime": "none",
+      "tier": "read",
+      "tool": "lib_search_parametric",
       "writesFiles": false
     },
     {

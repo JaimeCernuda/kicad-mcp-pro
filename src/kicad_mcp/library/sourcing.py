@@ -15,6 +15,7 @@ from ..utils.component_search import (
     normalize_lcsc_code,
 )
 from ..utils.derating import _worst, avl_check, derating_check
+from .parametric import sourcing_hint
 
 _RECOMMENDATION_NUMBER_RE = re.compile(r"[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?")
 _NOT_AVAILABLE = "(n/a)"
@@ -396,7 +397,7 @@ class LibrarySourcingService:
                 limit=min(self.max_items_per_response(), 20),
             )
         except (RuntimeError, ValueError, OSError) as exc:
-            return f"Live component search failed: {exc}"
+            return f"Live component search failed: {exc}{sourcing_hint(exc)}"
 
         results, filter_info = _filter_sourcing_results(
             results,
@@ -440,7 +441,7 @@ class LibrarySourcingService:
             client = self.component_search_client(source)
             part = client.get_part(lcsc_code_or_mpn)
         except (RuntimeError, ValueError, OSError) as exc:
-            return f"Component detail lookup failed: {exc}"
+            return f"Component detail lookup failed: {exc}{sourcing_hint(exc)}"
         if part is None:
             return f"No component details were found for '{lcsc_code_or_mpn}'."
 
@@ -553,7 +554,7 @@ class LibrarySourcingService:
             client = self.component_search_client(source)
             grouped_rows = self.group_bom_rows(self.schematic_component_rows())
         except (RuntimeError, ValueError, OSError) as exc:
-            return f"Live BOM generation failed: {exc}"
+            return f"Live BOM generation failed: {exc}{sourcing_hint(exc)}"
 
         if not grouped_rows:
             return "No schematic symbols were available for BOM generation."
@@ -644,7 +645,7 @@ class LibrarySourcingService:
         try:
             client = self.component_search_client(source)
         except (RuntimeError, ValueError, OSError) as exc:
-            return f"Stock availability check failed: {exc}"
+            return f"Stock availability check failed: {exc}{sourcing_hint(exc)}"
 
         if wanted_mpns:
             return self._stock_lines_for_mpns(client, wanted_mpns, source=source)
@@ -652,7 +653,7 @@ class LibrarySourcingService:
         try:
             rows = self.schematic_component_rows()
         except (RuntimeError, ValueError, OSError) as exc:
-            return f"Stock availability check failed: {exc}"
+            return f"Stock availability check failed: {exc}{sourcing_hint(exc)}"
 
         matches = [row for row in rows if row["reference"].upper() in wanted]
         if not matches:
@@ -670,7 +671,7 @@ class LibrarySourcingService:
             client = self.component_search_client(source)
             base_part = client.get_part(lcsc_code)
         except (RuntimeError, ValueError, OSError) as exc:
-            return f"Alternative part search failed: {exc}"
+            return f"Alternative part search failed: {exc}{sourcing_hint(exc)}"
         if base_part is None:
             return f"No base component details were found for '{lcsc_code}'."
 
@@ -682,7 +683,7 @@ class LibrarySourcingService:
                 limit=20,
             )
         except (RuntimeError, ValueError, OSError) as exc:
-            return f"Alternative part search failed: {exc}"
+            return f"Alternative part search failed: {exc}{sourcing_hint(exc)}"
 
         max_price = None
         if base_part.price is not None:
@@ -744,7 +745,7 @@ class LibrarySourcingService:
                 limit=50,
             )
         except (RuntimeError, ValueError, OSError) as exc:
-            return f"Part recommendation search failed: {exc}"
+            return f"Part recommendation search failed: {exc}{sourcing_hint(exc)}"
 
         filtered = [item for item in results if item.stock > 0]
         matched = [
@@ -779,7 +780,7 @@ class LibrarySourcingService:
             client = self.component_search_client(source)
             part = client.get_part(lcsc_code_or_mpn)
         except (RuntimeError, ValueError, OSError) as exc:
-            return f"Part lookup failed: {exc}"
+            return f"Part lookup failed: {exc}{sourcing_hint(exc)}"
 
         if part is None:
             return f"No part found for '{lcsc_code_or_mpn}' on {source}."

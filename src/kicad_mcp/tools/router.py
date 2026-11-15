@@ -389,6 +389,9 @@ TOOL_CATEGORIES: dict[str, ToolCategory] = {
             "lib_generate_symbol_from_pintable",
             "lib_recommend_part",
             "lib_bind_part_to_symbol",
+            "lib_search_parametric",
+            "lib_get_component_specs",
+            "lib_compare_parts",
             # v3.8.0 — 3D model management
             "lib_set_3d_model_path",
             "lib_remove_3d_model",
