@@ -98,8 +98,13 @@ def glb_data() -> dict[str, Any]:
             # Export what the live KiCad shows, not a stale file.
             source = Path(tmp) / Path(cfg.pcb_file).name
             source.write_text(text, encoding="utf-8")
+        from ..instance import get_instance_manager  # noqa: PLC0415
+
+        # The board text comes from the KiCad in use: export with its own CLI, which can
+        # read its file format (a KiCad 11 board is newer than KiCad 10's CLI reads).
+        cli = get_instance_manager().status().cli or str(cfg.kicad_cli)
         argv = [
-            str(cfg.kicad_cli),
+            cli,
             "pcb",
             "export",
             "glb",

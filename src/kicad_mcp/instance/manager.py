@@ -48,6 +48,8 @@ class InstanceStatus:
     board: str = ""
     socket: str = ""
     config_home: str = ""
+    #: The kicad-cli of the KiCad in use, when the server started it (exports match it).
+    cli: str = ""
     started_by_server: bool = False
     #: What is missing (KiCad, xvfb-run, a display, a board file) and what to do.
     problem: str = ""
@@ -376,6 +378,7 @@ class InstanceManager:
         log = home / f"kicad-{case}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         status.config_home, status.version, status.case = str(config), version, case
+        status.cli = str(cli) if cli is not None else ""
         with log.open("wb") as handle:
             try:
                 process = subprocess.Popen(  # noqa: S603  # nosec B603
