@@ -9,7 +9,6 @@ import json
 import os
 import platform
 import shutil
-import signal
 import socket
 import subprocess  # nosec B404 - argv-only launches of KiCad binaries, shell=False
 import sys
@@ -21,7 +20,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import config_home
+from . import config_home, processes
 
 #: ``attach`` (the default): only connect to a KiCad the user started.
 #: ``auto``: attach, or start KiCad when none serves the board.
@@ -487,18 +486,9 @@ class InstanceManager:
         if started is None or started.process.poll() is not None:
             return
         _record_started(_home(), None)
-        try:
-            if platform.system() != "Windows":
-                os.killpg(started.process.pid, signal.SIGTERM)
-            else:
-                started.process.terminate()
-            started.process.wait(timeout=10)
-        except (OSError, subprocess.TimeoutExpired):
-            with contextlib.suppress(OSError):
-                if platform.system() != "Windows":
-                    os.killpg(started.process.pid, signal.SIGKILL)
-                else:
-                    started.process.kill()
+        processes.stop_tree(started.process.pid)  # its group (POSIX) or tree (Windows)
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+            started.process.wait(timeout=5)
         watcher, self._watcher = self._watcher, None
         if watcher is not None and watcher.stdin is not None:
             with contextlib.suppress(OSError):
@@ -514,17 +504,20 @@ class InstanceManager:
 _RECORD = "started.json"
 
 
-def _watch(pgid: int) -> subprocess.Popen[bytes] | None:
-    """Start the watcher that stops KiCad's group when this server is gone (not Windows)."""
-    if platform.system() == "Windows":
-        return None
+def _watch(pid: int) -> subprocess.Popen[bytes] | None:
+    """Start the watcher that stops KiCad's group or tree when this server is gone."""
+    detach: dict[str, object] = (
+        {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
+        if platform.system() == "Windows"
+        else {"start_new_session": True}
+    )
     try:
         return subprocess.Popen(  # noqa: S603  # nosec B603
-            [sys.executable, "-m", "kicad_mcp.instance.watch", str(pgid)],
+            [sys.executable, "-m", "kicad_mcp.instance.watch", str(pid)],
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            start_new_session=True,
+            **detach,  # type: ignore[arg-type]
         )
     except OSError:
         return None
@@ -540,16 +533,6 @@ def _record_started(home: Path, pid: int | None) -> None:
             record.write_text(json.dumps({"pid": pid, "server": os.getpid()}), encoding="utf-8")
 
 
-def _is_kicad(pid: int) -> bool:
-    """Whether ``pid`` is a running KiCad (its command line names it), never a reused pid."""
-    cmdline = Path(f"/proc/{pid}/cmdline")
-    try:
-        text = cmdline.read_bytes().replace(b"\0", b" ").decode(errors="replace")
-    except OSError:
-        return False
-    return "kicad" in text.casefold() or "pcbnew" in text.casefold()
-
-
 def stop_left_over(home: Path) -> bool:
     """Stop a KiCad recorded in ``home`` by a server that is gone; ``True`` when one was."""
     record = home / _RECORD
@@ -558,13 +541,12 @@ def stop_left_over(home: Path) -> bool:
         pid, server = int(data["pid"]), int(data["server"])
     except (OSError, ValueError, KeyError, TypeError):
         return False
-    if server != os.getpid() and Path(f"/proc/{server}").exists():
+    if server != os.getpid() and processes.command_line(server):
         return False  # another live server owns it
     stopped = False
-    if platform.system() != "Windows" and _is_kicad(pid):
-        with contextlib.suppress(OSError):
-            os.killpg(pid, signal.SIGTERM)
-            stopped = True
+    if processes.alive(pid) and processes.is_kicad(pid):
+        processes.stop_tree(pid)
+        stopped = True
     _record_started(home, None)
     return stopped
 
