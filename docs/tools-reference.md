@@ -159,7 +159,7 @@ Built-in prompt helpers for the critic/fixer loop:
 
 Machine-maintained catalog. Refresh with `pnpm run docs:tools`.
 
-Total public tools: 395.
+Total public tools: 410.
 
 | Tool | Profile(s) | Read-Only | Destructive | Open-World | Idempotent | Headless | Requires KiCad Running | Summary |
 |---|---|---:|---:|---:|---:|---:|---:|---|
@@ -243,7 +243,7 @@ Total public tools: 395.
 | `kicad_list_recent_projects` | agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | List recently opened KiCad projects from KiCad's config files. This KiCad MCP Pro tool supports production EDA automa... |
 | `kicad_list_tool_categories` | all | yes | no | no | yes | no | no | List all available tool categories and capabilities. This KiCad MCP Pro tool supports production EDA automation workf... |
 | `kicad_scan_directory` | agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Scan a directory and report any KiCad project files it contains. |
-| `kicad_session_status` | agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Report which KiCad this server uses, how it got it, and what is missing. |
+| `kicad_session_status` | agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Report which KiCad this server uses, how it got it, and what is missing. |
 | `kicad_set_project` | all | no | yes | no | yes | yes | no | Set the active KiCad project directory and file paths. This KiCad MCP Pro tool supports production EDA automation wor... |
 | `lib_assign_footprint` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Assign a footprint property to a schematic symbol. This KiCad MCP Pro tool supports production EDA automation workflo... |
 | `lib_assign_lcsc_to_symbol` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Assign an LCSC part code to a schematic symbol property. |
@@ -253,7 +253,7 @@ Total public tools: 395.
 | `lib_check_derating` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Check a part choice for reliability derating and approved-vendor (AVL) compliance. |
 | `lib_check_sourcing_policy` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Return a structured sourcing policy verdict for one live part. |
 | `lib_check_stock_availability` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Check live stock availability by schematic reference or part number. |
-| `lib_compare_parts` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Compare parts side by side on the attributes given (every attribute by default). |
+| `lib_compare_parts` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Compare parts side by side on the attributes given (every attribute by default). |
 | `lib_create_custom_symbol` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Create a simple custom symbol in the active project directory. |
 | `lib_find_alternative_parts` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Find nearby alternative parts for the supplied LCSC code. This KiCad MCP Pro tool supports production EDA automation... |
 | `lib_generate_footprint_ipc7351` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Generate an IPC-7351B compliant KiCad footprint (.kicad_mod) and save it. |
@@ -558,6 +558,21 @@ Total public tools: 395.
 | `vcs_list_checkpoints` | agent_full, builder, expert, full, high_speed, manufacturing_release, pcb_layout, release, release_manager, schematic_authoring | no | no | no | no | yes | no | List checkpoint commits created by the MCP tool. This KiCad MCP Pro tool supports production EDA automation workflows... |
 | `vcs_restore_checkpoint` | agent_full, builder, expert, full, high_speed, manufacturing_release, pcb_layout, release_manager, schematic_authoring | no | yes | no | no | yes | no | Restore project files and keep a recovery branch for the stashed pre-restore state. |
 | `vcs_tag_release` | agent_full, builder, expert, full, high_speed, manufacturing_release, pcb_layout, release_manager, schematic_authoring | no | no | no | no | yes | no | Create an annotated release tag after the full project quality gate passes. |
+| `view_board` | agent_full, expert, full | yes | no | no | yes | no | no | Open the board in a view the person can see and work in: layers, nets, 2D and 3D. |
+| `view_bom` | agent_full, expert, full | yes | no | no | yes | no | no | Open the bill of materials with stock, price, lifecycle, datasheets and key specs. |
+| `view_checks` | agent_full, expert, full | yes | no | no | yes | no | no | Open DRC and ERC results grouped by rule (``kind``: drc, erc or both). |
+| `view_data_board` | agent_full, expert, full | yes | no | no | yes | no | no | Board text and revision for the board view (for the view, not the model). |
+| `view_data_bom` | agent_full, expert, full | yes | no | no | yes | no | no | BOM rows with sourcing and specs for the BOM view (for the view, not the model). |
+| `view_data_checks` | agent_full, expert, full | yes | no | no | yes | no | no | DRC and ERC violations with positions for the checks view. |
+| `view_data_compare` | agent_full, expert, full | yes | no | no | yes | no | no | Parts side by side for the parts view's compare panel. |
+| `view_data_glb` | agent_full, expert, full | yes | no | no | yes | no | no | The board's 3D model (GLB, base64) for the board view's 3D tab. |
+| `view_data_parts` | agent_full, expert, full | yes | no | no | yes | no | no | Part rows with specs for the parts view (for the view, not the model). |
+| `view_data_schematic` | agent_full, expert, full | yes | no | no | yes | no | no | Schematic files and revision for the schematic view (for the view, not the model). |
+| `view_data_stackup` | agent_full, expert, full | yes | no | no | yes | no | no | Stackup layers and net classes for the stackup view. This KiCad MCP Pro tool supports production EDA automation workf... |
+| `view_parts` | agent_full, expert, full | yes | no | no | yes | no | no | Open a parts table with specs, filters, column choice and side-by-side compare. |
+| `view_schematic` | agent_full, expert, full | yes | no | no | yes | no | no | Open the schematic in a view: every sheet, symbol selection and "not fitted". |
+| `view_stackup` | agent_full, expert, full | yes | no | no | yes | no | no | Open the board's stackup and net classes; the person can edit thicknesses there. |
+| `view_wait_revision` | agent_full, expert, full | yes | no | no | yes | no | no | Wait until the project's revision passes ``since`` (or the timeout); for the views. |
 
 ### Per-Tool Annotation Notes
 
@@ -641,7 +656,7 @@ Total public tools: 395.
 - `kicad_list_recent_projects`: profiles=agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `kicad_list_tool_categories`: profiles=all; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
 - `kicad_scan_directory`: profiles=agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
-- `kicad_session_status`: profiles=agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
+- `kicad_session_status`: profiles=agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `kicad_set_project`: profiles=all; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_assign_footprint`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `lib_assign_lcsc_to_symbol`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
@@ -651,7 +666,7 @@ Total public tools: 395.
 - `lib_check_derating`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_check_sourcing_policy`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_check_stock_availability`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
-- `lib_compare_parts`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
+- `lib_compare_parts`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_create_custom_symbol`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `lib_find_alternative_parts`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_generate_footprint_ipc7351`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
@@ -956,3 +971,18 @@ Total public tools: 395.
 - `vcs_list_checkpoints`: profiles=agent_full, builder, expert, full, high_speed, manufacturing_release, pcb_layout, release, release_manager, schematic_authoring; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `vcs_restore_checkpoint`: profiles=agent_full, builder, expert, full, high_speed, manufacturing_release, pcb_layout, release_manager, schematic_authoring; readOnly=no; destructive=yes; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `vcs_tag_release`: profiles=agent_full, builder, expert, full, high_speed, manufacturing_release, pcb_layout, release_manager, schematic_authoring; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
+- `view_board`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_bom`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_checks`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_data_board`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_data_bom`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_data_checks`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_data_compare`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_data_glb`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_data_parts`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_data_schematic`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_data_stackup`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_parts`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_schematic`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_stackup`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
+- `view_wait_revision`: profiles=agent_full, expert, full; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.

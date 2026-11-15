@@ -368,6 +368,7 @@ def _is_read_tool(name: str, category: str) -> bool:
         # Ephemeral session context only; the readonly handler never activates a project.
         "studio_push_context",
         "kicad_set_project",
+        "kicad_session_status",
         "project_design_workflow",
         "pcb_placement_quality_gate",
         "pcb_placement_quality_report",
@@ -411,7 +412,9 @@ def _is_read_tool(name: str, category: str) -> bool:
             "lib_search_",
             "lib_check_",
             "lib_find_",
+            "lib_compare_",
             "lib_recommend_",
+            "view_",
             "mfg_check_",
             "route_list_",
             "variant_list",

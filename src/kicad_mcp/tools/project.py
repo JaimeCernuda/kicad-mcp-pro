@@ -232,6 +232,10 @@ def register(mcp: FastMCP) -> None:
 
     kicad_instance.register(mcp)
 
+    from ..views import register as register_views  # noqa: PLC0415
+
+    register_views(mcp)
+
     context_service = ProjectContextService(
         scan_project_dir=scan_project_dir,
         apply_project=lambda project_dir, **kwargs: get_config().apply_project(

@@ -1,0 +1,21 @@
+{
+  "name": "kicad-views",
+  "private": true,
+  "version": "0.1.0",
+  "description": "MCP Apps views for KiCad MCP Pro: board, schematic, BOM, checks, stackup and parts, in one self-contained HTML file.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "KICAD_VIEWS_OUT=../../src/kicad_mcp/data/views/kicad-views.html node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json > .tsc.log || true; node -e \"const l=require('fs').readFileSync('.tsc.log','utf8').split('\\\\n').filter((x)=>x.startsWith('src/'));if(l.length){console.log(l.join('\\\\n'));process.exit(1)}\""
+  },
+  "dependencies": {
+    "comlink": "4.4.2",
+    "immutable": "5.1.5",
+    "jszip": "3.10.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.7",
+    "typescript": "5.9.3"
+  }
+}

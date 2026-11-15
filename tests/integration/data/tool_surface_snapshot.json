@@ -1791,7 +1791,7 @@
     "destructive": false,
     "experimental": false,
     "headless": true,
-    "idempotent": false,
+    "idempotent": true,
     "name": "kicad_session_status",
     "open_world": false,
     "profiles": [
@@ -1817,7 +1817,7 @@
       "schematic_only",
       "simulation"
     ],
-    "read_only": false,
+    "read_only": true,
     "requires_kicad_running": false
   },
   {
@@ -1997,7 +1997,7 @@
     "destructive": false,
     "experimental": false,
     "headless": true,
-    "idempotent": false,
+    "idempotent": true,
     "name": "lib_compare_parts",
     "open_world": false,
     "profiles": [
@@ -2010,7 +2010,7 @@
       "schematic_only",
       "simulation"
     ],
-    "read_only": false,
+    "read_only": true,
     "requires_kicad_running": false
   },
   {
@@ -9026,6 +9026,231 @@
       "schematic_authoring"
     ],
     "read_only": false,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_board",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_bom",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_checks",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_data_board",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_data_bom",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_data_checks",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_data_compare",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_data_glb",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_data_parts",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_data_schematic",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_data_stackup",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_parts",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_schematic",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_stackup",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": false,
+    "idempotent": true,
+    "name": "view_wait_revision",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full"
+    ],
+    "read_only": true,
     "requires_kicad_running": false
   }
 ]

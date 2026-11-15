@@ -170,6 +170,29 @@ TOOL_CATEGORIES: dict[str, ToolCategory] = {
             "project_remove_embedded_file",
         ],
     },
+    "views": {
+        "description": (
+            "MCP Apps views of the board, schematic, BOM, checks, stackup and parts "
+            "(with KICAD_MCP_ENABLE_APPS=1), and the data tools they read."
+        ),
+        "tools": [
+            "view_board",
+            "view_schematic",
+            "view_bom",
+            "view_checks",
+            "view_stackup",
+            "view_parts",
+            "view_data_board",
+            "view_data_schematic",
+            "view_data_glb",
+            "view_data_bom",
+            "view_data_checks",
+            "view_data_stackup",
+            "view_data_parts",
+            "view_data_compare",
+            "view_wait_revision",
+        ],
+    },
     "pcb_read": {
         "description": "Read PCB state including tracks, vias, footprints, nets, and layers.",
         "tools": [

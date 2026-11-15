@@ -1,0 +1,21 @@
+{
+    "compilerOptions": {
+        "target": "es2022",
+        "module": "es2022",
+        "moduleResolution": "bundler",
+        "lib": ["es2022", "dom", "dom.iterable"],
+        "strict": true,
+        "noEmit": true,
+        "skipLibCheck": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "allowImportingTsExtensions": true,
+        "paths": {
+            "ecad-viewer-app/*": ["./vendor/ecad-viewer/packages/ecad-viewer-app/*"],
+            "kicad-parser": ["./vendor/ecad-viewer/packages/kicad-parser/src"],
+            "kicad-parser/*": ["./vendor/ecad-viewer/packages/kicad-parser/src/*"],
+            "@huaqiu/ecad-renderer": ["./vendor/ecad-viewer/packages/ecad-renderer/src/index.ts"]
+        }
+    },
+    "include": ["src/**/*.ts"]
+}

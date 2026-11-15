@@ -745,7 +745,7 @@ class LibrarySourcingService:
                 limit=50,
             )
         except (RuntimeError, ValueError, OSError) as exc:
-            return f"Part recommendation search failed: {exc}{sourcing_hint(exc)}"
+            return f"Part recommendation search failed: {exc}"
 
         filtered = [item for item in results if item.stock > 0]
         matched = [
@@ -780,7 +780,7 @@ class LibrarySourcingService:
             client = self.component_search_client(source)
             part = client.get_part(lcsc_code_or_mpn)
         except (RuntimeError, ValueError, OSError) as exc:
-            return f"Part lookup failed: {exc}{sourcing_hint(exc)}"
+            return f"Part lookup failed: {exc}"
 
         if part is None:
             return f"No part found for '{lcsc_code_or_mpn}' on {source}."

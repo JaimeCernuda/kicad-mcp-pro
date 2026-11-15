@@ -77,6 +77,12 @@ CATEGORY_ADAPTER_POLICIES: dict[str, CategoryAdapterPolicy] = {
             "Use repository and filesystem discovery; use KiCad CLI only for native probes."
         ),
     ),
+    "views": CategoryAdapterPolicy(
+        preferred_backends=(AdapterBackend.KICAD_GUI_IPC, AdapterBackend.KICAD_CLI),
+        kicad11_support=KiCad11Support.INDEPENDENT,
+        canary_surfaces=("read",),
+        fallback_policy="Read the live board over IPC; fall back to the project files.",
+    ),
     "pcb_read": CategoryAdapterPolicy(
         preferred_backends=(
             AdapterBackend.KICAD_11_HEADLESS_IPC,

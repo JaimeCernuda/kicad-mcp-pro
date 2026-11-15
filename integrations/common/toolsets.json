@@ -528,7 +528,22 @@
         "vcs_init_git",
         "vcs_list_checkpoints",
         "vcs_restore_checkpoint",
-        "vcs_tag_release"
+        "vcs_tag_release",
+        "view_board",
+        "view_bom",
+        "view_checks",
+        "view_data_board",
+        "view_data_bom",
+        "view_data_checks",
+        "view_data_compare",
+        "view_data_glb",
+        "view_data_parts",
+        "view_data_schematic",
+        "view_data_stackup",
+        "view_parts",
+        "view_schematic",
+        "view_stackup",
+        "view_wait_revision"
       ]
     },
     "readonly": {
@@ -2000,7 +2015,22 @@
         "vcs_init_git",
         "vcs_list_checkpoints",
         "vcs_restore_checkpoint",
-        "vcs_tag_release"
+        "vcs_tag_release",
+        "view_board",
+        "view_bom",
+        "view_checks",
+        "view_data_board",
+        "view_data_bom",
+        "view_data_checks",
+        "view_data_compare",
+        "view_data_glb",
+        "view_data_parts",
+        "view_data_schematic",
+        "view_data_stackup",
+        "view_parts",
+        "view_schematic",
+        "view_stackup",
+        "view_wait_revision"
       ]
     }
   }

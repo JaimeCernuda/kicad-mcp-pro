@@ -3,7 +3,7 @@
     "build": {
       "callableTools": 24,
       "catalogCharacters": 9377,
-      "catalogReductionVsExpertPct": 96.0,
+      "catalogReductionVsExpertPct": 96.1,
       "declaredTools": 24,
       "estimatedCatalogTokens": 2345,
       "forbiddenToolExposures": 2,
@@ -18,7 +18,7 @@
       "readOnlyCases": 25,
       "readOnlyCasesCovered": 5,
       "readOnlyCoveragePct": 20.0,
-      "toolReductionVsExpertPct": 93.9,
+      "toolReductionVsExpertPct": 94.1,
       "tools": [
         "kicad_get_project_info",
         "kicad_get_tools_in_category",
@@ -49,7 +49,7 @@
     "default": {
       "callableTools": 25,
       "catalogCharacters": 9612,
-      "catalogReductionVsExpertPct": 95.9,
+      "catalogReductionVsExpertPct": 96.0,
       "declaredTools": 25,
       "estimatedCatalogTokens": 2403,
       "forbiddenToolExposures": 0,
@@ -64,7 +64,7 @@
       "readOnlyCases": 25,
       "readOnlyCasesCovered": 12,
       "readOnlyCoveragePct": 48.0,
-      "toolReductionVsExpertPct": 93.7,
+      "toolReductionVsExpertPct": 93.9,
       "tools": [
         "dfm_run_manufacturer_check",
         "kicad_get_project_info",
@@ -94,11 +94,11 @@
       ]
     },
     "expert": {
-      "callableTools": 395,
-      "catalogCharacters": 233687,
+      "callableTools": 410,
+      "catalogCharacters": 239742,
       "catalogReductionVsExpertPct": 0.0,
-      "declaredTools": 395,
-      "estimatedCatalogTokens": 58422,
+      "declaredTools": 410,
+      "estimatedCatalogTokens": 59936,
       "forbiddenToolExposures": 8,
       "goldenCases": 65,
       "goldenCasesCovered": 55,
@@ -507,13 +507,28 @@
         "vcs_init_git",
         "vcs_list_checkpoints",
         "vcs_restore_checkpoint",
-        "vcs_tag_release"
+        "vcs_tag_release",
+        "view_board",
+        "view_bom",
+        "view_checks",
+        "view_data_board",
+        "view_data_bom",
+        "view_data_checks",
+        "view_data_compare",
+        "view_data_glb",
+        "view_data_parts",
+        "view_data_schematic",
+        "view_data_stackup",
+        "view_parts",
+        "view_schematic",
+        "view_stackup",
+        "view_wait_revision"
       ]
     },
     "release": {
       "callableTools": 24,
       "catalogCharacters": 7184,
-      "catalogReductionVsExpertPct": 96.9,
+      "catalogReductionVsExpertPct": 97.0,
       "declaredTools": 24,
       "estimatedCatalogTokens": 1796,
       "forbiddenToolExposures": 0,
@@ -528,7 +543,7 @@
       "readOnlyCases": 25,
       "readOnlyCasesCovered": 8,
       "readOnlyCoveragePct": 32.0,
-      "toolReductionVsExpertPct": 93.9,
+      "toolReductionVsExpertPct": 94.1,
       "tools": [
         "check_design_for_manufacture",
         "dfm_run_manufacturer_check",
@@ -559,7 +574,7 @@
     "review": {
       "callableTools": 25,
       "catalogCharacters": 9612,
-      "catalogReductionVsExpertPct": 95.9,
+      "catalogReductionVsExpertPct": 96.0,
       "declaredTools": 25,
       "estimatedCatalogTokens": 2403,
       "forbiddenToolExposures": 0,
@@ -574,7 +589,7 @@
       "readOnlyCases": 25,
       "readOnlyCasesCovered": 12,
       "readOnlyCoveragePct": 48.0,
-      "toolReductionVsExpertPct": 93.7,
+      "toolReductionVsExpertPct": 93.9,
       "tools": [
         "dfm_run_manufacturer_check",
         "kicad_get_project_info",

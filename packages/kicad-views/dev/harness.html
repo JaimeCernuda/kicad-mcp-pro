@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>KiCad view harness</title>
+<style>html,body{margin:0;height:100%;font:13px system-ui}#bar{padding:4px 8px;background:#eee}
+iframe{border:0;width:100%;height:calc(100% - 26px)}</style></head>
+<body><div id="bar">view: <b id="name"></b> <span id="state"></span></div><iframe id="view"></iframe>
+<script>
+const q = new URLSearchParams(location.search);
+const view = q.get('view') || 'board';
+const args = JSON.parse(q.get('args') || '{}');
+const theme = q.get('theme') || 'light';
+document.getElementById('name').textContent = view;
+const frame = document.getElementById('view');
+const harness = window.harness = { context: [], links: [], toolResult: null, pending: new Map(), next: 1 };
+async function call(name, a) {
+  const r = await fetch('/call', { method: 'POST', body: JSON.stringify({ name, arguments: a }) });
+  return r.json();
+}
+function post(message) { frame.contentWindow.postMessage({ jsonrpc: '2.0', ...message }, '*'); }
+harness.callAppTool = (name, a) => new Promise((resolve, reject) => {
+  const id = 'h' + (harness.next++);
+  harness.pending.set(id, { resolve, reject });
+  post({ id, method: 'tools/call', params: { name, arguments: a || {} } });
+});
+harness.listAppTools = () => new Promise((resolve, reject) => {
+  const id = 'h' + (harness.next++);
+  harness.pending.set(id, { resolve, reject });
+  post({ id, method: 'tools/list', params: {} });
+});
+window.addEventListener('message', async (event) => {
+  const m = event.data;
+  if (!m || m.jsonrpc !== '2.0' || event.source !== frame.contentWindow) return;
+  if (m.id !== undefined && !m.method) {
+    const p = harness.pending.get(m.id); harness.pending.delete(m.id);
+    if (p) (m.error ? p.reject(m.error) : p.resolve(m.result));
+    return;
+  }
+  const reply = (result) => post({ id: m.id, result });
+  const fail = (message) => post({ id: m.id, error: { code: -32000, message } });
+  try {
+    switch (m.method) {
+      case 'ui/initialize':
+        reply({ protocolVersion: '2026-01-26', hostCapabilities: { openLinks: {}, serverTools: {} },
+          hostInfo: { name: 'harness', version: '0' },
+          hostContext: { theme, displayMode: 'inline', availableDisplayModes: ['inline', 'fullscreen'] } });
+        break;
+      case 'ui/notifications/initialized':
+        post({ method: 'ui/notifications/tool-input', params: { arguments: args } });
+        post({ method: 'ui/notifications/tool-result', params: harness.toolResult || {} });
+        break;
+      case 'tools/call': reply(await call(m.params.name, m.params.arguments || {})); break;
+      case 'ui/update-model-context': harness.context.push(m.params); reply({}); break;
+      case 'ui/open-link': harness.links.push(m.params.url); reply({}); break;
+      case 'ui/request-display-mode': reply({ mode: m.params.mode }); break;
+      case 'notifications/tools/list_changed': break;
+      default: if (m.id !== undefined) fail('unsupported ' + m.method);
+    }
+  } catch (e) { fail(String(e)); }
+});
+(async () => {
+  document.getElementById('state').textContent = 'opening…';
+  harness.toolResult = await call('view_' + view, args);
+  const page = await fetch('/resource?uri=' + encodeURIComponent('ui://kicad/' + view)).then((r) => r.text());
+  frame.srcdoc = page;
+  document.getElementById('state').textContent = harness.toolResult.isError ? 'opening failed' : 'open';
+})();
+</script></body></html>

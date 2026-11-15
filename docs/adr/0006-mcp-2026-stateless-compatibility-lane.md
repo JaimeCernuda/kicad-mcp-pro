@@ -120,3 +120,15 @@ The repository retains deterministic conformance evidence for the final protocol
 - `uv run pytest tests/integration/test_mcp_2026_host_smoke.py -q` runs loopback HTTP request-profile smoke cases for ChatGPT Connector and VS Code MCP clients. These cases verify wire behavior but do not claim certification of external host binaries.
 - The CI job named `MCP 2026 Compatibility` passes independently.
 - `server.json` advertises `2026-07-28` as primary and retains `2025-11-25` in the supported-version list.
+
+## Amendment: opt-in MCP Apps views
+
+The exclusion above stays the default. A deployment may opt in with
+`KICAD_MCP_ENABLE_APPS=1`: the server then registers six `ui://kicad/*` resources (board,
+schematic, BOM, checks, stackup and parts; one self-contained page from
+`packages/kicad-views`, with an empty CSP), binds the `view_*` tools to them through
+`_meta.ui.resourceUri`, marks the `view_data_*` tools visible to the view only, and
+advertises `io.modelcontextprotocol/ui`. `KiCadFastMCP` still refuses protocol extensions
+passed to its constructor; the views use the ordinary tool and resource registration.
+Without the opt-in, the `view_*` tools answer with a text summary and nothing about Apps
+is advertised.
