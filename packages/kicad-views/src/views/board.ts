@@ -1,7 +1,7 @@
 // The board view (KV10): ecad-viewer draws the board; every operation is a server tool.
 
 import { textOf, textResult, type Bridge, type ToolResult } from "../bridge";
-import { button, dataUrlToBase64, ecadElement, followRevisions, Frame, h, SELECT_SCHEMA, sharedTarget } from "../ui";
+import { button, dataUrlToBase64, ecadElement, followRevisions, Frame, h, SELECT_SCHEMA, sharedTarget, waitForViewer } from "../ui";
 import { regionOnBoard, type Rect } from "./region";
 
 interface BoardData {
@@ -192,14 +192,8 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
         bridge.report("layers", visible, `Visible board layers: ${visible.join(", ") || "none"}.`);
     };
 
-    const waitViewer = async (target: any): Promise<AnyViewer> => {
-        for (let i = 0; i < 300; i += 1) {
-            const found = target?.board_viewer;
-            if (found?.board) return found;
-            await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-        throw new Error("The board did not finish loading.");
-    };
+    const waitViewer = (target: any): Promise<AnyViewer> =>
+        waitForViewer(() => (target?.board_viewer?.board ? target.board_viewer : undefined), "board", frame);
 
     const load = async (keepCamera: boolean) => {
         const data = await bridge.callData<BoardData>("view_data_board", project);
@@ -210,7 +204,14 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
         const nextGlbUrl = glb ? modelUrl(glb) : null;
         if (nextGlbUrl) next.append(ecadElement("ecad-3d-source", { src: nextGlbUrl }));
         host.append(next);
-        const nextViewer = await waitViewer(next);
+        let nextViewer: AnyViewer;
+        try {
+            nextViewer = await waitViewer(next);
+        } catch (error) {
+            next.remove(); // the board shown stays; a half-built one is not left behind it
+            if (nextGlbUrl) releaseModel(nextGlbUrl);
+            throw error;
+        }
         element?.remove();
         releaseModel(elementGlbUrl);
         element = next;

@@ -1,7 +1,7 @@
 // Small DOM helpers and the views' shared style. No framework: the views are tables,
 // toolbars and one viewer element.
 
-import type { Bridge } from "./bridge";
+import { DATA_TIMEOUT_MS, type Bridge } from "./bridge";
 
 export const STYLE = `
 :root {
@@ -129,6 +129,28 @@ export class Frame {
             this.say(`${label} failed: ${error instanceof Error ? error.message : String(error)}`, "error");
         }
     }
+}
+
+/**
+ * Wait for ecad-viewer to finish building a document. Parsing a large board while KiCad
+ * starts beside it can take far longer than on a quiet machine; the wait lasts as long as a
+ * data call may (DATA_TIMEOUT_MS) and the status line says it is still drawing, instead of
+ * giving up after a fixed few seconds and leaving a drawn board with no view around it.
+ */
+export async function waitForViewer<T>(probe: () => T | undefined, what: string, frame: Frame): Promise<T> {
+    const started = Date.now();
+    let said = 0;
+    while (Date.now() - started < DATA_TIMEOUT_MS) {
+        const found = probe();
+        if (found) return found;
+        const seconds = Math.floor((Date.now() - started) / 1000);
+        if (seconds >= 5 && seconds - said >= 5) {
+            said = seconds;
+            frame.say(`Drawing the ${what}\u2026 (${seconds} s)`, "busy");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(`The ${what} did not finish drawing in ${Math.round(DATA_TIMEOUT_MS / 1000)} s.`);
 }
 
 /** Follow the board's revision: call ``onChange`` whenever it moves past the one shown. */

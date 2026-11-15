@@ -1,7 +1,7 @@
 // The schematic view (KV11): ecad-viewer draws every sheet; "not fitted" is sch_set_dnp.
 
 import { textOf, textResult, type Bridge } from "../bridge";
-import { button, dataUrlToBase64, ecadElement, followRevisions, Frame, h, SELECT_SCHEMA, sharedTarget } from "../ui";
+import { button, dataUrlToBase64, ecadElement, followRevisions, Frame, h, SELECT_SCHEMA, sharedTarget, waitForViewer } from "../ui";
 import { regionOnSchematic, type Rect } from "./region";
 
 interface SchematicData {
@@ -52,20 +52,21 @@ export async function schematicView(bridge: Bridge, root: HTMLElement, project: 
         frame.say(text);
     };
 
-    const waitViewer = async (target: any) => {
-        for (let i = 0; i < 300; i += 1) {
-            if (target?.schematic_viewer?.schematic) return target.schematic_viewer;
-            await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-        throw new Error("The schematic did not finish loading.");
-    };
+    const waitViewer = (target: any) =>
+        waitForViewer(() => (target?.schematic_viewer?.schematic ? target.schematic_viewer : undefined), "schematic", frame);
 
     const load = async () => {
         const data = await bridge.callData<SchematicData>("view_data_schematic", project);
         const next = ecadElement("ecad-viewer", { style: "position:absolute;inset:0;height:auto;max-height:none;aspect-ratio:auto" }) as any;
         for (const file of data.files) next.append(ecadElement("ecad-blob", { filename: file.name, content: file.text }));
         host.append(next);
-        const nextViewer = await waitViewer(next);
+        let nextViewer: any;
+        try {
+            nextViewer = await waitViewer(next);
+        } catch (error) {
+            next.remove();
+            throw error;
+        }
         element?.remove();
         element = next;
         viewer = nextViewer;
