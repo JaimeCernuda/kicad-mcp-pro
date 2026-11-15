@@ -281,10 +281,11 @@ def test_kicad_requests_go_one_at_a_time(monkeypatch) -> None:
                 state["in_flight"] -= 1
             return command
 
-    def _init(self: object, *args: object, **kwargs: object) -> None:
-        self._client = _Client()  # type: ignore[attr-defined]
+    class _KiCad:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self._client = _Client()
 
-    monkeypatch.setattr(connection.KiCad, "__init__", _init)
+    monkeypatch.setattr(connection, "KiCad", _KiCad)
     kicad = connection._OneRequestAtATime()
     threads = [threading.Thread(target=kicad._client.send, args=(n, None)) for n in range(8)]
     for thread in threads:

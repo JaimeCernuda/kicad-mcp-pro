@@ -31,19 +31,20 @@ _connection_generation = 0
 _IPC_LOCK = threading.Lock()
 
 
-class _OneRequestAtATime(KiCad):
-    """A kipy client whose requests go to KiCad one at a time.
+class _OneRequestAtATime:
+    """Build kipy clients whose requests go to KiCad one at a time.
 
     KiCad's IPC API is one request/reply socket. Tool calls running at once (a client that
     moves 21 footprints in parallel) shared it, and replies were cancelled ("Error
-    receiving reply from KiCad: Operation canceled"). The constructor keeps kipy's own
-    signature: the session passes only the arguments the factory declares, so a factory
-    without ``socket_path`` silently connected to KiCad's default socket instead.
+    receiving reply from KiCad: Operation canceled"). The session passes only the arguments
+    the factory declares, so ``__init__`` carries kipy's own signature (a factory without
+    ``socket_path`` silently connected to KiCad's default socket instead), and ``KiCad`` is
+    looked up when a client is built, so it can be replaced.
     """
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
-        client = getattr(self, "_client", None)
+    def __new__(cls, *args: object, **kwargs: object) -> KiCad:  # type: ignore[misc]
+        kicad = KiCad(*args, **kwargs)  # type: ignore[arg-type]
+        client = getattr(kicad, "_client", None)
         send = getattr(client, "send", None)
         if send is not None:
 
@@ -52,6 +53,10 @@ class _OneRequestAtATime(KiCad):
                     return send(command, response_type)
 
             client.send = serialized  # type: ignore[union-attr]
+        return kicad
+
+    def __init__(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - never runs
+        """Declares kipy's constructor signature (set below) for the session."""
 
 
 _OneRequestAtATime.__init__.__signature__ = inspect.signature(KiCad.__init__)  # type: ignore[attr-defined]
