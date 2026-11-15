@@ -259,3 +259,37 @@ def test_kicad_10_exports_the_dsn_through_its_python_module(monkeypatch, tmp_pat
     runner = freerouting.FreeRoutingRunner()
     assert runner._python_export_dsn("/usr/bin/kicad-cli", Path("b.kicad_pcb"), target)
     assert calls[0][0] == str(python) and "ExportSpecctraDSN" in calls[0][2]
+
+
+def test_a_named_net_board_takes_the_routes_through_kicads_own_import(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """KiCad 10 names nets on pads and copper; the fork's writer refuses that format, so
+    KiCad's own SES import applies the routing instead of leaving a manual GUI step."""
+    import anyio
+
+    from kicad_mcp.routing import autorouter
+    from kicad_mcp.utils import freerouting
+
+    board = tmp_path / "b.kicad_pcb"
+    board.write_text('(kicad_pcb (footprint "R" (pad "1" smd (net "GND"))))', encoding="utf-8")
+    ses = tmp_path / "b.ses"
+    ses.write_text(
+        "(session b (routes (network_out (net GND (wire (path F.Cu 2000 0 0 10000 0))))))",
+        encoding="utf-8",
+    )
+    calls: list[Path] = []
+
+    def fake_import(pcb_text: str, ses_path: Path, kicad_cli: object) -> str:
+        calls.append(ses_path)
+        return pcb_text.rstrip(")") + ' (segment (net "GND")))'
+
+    monkeypatch.setattr(freerouting, "import_ses_with_kicad", fake_import)
+
+    def writer(mutate):  # noqa: ANN001, ANN202
+        board.write_text(mutate(board.read_text(encoding="utf-8")), encoding="utf-8")
+        return str(board)
+
+    pcb, route, error = anyio.run(autorouter._apply_ses_headless, ses, writer)
+    assert error is None and pcb == board and calls == [ses]
+    assert '(segment (net "GND"))' in board.read_text(encoding="utf-8")

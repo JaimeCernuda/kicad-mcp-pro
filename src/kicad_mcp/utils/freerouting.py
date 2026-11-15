@@ -533,3 +533,46 @@ def _kicad_pythons(kicad_cli: str | Path) -> list[Path]:
         if name and Path(name) not in found:
             found.append(Path(name))
     return [path for path in found if path.exists()]
+
+
+def import_ses_with_kicad(pcb_text: str, ses_path: Path, kicad_cli: str | Path) -> str:
+    """``pcb_text`` with ``ses_path``'s routing applied by KiCad's own Python module.
+
+    The board text is written to a scratch file, loaded with ``pcbnew.LoadBoard``, routed
+    with ``pcbnew.ImportSpecctraSES`` and saved, so KiCad itself writes the tracks and vias
+    in its current format (named nets included). Raises ``ValueError`` when no KiCad Python
+    can do it.
+    """
+    script = (
+        "import sys, pcbnew; "
+        "b = pcbnew.LoadBoard(sys.argv[1]); "
+        "ok = pcbnew.ImportSpecctraSES(b, sys.argv[2]); "
+        "ok = ok and b.Save(sys.argv[1]); "
+        "sys.exit(0 if ok else 1)"
+    )
+    import tempfile  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory(prefix="kicad-ses-") as scratch:
+        board = Path(scratch) / "board.kicad_pcb"
+        board.write_text(pcb_text, encoding="utf-8")
+        errors: list[str] = []
+        for python in _kicad_pythons(kicad_cli):
+            try:
+                result = subprocess.run(  # noqa: S603
+                    [str(python), "-c", script, str(board), str(ses_path.resolve())],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                errors.append(f"{python}: {exc}")
+                continue
+            if result.returncode == 0:
+                return board.read_text(encoding="utf-8")
+            errors.append(f"{python}: {(result.stderr or result.stdout).strip()[-200:]}")
+    raise ValueError(
+        "KiCad's Python module could not import the SES ("
+        + ("; ".join(errors) or "no KiCad Python found")
+        + ")."
+    )
