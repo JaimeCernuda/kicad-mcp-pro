@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 import socket
+import subprocess  # nosec B404 - test processes
 from pathlib import Path
 
 import pytest
@@ -186,3 +188,49 @@ def test_auto_mode_keeps_every_kicad_the_server_runs_off_the_persons_settings(
     monkeypatch.setenv("KICAD_CONFIG_HOME", str(tmp_path / "mine"))
     assert manager.InstanceManager().isolate_settings(None) == ""
     assert os.environ["KICAD_CONFIG_HOME"] == str(tmp_path / "mine")
+
+
+def _fake(name: str) -> subprocess.Popen[bytes]:
+    bash = shutil.which("bash") or "/bin/bash"
+    return subprocess.Popen([bash, "-c", f"exec -a {name} sleep 30"], start_new_session=True)
+
+
+def _dead_pid() -> int:
+    done = subprocess.Popen([shutil.which("true") or "/bin/true"])
+    done.wait()
+    return done.pid
+
+
+def test_a_kicad_left_by_a_killed_server_is_stopped_on_the_next_start(tmp_path: Path) -> None:
+    import json
+    import platform
+    import time
+
+    import pytest
+
+    from kicad_mcp.instance import manager
+
+    if platform.system() != "Linux":
+        pytest.skip("reads /proc")
+    left = _fake("kicad-cli-api-server")
+    stranger = _fake("not-a-cad-tool")
+    try:
+        time.sleep(0.2)
+        record = tmp_path / manager._RECORD
+        # A live server owns its KiCad: left alone.
+        record.write_text(json.dumps({"pid": left.pid, "server": 1}))
+        assert manager.stop_left_over(tmp_path) is False and left.poll() is None
+        # A reused pid that is not KiCad: never signalled, the record is dropped.
+        record.write_text(json.dumps({"pid": stranger.pid, "server": _dead_pid()}))
+        assert manager.stop_left_over(tmp_path) is False and stranger.poll() is None
+        assert not record.exists()
+        # A KiCad whose server is gone: stopped.
+        record.write_text(json.dumps({"pid": left.pid, "server": _dead_pid()}))
+        assert manager.stop_left_over(tmp_path) is True
+        left.wait(timeout=5)
+        assert not record.exists()
+    finally:
+        for proc in (left, stranger):
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()

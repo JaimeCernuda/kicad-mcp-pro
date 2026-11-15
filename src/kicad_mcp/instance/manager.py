@@ -5,12 +5,14 @@ from __future__ import annotations
 import atexit
 import contextlib
 import getpass
+import json
 import os
 import platform
 import shutil
 import signal
 import socket
 import subprocess  # nosec B404 - argv-only launches of KiCad binaries, shell=False
+import sys
 import tempfile
 import threading
 import time
@@ -262,6 +264,7 @@ class InstanceManager:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._started: _Started | None = None
+        self._watcher: subprocess.Popen[bytes] | None = None
         self._status = InstanceStatus(mode=_mode())
         atexit.register(self.stop)
 
@@ -413,6 +416,7 @@ class InstanceManager:
         socket_url: str,
         status: InstanceStatus,
     ) -> InstanceStatus:
+        stop_left_over(home)
         config = home / "config"
         config_home.seed(config, version, cli)
         env = {**os.environ, "KICAD_CONFIG_HOME": str(config)}
@@ -435,6 +439,8 @@ class InstanceManager:
                 status.next_step = "Check that the KiCad install is complete."
                 return status
         self._started = _Started(process, case, board, socket_url, log)
+        _record_started(home, process.pid)
+        self._watcher = _watch(process.pid)
         status.pid, status.started_by_server = process.pid, True
         deadline = time.monotonic() + _start_timeout()
         last = ""
@@ -468,6 +474,7 @@ class InstanceManager:
         started, self._started = self._started, None
         if started is None or started.process.poll() is not None:
             return
+        _record_started(_home(), None)
         try:
             if platform.system() != "Windows":
                 os.killpg(started.process.pid, signal.SIGTERM)
@@ -480,6 +487,74 @@ class InstanceManager:
                     os.killpg(started.process.pid, signal.SIGKILL)
                 else:
                     started.process.kill()
+        watcher, self._watcher = self._watcher, None
+        if watcher is not None and watcher.stdin is not None:
+            with contextlib.suppress(OSError):
+                watcher.stdin.close()  # KiCad is stopped: the watcher sees the pipe close and exits
+
+
+# ---------------------------------------------------------------------- lifetime
+#
+# atexit covers a normal exit only. A SIGTERM, SIGKILL or crash skips it, and the started
+# KiCad runs in its own session, so it outlived the server. A watcher (``watch.py``) stops it
+# when the server's pipe closes; the record lets the next start stop one a watcher missed.
+
+_RECORD = "started.json"
+
+
+def _watch(pgid: int) -> subprocess.Popen[bytes] | None:
+    """Start the watcher that stops KiCad's group when this server is gone (not Windows)."""
+    if platform.system() == "Windows":
+        return None
+    try:
+        return subprocess.Popen(  # noqa: S603  # nosec B603
+            [sys.executable, "-m", "kicad_mcp.instance.watch", str(pgid)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError:
+        return None
+
+
+def _record_started(home: Path, pid: int | None) -> None:
+    record = home / _RECORD
+    with contextlib.suppress(OSError):
+        if pid is None:
+            record.unlink(missing_ok=True)
+        else:
+            record.parent.mkdir(parents=True, exist_ok=True)
+            record.write_text(json.dumps({"pid": pid, "server": os.getpid()}), encoding="utf-8")
+
+
+def _is_kicad(pid: int) -> bool:
+    """Whether ``pid`` is a running KiCad (its command line names it), never a reused pid."""
+    cmdline = Path(f"/proc/{pid}/cmdline")
+    try:
+        text = cmdline.read_bytes().replace(b"\0", b" ").decode(errors="replace")
+    except OSError:
+        return False
+    return "kicad" in text.casefold() or "pcbnew" in text.casefold()
+
+
+def stop_left_over(home: Path) -> bool:
+    """Stop a KiCad recorded in ``home`` by a server that is gone; ``True`` when one was."""
+    record = home / _RECORD
+    try:
+        data = json.loads(record.read_text(encoding="utf-8"))
+        pid, server = int(data["pid"]), int(data["server"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    if server != os.getpid() and Path(f"/proc/{server}").exists():
+        return False  # another live server owns it
+    stopped = False
+    if platform.system() != "Windows" and _is_kicad(pid):
+        with contextlib.suppress(OSError):
+            os.killpg(pid, signal.SIGTERM)
+            stopped = True
+    _record_started(home, None)
+    return stopped
 
 
 _manager: InstanceManager | None = None
