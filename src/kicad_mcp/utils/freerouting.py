@@ -31,7 +31,7 @@ class FreeRoutingResult:
     returncode: int
     stdout: str
     stderr: str
-    routed_pct: float
+    routed_pct: float | None  # None: FreeRouting did not say how complete the routing is
     total_nets: int
     unrouted_nets: list[str]
     pass_count: int
@@ -39,6 +39,24 @@ class FreeRoutingResult:
     stdout_tail: str
     ses_path: Path
     notes: tuple[str, ...] = ()  # what was installed to run FreeRouting here
+    open_connections: int | None = None  # connections FreeRouting left unrouted
+    total_connections: int | None = None
+
+    def routed_line(self) -> str:
+        """How complete the routing is, as FreeRouting reported it (never assumed)."""
+        if self.open_connections is not None and self.total_connections:
+            return (
+                f"Routed: {self.routed_pct:.2f}% of connections "
+                f"({self.open_connections} of {self.total_connections} still open)"
+            )
+        if self.open_connections is not None:
+            return f"Routed: {self.open_connections} connection(s) still open"
+        if self.routed_pct is not None:
+            return (
+                f"Routed: {self.routed_pct:.2f}% ({self.total_nets} net(s), "
+                f"{len(self.unrouted_nets)} unrouted)"
+            )
+        return "Routed: FreeRouting did not report how complete it is; run run_drc() to see"
 
 
 def _sanitize_text(text: str) -> str:
@@ -92,7 +110,29 @@ def _parse_pass_count(text: str) -> int:
     return max(passes) if passes else 0
 
 
-def _parse_routed_pct(text: str, total_nets: int, unrouted_nets: list[str], ses_ok: bool) -> float:
+def _parse_connections(text: str) -> tuple[int | None, int | None]:
+    """Open and total connections from FreeRouting's own report: the final statistics
+    (``"connections": {"maximum_count": N, "incomplete_count": M}``), else the last pass
+    line's ``(M unrouted)``."""
+    totals = re.findall(r'"maximum_count"\s*:\s*(\d+)', text)
+    opens = re.findall(r'"incomplete_count"\s*:\s*(\d+)', text)
+    if opens:
+        return int(opens[-1]), int(totals[-1]) if totals else None
+    passes = re.findall(r"\((\d+) unrouted\)", text)
+    return (int(passes[-1]), None) if passes else (None, None)
+
+
+def _parse_routed_pct(
+    text: str,
+    total_nets: int,
+    unrouted_nets: list[str],
+    connections: tuple[int | None, int | None] = (None, None),
+) -> float | None:
+    """How complete the routing is, from what FreeRouting reported; None when it said
+    nothing (a written session file says nothing about completeness)."""
+    open_count, total = connections
+    if open_count is not None and total:
+        return round(((total - open_count) / total) * 100.0, 2)
     # Scan overlapping numeric starts and check the percent/label suffix literally.
     # Requiring the suffix within a regex permits super-linear backtracking.
     for number in re.finditer(r"(?=(?<!\d)(\d+(?:\.\d+)?))", text):
@@ -109,7 +149,9 @@ def _parse_routed_pct(text: str, total_nets: int, unrouted_nets: list[str], ses_
             return round(float(number.group(1)), 2)
     if total_nets > 0 and unrouted_nets:
         return round(((total_nets - len(unrouted_nets)) / total_nets) * 100.0, 2)
-    return 100.0 if ses_ok else 0.0
+    if open_count == 0:
+        return 100.0
+    return None
 
 
 def _docker_available(executable: str) -> bool:
@@ -424,8 +466,8 @@ class FreeRoutingRunner:
         combined_output = f"{sanitized_stdout}\n{sanitized_stderr}"
         total_nets = _count_dsn_nets(dsn_path)
         unrouted_nets = _parse_unrouted_nets(combined_output)
-        ses_ok = output.exists() and output.stat().st_size > 0
-        routed_pct = _parse_routed_pct(combined_output, total_nets, unrouted_nets, ses_ok)
+        connections = _parse_connections(combined_output)
+        routed_pct = _parse_routed_pct(combined_output, total_nets, unrouted_nets, connections)
 
         return FreeRoutingResult(
             mode=mode,
@@ -443,6 +485,8 @@ class FreeRoutingRunner:
             stdout_tail=_tail(sanitized_stdout),
             ses_path=output,
             notes=self.install_notes,
+            open_connections=connections[0],
+            total_connections=connections[1],
         )
 
     def stage_ses(self, ses_path: Path) -> Path:

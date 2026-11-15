@@ -67,6 +67,7 @@ from ..models.pcb import (
 )
 from ..models.verdict import Finding, SuggestedFix, VerdictReport, stable_finding_id
 from ..operating_modes import OperatingMode, active_operating_mode
+from ..pcb import live_file_sync
 from ..pcb.basic_inspection import PcbBasicInspectionService
 from ..pcb.board_access import (
     BoardAccessError,
@@ -1138,7 +1139,13 @@ def run_auto_refill_zones() -> str:
 def _transactional_board_write(mutator: Callable[[str], str]) -> str:
     with _BOARD_FILE_WRITE_LOCK:
         board_file = _get_pcb_file_for_sync()
-        current = _normalize_board_content(board_file.read_text(encoding="utf-8"))
+        # An open KiCad holds the board: the edit starts from what it holds and KiCad reloads
+        # the result, so the two never disagree (pcb/live_file_sync.py).
+        open_board = live_file_sync.open_board_for(board_file)
+        if open_board is not None:
+            live_file_sync.refuse_during_open_commit(_native_live_transaction_active())
+        base = open_board.text() if open_board is not None else board_file.read_text("utf-8")
+        current = _normalize_board_content(base)
         updated = mutator(current)
         _validate_board_text(updated)
         temp_path: Path | None = None
@@ -1161,6 +1168,9 @@ def _transactional_board_write(mutator: Callable[[str], str]) -> str:
                 path=str(board_file),
                 detail=format_upgrade.detail,
             )
+        if open_board is not None:
+            _run_queued_ipc_mutation("pcb_reload_after_file_edit", open_board.reload)
+            logger.info("board_file_edit_reloaded_in_kicad", path=str(board_file))
         clear_ttl_cache()
         return str(board_file)
 
