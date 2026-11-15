@@ -126,9 +126,11 @@ def register(mcp: FastMCP) -> None:
     def view_board(project: str = "", layers: list[str] | None = None, focus: str = "") -> str:
         """Open the board in a view the person can see and work in: layers, nets, 2D and 3D.
 
-        ``focus`` centres a reference (U1), a net (GND) or nothing. The view shows the live
-        KiCad's board and follows every edit; the person can drag, rotate, flip and lock
-        footprints there, and what they select reaches you as context.
+        ``focus`` centres a reference (U1), a net (GND) or nothing in the new view. Each call
+        opens another view. A view that is already open follows every edit and offers its own
+        tools (``focus``, ``set_layers``, ``select``, ``capture``) to steer it in place. The view
+        shows the live KiCad's board; the person can drag, rotate, flip and lock footprints
+        there, and what they select reaches you as context.
         """
         _use_project(project)
         board = data.board_data()
