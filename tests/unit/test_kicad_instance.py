@@ -154,10 +154,14 @@ def test_a_started_window_gets_a_private_temp_folder_and_socket(tmp_path: Path) 
 
     from kicad_mcp.instance import manager
 
-    home = tmp_path / "instance"
-    assert manager.private_temp(home) == home / "tmp"
+    home = tmp_path / ("a-very-long-sandboxed-folder-name" * 3) / "instance"
+    temp = manager.private_temp(home)
+    assert temp == manager.private_temp(home)  # stable for one instance home
+    assert temp != manager.private_temp(tmp_path / "other")  # private to it
     if platform.system() != "Windows":
-        assert manager.started_socket(home) == f"ipc://{home / 'tmp' / 'kicad' / 'api.sock'}"
+        socket = manager.started_socket(home).removeprefix("ipc://")
+        assert socket == str(temp / "kicad" / "api.sock")
+        assert len(socket.encode()) <= manager.SOCKET_PATH_MAX  # a Unix socket path limit
 
 
 def test_the_sweep_never_stops_this_servers_own_kicad(tmp_path: Path) -> None:
@@ -303,3 +307,16 @@ def test_the_serialized_client_still_receives_the_socket_path() -> None:
 
     session = KiCadSession(client_factory=connection._OneRequestAtATime)
     assert "socket_path" in session._constructor_params()
+
+
+def test_a_private_temp_someone_else_planted_is_refused(tmp_path: Path) -> None:
+    from kicad_mcp.instance import manager
+
+    real = tmp_path / "elsewhere"
+    real.mkdir()
+    planted = tmp_path / "kmcp-planted"
+    planted.symlink_to(real)
+    assert manager._own_private_temp(planted) is False
+    mine = tmp_path / "kmcp-mine"
+    assert manager._own_private_temp(mine) is True
+    assert (mine.stat().st_mode & 0o777) == 0o700

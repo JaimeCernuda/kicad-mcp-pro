@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import getpass
+import hashlib
 import json
 import os
 import platform
@@ -110,9 +111,38 @@ def default_socket() -> str:
     return "ipc:///tmp/kicad/api.sock"
 
 
+#: A Unix socket path holds at most about 107 bytes; a longer one fails to bind and to dial
+#: ("Address invalid"). A sandboxed client's temp folder alone can be 90 bytes long.
+SOCKET_PATH_MAX = 100
+
+
 def private_temp(home: Path) -> Path:
-    """The temp folder a KiCad window started by this server gets, and no other process."""
-    return home / "tmp"
+    """The temp folder a KiCad window started by this server gets, and no other process.
+
+    Short on Linux and macOS (``/tmp/kmcp-<hash of the instance home>``), because the window's
+    socket lives under it; on Windows the socket is a named pipe and has no such limit.
+    """
+    if platform.system() == "Windows":
+        return home / "tmp"
+    tag = hashlib.sha256(str(home.resolve()).encode()).hexdigest()[:10]
+    # Predictable on purpose (short); _own_private_temp refuses one another user made.
+    short = Path("/tmp")  # noqa: S108
+    base = short if os.access(short, os.W_OK) else Path(tempfile.gettempdir())
+    return base / f"kmcp-{tag}"
+
+
+def _own_private_temp(temp: Path) -> bool:
+    """Create ``temp`` for this user only; refuse a symlink or a folder someone else owns."""
+    try:
+        temp.mkdir(mode=0o700, parents=True, exist_ok=True)
+        info = temp.lstat()
+    except OSError:
+        return False
+    if temp.is_symlink() or (hasattr(os, "getuid") and info.st_uid != os.getuid()):
+        return False
+    with contextlib.suppress(OSError):
+        temp.chmod(0o700)
+    return True
 
 
 def started_socket(home: Path) -> str:
@@ -440,7 +470,20 @@ class InstanceManager:
         env = {**os.environ, "KICAD_CONFIG_HOME": str(config)}
         if case != HEADLESS:  # a window's socket follows its temp folder: give it its own
             temp = private_temp(home)
-            temp.mkdir(parents=True, exist_ok=True)
+            sock_path = socket_url.removeprefix("ipc://")
+            if platform.system() != "Windows" and len(sock_path.encode()) > SOCKET_PATH_MAX:
+                status.case = NONE
+                status.problem = (
+                    f"KiCad's API socket path would be {len(sock_path.encode())} bytes "
+                    f"({sock_path}), longer than a Unix socket allows."
+                )
+                status.next_step = "Set KICAD_MCP_INSTANCE_HOME, or TMPDIR, to a shorter folder."
+                return status
+            if not _own_private_temp(temp):
+                status.case = NONE
+                status.problem = f"The private folder {temp} belongs to someone else or is a link."
+                status.next_step = "Remove it, or set KICAD_MCP_INSTANCE_HOME to another folder."
+                return status
             env.update(TMPDIR=str(temp), TMP=str(temp), TEMP=str(temp))
         log = home / f"kicad-{case}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
@@ -500,6 +543,9 @@ class InstanceManager:
         processes.stop_tree(started.process.pid)  # its group (POSIX) or tree (Windows)
         with contextlib.suppress(OSError, subprocess.TimeoutExpired):
             started.process.wait(timeout=5)
+        temp = private_temp(_home())
+        if not temp.is_symlink():  # KiCad's own temp files: nothing in it outlives KiCad
+            shutil.rmtree(temp, ignore_errors=True)
         watcher, self._watcher = self._watcher, None
         if watcher is not None and watcher.stdin is not None:
             with contextlib.suppress(OSError):
