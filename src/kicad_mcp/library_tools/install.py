@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..routing.freerouting_install import tools_home
+from ..utils import run_to_end
 
 REPOSITORY = "https://gitlab.com/kicad/libraries/kicad-library-tools.git"
 DEFAULT_PIN = "090252c1f2429ceb8bd8ef2aa466b6c135f6273a"
@@ -122,11 +123,9 @@ def _managed(*, models: bool) -> Installed:
     return Installed(root=root, python=python, pin=commit, models=models, notes=tuple(notes))
 
 
-def _run(argv: list[str], what: str, cwd: Path | None = None, timeout: int = 1800) -> None:
+def _run(argv: list[str], what: str, cwd: Path | None = None) -> None:
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            argv, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False
-        )
+        result = run_to_end.run(argv, cwd=cwd, what=what)
     except (OSError, subprocess.SubprocessError) as exc:
         raise LibraryToolsInstallError(f"{what} failed ({exc}).") from exc
     if result.returncode != 0:
@@ -179,12 +178,7 @@ def _pip_install(python: Path, target: str, what: str) -> None:
 
 def _imports(python: Path, module: str) -> bool:
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            [str(python), "-c", f"import {module}"],
-            capture_output=True,
-            timeout=120,
-            check=False,
-        )
+        result = run_to_end.run([str(python), "-c", f"import {module}"], what=f"import {module}")
     except (OSError, subprocess.SubprocessError):
         return False
     return result.returncode == 0

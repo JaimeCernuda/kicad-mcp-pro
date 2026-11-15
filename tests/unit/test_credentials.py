@@ -86,7 +86,11 @@ def test_macos_keychain_crud() -> None:
             return MagicMock(returncode=0 if stored.pop(account, None) else 44, stdout=b"")
         raise AssertionError(command)
 
-    with patch("subprocess.run", side_effect=fake_run):
+    # The Keychain write runs with no time limit (run_to_end); reads use subprocess.
+    with (
+        patch("subprocess.run", side_effect=fake_run),
+        patch("kicad_mcp.credentials.macos.run_to_end.run", side_effect=fake_run),
+    ):
         store.save_key(record_id, key_pem)
         store.save_binding(record_id, binding)
         assert store.load_key(record_id) == key_pem
@@ -100,7 +104,10 @@ def test_macos_keychain_crud() -> None:
 def test_macos_keychain_rejects_invalid_or_unverifiable_writes() -> None:
     store = MacOSKeychainCredentialStore()
     record_id = "0123456789abcdef0123456789abcdef"
-    with patch("subprocess.run") as run:
+    with (
+        patch("subprocess.run") as run,
+        patch("kicad_mcp.credentials.macos.run_to_end.run", run),
+    ):
         with pytest.raises(ValueError):
             store.save_key("../escaped", b"secret")
         with pytest.raises(ValueError):
@@ -132,7 +139,10 @@ def test_credentials_never_leaked_in_str_or_repr() -> None:
 def test_macos_keychain_refuses_oversized_value_and_os_error() -> None:
     store = MacOSKeychainCredentialStore()
     record_id = "0123456789abcdef0123456789abcdef"
-    with patch("subprocess.run") as run:
+    with (
+        patch("subprocess.run") as run,
+        patch("kicad_mcp.credentials.macos.run_to_end.run", run),
+    ):
         with pytest.raises(ValueError, match="exceeds"):
             store.save_key(record_id, b"x" * 65537)
         run.assert_not_called()
@@ -147,6 +157,10 @@ def test_macos_keychain_verifies_binding_after_write() -> None:
     record_id = "0123456789abcdef0123456789abcdef"
     with (
         patch("subprocess.run", return_value=MagicMock(returncode=0, stdout=b"")),
+        patch(
+            "kicad_mcp.credentials.macos.run_to_end.run",
+            return_value=MagicMock(returncode=0, stdout=b""),
+        ),
         patch.object(store, "load_binding", return_value={"owner": "different"}),
     ):
         with pytest.raises(RuntimeError, match="binding verification"):

@@ -147,13 +147,13 @@ def test_project_worker_refuses_untrusted_paths(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
-async def test_inspection_timeout_cancels_stalled_tool_call() -> None:
-    """Slow or orphaned workers cannot occupy a request forever."""
+async def test_inspection_waits_however_long_and_stops_only_when_cancelled() -> None:
+    """No time limit: a slow tool call is waited for; stopping the caller cancels it."""
     from kicad_mcp.project.stdio_worker import ProjectInspectionSession
 
     cancelled = False
 
-    class UnresponsiveSession:
+    class SlowSession:
         async def call_tool(self, name: str, arguments: dict[str, object]) -> object:
             nonlocal cancelled
             try:
@@ -163,18 +163,27 @@ async def test_inspection_timeout_cancels_stalled_tool_call() -> None:
                 raise
 
     worker = ProjectInspectionSession(  # type: ignore[arg-type]
-        UnresponsiveSession(), "project-a", lambda _project: True, timeout_seconds=0.02
+        SlowSession(), "project-a", lambda _project: True
     )
-    with pytest.raises(TimeoutError):
-        await worker.inspect("kicad_get_version")
+    task = asyncio.create_task(worker.inspect("kicad_get_version"))
+    await asyncio.sleep(0.2)
+    assert not task.done()  # still waiting: nothing gave up on its own
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
     assert cancelled
 
 
-def test_inspection_timeout_rejects_invalid_limits() -> None:
+@pytest.mark.anyio
+async def test_a_slow_inspection_completes() -> None:
     from kicad_mcp.project.stdio_worker import ProjectInspectionSession
 
-    for value in (0, -5, 31, float("inf"), float("nan")):
-        with pytest.raises(ValueError):
-            ProjectInspectionSession(  # type: ignore[arg-type]
-                object(), "a", lambda _: True, timeout_seconds=value
-            )
+    class SlowSession:
+        async def call_tool(self, name: str, arguments: dict[str, object]) -> str:
+            await asyncio.sleep(0.3)
+            return "done"
+
+    worker = ProjectInspectionSession(  # type: ignore[arg-type]
+        SlowSession(), "a", lambda _: True
+    )
+    assert await worker.inspect("kicad_get_version") == "done"

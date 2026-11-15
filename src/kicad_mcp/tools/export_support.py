@@ -12,14 +12,13 @@ import time
 from pathlib import Path
 
 from ..config import get_config
+from ..utils import run_to_end
 from ..utils import telemetry as otel
 
 _CLI_RETRY_ATTEMPTS = 3
 _CLI_RETRY_BASE_DELAY_SEC = 0.1
 __all__ = ["_run_cli", "_run_cli_variants", "subprocess", "time"]
 _TRANSIENT_CLI_PATTERNS = (
-    "timeout",
-    "timed out",
     "connection refused",
     "resource busy",
     "kicad is busy",
@@ -48,8 +47,8 @@ def _sanitize_cli_text(text: str) -> str:
     return sanitized
 
 
-def _run_cli(*args: str, timeout: float | None = None) -> tuple[int, str, str]:
-    """Run kicad-cli with the supplied arguments."""
+def _run_cli(*args: str) -> tuple[int, str, str]:
+    """Run kicad-cli with the supplied arguments, however long it takes (run_to_end)."""
     cfg = get_config()
     command = otel.safe_cli_command(args)
     started = time.perf_counter()
@@ -65,31 +64,20 @@ def _run_cli(*args: str, timeout: float | None = None) -> tuple[int, str, str]:
 
             for attempt in range(_CLI_RETRY_ATTEMPTS):
                 try:
-                    result = subprocess.run(
-                        [str(cfg.kicad_cli), *args],
-                        capture_output=True,
-                        text=True,
-                        errors="replace",
-                        timeout=timeout or cfg.cli_timeout,
-                        check=False,
+                    result = run_to_end.run(
+                        [str(cfg.kicad_cli), *args], what=f"kicad-cli {' '.join(args[:2])}"
                     )
                     last_result = (
                         result.returncode,
                         _sanitize_cli_text(result.stdout),
                         _sanitize_cli_text(result.stderr),
                     )
-                except subprocess.TimeoutExpired as exc:
-                    last_result = (
-                        124,
-                        _sanitize_cli_text(str(exc.stdout or "")),
-                        "The kicad-cli command timed out.",
-                    )
                 except OSError as exc:
                     last_result = (1, "", _sanitize_cli_text(str(exc)))
 
                 code, _stdout, stderr = last_result
                 return_code = code
-                status = {0: "ok", 124: "timeout"}.get(code, "error")
+                status = "ok" if code == 0 else "error"
                 if code == 0:
                     return last_result
                 if attempt == _CLI_RETRY_ATTEMPTS - 1:
@@ -112,12 +100,7 @@ def _run_cli_variants(variants: list[list[str]]) -> tuple[int, str, str]:
     """Try multiple command variants and return the first success."""
     last_result = (1, "", "No CLI variants were attempted.")
     for variant in variants:
-        try:
-            result = _run_cli(*variant)
-        except FileNotFoundError:
-            raise
-        except subprocess.TimeoutExpired:
-            result = (124, "", "The kicad-cli command timed out.")
+        result = _run_cli(*variant)
         if result[0] == 0:
             return result
         last_result = result

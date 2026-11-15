@@ -15,6 +15,7 @@ import structlog
 from ..config import get_config
 from ..discovery import get_cli_capabilities
 from ..errors import ManualStepRequiredError
+from . import run_to_end
 
 logger = structlog.get_logger(__name__)
 
@@ -60,14 +61,6 @@ def _container_relpath(base: Path, target: Path) -> str:
 
 def _tail(text: str, limit: int = 4096) -> str:
     return text[-limit:]
-
-
-def _coerce_process_output(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return value
 
 
 def _count_dsn_nets(dsn_path: Path) -> int:
@@ -124,12 +117,8 @@ def _docker_available(executable: str) -> bool:
     if shutil.which(executable) is None:
         return False
     try:
-        result = subprocess.run(  # noqa: S603
-            [executable, "info", "--format", "{{.ServerVersion}}"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
+        result = run_to_end.run(
+            [executable, "info", "--format", "{{.ServerVersion}}"], what="docker info"
         )
     except (OSError, subprocess.SubprocessError):
         return False
@@ -166,9 +155,7 @@ class FreeRoutingRunner:
         ]
         for cmd in variants:
             try:
-                result = subprocess.run(  # noqa: S603
-                    cmd, capture_output=True, text=True, timeout=120, check=False
-                )
+                result = run_to_end.run(cmd, what="kicad-cli pcb export specctra")
             except (OSError, subprocess.SubprocessError):
                 continue
             if result.returncode == 0 and target.exists() and target.stat().st_size > 0:
@@ -190,12 +177,9 @@ class FreeRoutingRunner:
         )
         for python in _kicad_pythons(kicad_cli):
             try:
-                result = subprocess.run(  # noqa: S603
+                result = run_to_end.run(
                     [str(python), "-c", script, str(pcb_path), str(target)],
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                    check=False,
+                    what="KiCad Python: export the DSN",
                 )
             except (OSError, subprocess.SubprocessError):
                 continue
@@ -382,35 +366,15 @@ class FreeRoutingRunner:
         command: list[str],
         mode: str,
         dsn_path: Path,
-        timeout: float,
     ) -> tuple[subprocess.CompletedProcess[str], float]:
         start_time = time.perf_counter()
         try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=timeout,
-                check=False,
-            )
+            result = run_to_end.run(command, what=f"FreeRouting on {dsn_path.name}")
         except FileNotFoundError as exc:
             missing = self._docker_executable if mode == "docker" else self._java_executable
             raise RuntimeError(
                 f"{missing} was not found. Install the required runtime or switch "
                 f"{'use_docker' if mode == 'docker' else 'to Docker mode'}."
-            ) from exc
-        except subprocess.TimeoutExpired as exc:
-            logger.warning(
-                "freerouting_timeout",
-                timeout_seconds=exc.timeout,
-                dsn=dsn_path.name,
-                stdout_tail=_tail(_sanitize_text(_coerce_process_output(exc.stdout))),
-                stderr_tail=_tail(_sanitize_text(_coerce_process_output(exc.stderr))),
-            )
-            raise RuntimeError(
-                f"FreeRouting timed out after {exc.timeout} seconds while "
-                f"processing {dsn_path.name}."
             ) from exc
         wall_seconds = time.perf_counter() - start_time
         return result, wall_seconds
@@ -427,7 +391,6 @@ class FreeRoutingRunner:
         net_classes_to_ignore: list[str] | None = None,
         exclude_nets: list[str] | None = None,
         drc_report_path: Path | None = None,
-        timeout: float | None = None,
     ) -> FreeRoutingResult:
         """Run FreeRouting via Docker or a local JAR and return the normalized result."""
         cfg = get_config()
@@ -454,8 +417,7 @@ class FreeRoutingRunner:
             ignore_arg=ignore_arg,
         )
 
-        effective_timeout = timeout or cfg.freerouting_timeout_sec
-        result, wall_seconds = self._execute_process(command, mode, dsn_path, effective_timeout)
+        result, wall_seconds = self._execute_process(command, mode, dsn_path)
 
         sanitized_stdout = _sanitize_text(result.stdout)
         sanitized_stderr = _sanitize_text(result.stderr)
@@ -558,12 +520,9 @@ def import_ses_with_kicad(pcb_text: str, ses_path: Path, kicad_cli: str | Path) 
         errors: list[str] = []
         for python in _kicad_pythons(kicad_cli):
             try:
-                result = subprocess.run(  # noqa: S603
+                result = run_to_end.run(
                     [str(python), "-c", script, str(board), str(ses_path.resolve())],
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    check=False,
+                    what="KiCad Python: import the SES",
                 )
             except (OSError, subprocess.SubprocessError) as exc:
                 errors.append(f"{python}: {exc}")

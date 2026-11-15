@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from subprocess import TimeoutExpired  # nosec B404
 from types import SimpleNamespace
 
 import pytest
@@ -44,8 +43,7 @@ def _fake_success(
         assert argv[1:4] == ["pcb", "drc", "--format"]
         assert argv[4] == "json"
         assert argv[5] == "--output"
-        assert kwargs["timeout"] == 40
-        assert kwargs["check"] is False
+        assert "timeout" not in kwargs  # DRC runs to the end, however long
         assert kwargs["cwd"] == Path(argv[6]).parent
         assert original is not None
         assert Path(argv[7]).read_bytes() == original
@@ -60,7 +58,7 @@ def _fake_success(
     monkeypatch.setattr(
         "kicad_mcp.cloud_native_drc.shutil.which", lambda name: "/usr/bin/kicad-cli"
     )
-    monkeypatch.setattr("kicad_mcp.cloud_native_drc.subprocess.run", native)
+    monkeypatch.setattr("kicad_mcp.cloud_native_drc.run_to_end.run", native)
     return invoked
 
 
@@ -110,7 +108,7 @@ def test_missing_cli_denied(monkeypatch: pytest.MonkeyPatch, selected: OperatorP
 
 
 @pytest.mark.parametrize(
-    "mode", ["timeout", "failure", "invalid_status_with_report", "bad_json", "report_missing"]
+    "mode", ["os_error", "failure", "invalid_status_with_report", "bad_json", "report_missing"]
 )
 def test_fail_closed_on_native_or_output_failure(
     monkeypatch: pytest.MonkeyPatch, selected: OperatorProject, mode: str
@@ -118,9 +116,9 @@ def test_fail_closed_on_native_or_output_failure(
     _fake_success(monkeypatch, selected)
 
     def fail(argv: list[str], **kwargs: object) -> SimpleNamespace:
-        if mode == "timeout":
-            # Model KiCad CLI timing out with a fixed command and time limit.
-            raise TimeoutExpired("kicad-cli", 40)
+        if mode == "os_error":
+            # KiCad CLI could not be started at all.
+            raise OSError("kicad-cli could not start")
         if mode == "bad_json":
             Path(argv[6]).write_text('{"violations":[]}', encoding="utf-8")
         if mode == "invalid_status_with_report":
@@ -132,6 +130,6 @@ def test_fail_closed_on_native_or_output_failure(
             return SimpleNamespace(returncode=9)
         return SimpleNamespace(returncode=0)
 
-    monkeypatch.setattr("kicad_mcp.cloud_native_drc.subprocess.run", fail)
+    monkeypatch.setattr("kicad_mcp.cloud_native_drc.run_to_end.run", fail)
     with pytest.raises(LocalReadDeniedError):
         summarize_native_pcb_drc(selected)

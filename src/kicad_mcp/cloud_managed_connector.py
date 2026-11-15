@@ -46,6 +46,7 @@ from kicad_mcp.cloud_read_dispatch import LocalReadDispatch
 from kicad_mcp.cloud_readonly_boundary import OperatorProject, VerifiedLocalBinding
 from kicad_mcp.cloud_reconnect_policy import reconnect_delay_seconds
 from kicad_mcp.cloud_registered_pilot import _single_registered_identity
+from kicad_mcp.utils import run_to_end
 
 _SERVICE_NAME = "kicad-mcp-cloud-connector.service"
 _ENABLED_FILE = "connector-enabled.json"
@@ -137,13 +138,8 @@ def _systemctl(*arguments: str) -> subprocess.CompletedProcess[str]:
     executable = shutil.which("systemctl")
     if executable is None:
         raise FileNotFoundError("systemctl is unavailable")
-    return subprocess.run(
-        [executable, "--user", *arguments],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=8,
-    )
+    # No time limit: systemctl runs to the end, says how long, and stops with the call.
+    return run_to_end.run([executable, "--user", *arguments], what="systemctl --user")
 
 
 def _service_path() -> Path:
@@ -417,6 +413,8 @@ async def _wait_before_reconnect(stop: asyncio.Event, registry: Path, failures: 
     delay = reconnect_delay_seconds(failures, secrets.randbelow(1001) / 1000)
     _write_status(registry, "unavailable")
     try:
+        # An interruptible sleep between retries, not a limit.
+        # limit-ok: an interruptible sleep between reconnect attempts
         await asyncio.wait_for(stop.wait(), timeout=delay)
     except TimeoutError:
         pass

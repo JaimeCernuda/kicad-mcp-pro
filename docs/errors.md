@@ -25,7 +25,7 @@ for where errors are defined.
 | --- | :---: | --- | ---: | --- |
 | `KICAD_MCP_ERROR` | no | none | — | Generic domain error; inspect the request, project config, and diagnostics. |
 | `KICAD_NOT_RUNNING` | yes | network | 1000 | KiCad IPC is not reachable. Start KiCad and enable the IPC API server, or run `doctor`. |
-| `KICAD_CONNECTION_TIMEOUT` | yes | timeout | 2000 | KiCad IPC connection timed out. Increase `KICAD_MCP_TIMEOUT_MS` or verify the IPC API responds. |
+| `KICAD_CONNECTION_TIMEOUT` | yes | timeout | 2000 | KiCad IPC connection timed out. Verify that KiCad is running and its IPC API responds. |
 | `IPC_DISCONNECTED` | yes | network | 1000 | The IPC connection was lost and reconnection failed. Re-open KiCad / enable the IPC API server. |
 | `KICAD_BOARD_NOT_OPEN` | yes | state | — | KiCad is reachable but no board is open. Open a `.kicad_pcb` or set the active project, then retry. |
 | `KICAD_BOARD_ACCESS_UNAVAILABLE` | yes | state | — | A requested live-board collection could not be read. Reconcile KiCad IPC and board API state, then retry. |

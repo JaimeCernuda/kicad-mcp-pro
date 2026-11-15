@@ -17,6 +17,7 @@ from ..errors import (
     KiCadBoardNotOpenError,
     KiCadConnectionTimeoutError,
 )
+from . import ipc_watch
 
 
 class LoggerLike(Protocol):
@@ -46,7 +47,6 @@ class SessionConfig(Protocol):
 
     kicad_socket_path: str | Path | None
     kicad_token: str | None
-    ipc_connection_timeout: float
     ipc_retries: int
     ipc_cache_ttl: float
 
@@ -74,6 +74,7 @@ def _is_busy_error(message: str) -> bool:
 
 IpcErrorKind = Literal["timeout", "disconnected", "busy", "other"]
 
+# limit-ok: classifies error text
 _TIMEOUT_PATTERNS = ("timeout", "timed out", "deadline")
 _DISCONNECT_PATTERNS = (
     "disconnect",
@@ -181,7 +182,8 @@ class KiCadSession:
         if "client_name" in available:
             kwargs["client_name"] = "kicad-mcp"
         if "timeout_ms" in available:
-            kwargs["timeout_ms"] = int(cfg.ipc_connection_timeout * 1000)
+            # A KiCad command takes as long as KiCad needs; ipc_watch ends it if KiCad exits.
+            kwargs["timeout_ms"] = ipc_watch.NO_LIMIT_MS
         return kwargs
 
     def _probe_cached_continuity(self) -> bool:
@@ -298,7 +300,7 @@ class KiCadSession:
                 self._sleep(backoff_times[attempt - 2])
             self._log_connect_attempt(attempt, total_attempts, kwargs)
             try:
-                client = self._client_factory(**kwargs)
+                client = ipc_watch.watch(self._client_factory(**kwargs), kwargs.get("socket_path"))
                 self._last_connect_time = time.monotonic()
                 return client
             except Exception as exc:

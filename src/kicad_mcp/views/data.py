@@ -9,12 +9,12 @@ from __future__ import annotations
 import base64
 import json
 import re
-import subprocess  # nosec B404 - argv-only kicad-cli export, shell=False
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from ..config import get_config
+from ..utils import run_to_end
 
 #: Larger GLB files are not sent to a view.
 MAX_GLB_BYTES = 40 * 1024 * 1024
@@ -128,9 +128,7 @@ def glb_data() -> dict[str, Any]:
             "--subst-models",
             str(source),
         ]
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            argv, capture_output=True, text=True, check=False
-        )
+        result = run_to_end.run(argv, what="Exporting the board's 3D model")
         if result.returncode != 0 or not out.is_file():
             detail = (result.stderr or result.stdout).strip()[:400]
             raise ValueError(f"kicad-cli could not export the 3D model: {detail}")

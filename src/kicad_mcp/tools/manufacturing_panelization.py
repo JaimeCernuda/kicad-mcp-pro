@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
-from ..manufacturing.panelization import PanelizationService, PanelizationTimeoutError
+from ..manufacturing.panelization import PanelizationService
+from ..utils import run_to_end
 from .metadata import headless_compatible
 
 
@@ -26,18 +27,7 @@ def _run_kikit(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     if any(not isinstance(arg, str) or "\x00" in arg for arg in cmd):
         raise ValueError("Panelization command arguments must be valid strings.")
 
-    try:
-        return subprocess.run(  # nosec B603  # nosemgrep
-            cmd,
-            capture_output=True,
-            text=True,
-            errors="replace",
-            timeout=120,
-            shell=False,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise PanelizationTimeoutError from exc
+    return run_to_end.run(cmd, what="kikit panelize")
 
 
 def _default_dependencies() -> ManufacturingPanelizationDependencies:

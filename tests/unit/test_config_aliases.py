@@ -13,7 +13,6 @@ def test_config_aliases_and_secret_masking(fake_cli: Path, monkeypatch) -> None:
     monkeypatch.setenv("KICAD_API_SOCKET", str(socket_path))
     monkeypatch.setenv("KICAD_API_TOKEN", "secret-token")
     monkeypatch.setenv("KICAD_CLI_PATH", str(fake_cli))
-    monkeypatch.setenv("KICAD_MCP_TIMEOUT_MS", "15000")
     monkeypatch.setenv("KICAD_MCP_RETRIES", "4")
     monkeypatch.setenv("KICAD_MCP_HEADLESS", "true")
     monkeypatch.setenv("KICAD_MCP_WORKSPACE_ROOT", str(workspace))
@@ -25,7 +24,7 @@ def test_config_aliases_and_secret_masking(fake_cli: Path, monkeypatch) -> None:
     assert cfg.kicad_cli == fake_cli
     assert cfg.kicad_socket_path == socket_path
     assert cfg.kicad_token == "secret-token"  # noqa: S105 - test fixture
-    assert cfg.timeout_ms == 15000
+    assert cfg.timeout_ms == -1  # no IPC time limit
     assert cfg.ipc_retries == 4
     assert cfg.headless is True
     assert cfg.log_level == "DEBUG"
@@ -54,11 +53,10 @@ def test_explicit_ipc_endpoint_uri_round_trips_unchanged(
     assert cfg.kicad_socket_path == endpoint
 
 
-def test_invalid_timeout_alias_is_rejected(monkeypatch) -> None:
-    monkeypatch.setenv("KICAD_MCP_TIMEOUT_MS", "not-a-number")
+def test_the_old_ipc_timeout_setting_no_longer_limits_requests(monkeypatch) -> None:
+    monkeypatch.setenv("KICAD_MCP_TIMEOUT_MS", "15000")
 
-    with pytest.raises(ValueError):
-        KiCadMCPConfig()
+    assert KiCadMCPConfig().timeout_ms == -1
 
 
 def test_project_dir_env_prefers_canonical_project_over_numbered_duplicate(

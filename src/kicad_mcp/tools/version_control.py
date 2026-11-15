@@ -10,6 +10,7 @@ from pathlib import Path
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
+from ..utils import run_to_end
 from .gates import _combined_status
 from .metadata import headless_compatible
 from .validation import _entries, _evaluate_project_gate, _run_drc_report
@@ -67,16 +68,7 @@ def _run_git(
     *args: str,
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
-        [_git_executable(), *args],
-        cwd=repo_dir,
-        capture_output=True,
-        text=True,
-        errors="replace",
-        env=_git_subprocess_env(),
-        timeout=30,
-        check=False,
-    )
+    result = run_to_end.run([_git_executable(), *args], cwd=repo_dir, env=_git_subprocess_env())
     if check and result.returncode != 0:
         error = result.stderr.strip() or result.stdout.strip() or "unknown git error"
         raise ValueError(f"Git command failed ({' '.join(args)}): {error}")

@@ -92,7 +92,6 @@ from .diagnostics import (
 from .discovery import ensure_studio_project_watcher, find_kicad_version
 from .errors import (
     KiCadNotRunningError,
-    ToolRegistrationTimeoutError,
 )
 from .i18n import SERVER_DESCRIPTION, localize, option_help
 from .ipc.capabilities import KiCadIpcCapabilityState, get_ipc_capability_state
@@ -118,6 +117,7 @@ from .tools.router import (
     tool_count_for_profile,
     tools_for_profile,
 )
+from .utils import run_to_end
 from .utils import telemetry as otel
 from .utils.logging import setup_logging
 from .web.state import (
@@ -412,6 +412,7 @@ def _clean_tool_error(exc: BaseException) -> str:
 def _classify_system_error_code(lowered: str, tool_name: str) -> str | None:
     if "operating mode" in lowered and "requires" in lowered:
         return "MODE_FORBIDDEN"
+    # limit-ok: classifies error text
     if "timed out" in lowered or "timeout" in lowered:
         return "CLI_TIMEOUT"
     if "kicad-cli" in lowered and (
@@ -658,7 +659,6 @@ _FIRST_LINE_FAILURE_PREFIXES = (
     "could not ",
     "failed to ",
     "template tools require ",
-    "kikit panelization timed out",
     "manufacturing evidence",
     "manufacturing reference approval",
 )
@@ -957,10 +957,6 @@ class KiCadFastMCP(FastMCP):
     _lazy_registration_error: BaseException | None = None
     _lazy_registration_lock: threading.Lock
     _lazy_registration_thread: threading.Thread | None = None
-    # Generous wall-clock budget for deferred registration. It normally finishes
-    # in well under a second; the timeout only guards a pathological hang so a
-    # request fails fast (retryable) instead of blocking forever.
-    _lazy_registration_timeout_s: float = 30.0
     _telemetry_catalog_hash: str | None = None
     _telemetry_kicad_version: str | None = None
     _ipc_capability_state: KiCadIpcCapabilityState | None = None
@@ -1016,19 +1012,9 @@ class KiCadFastMCP(FastMCP):
     async def _ensure_registered_async(self) -> None:
         if self._lazy_registration_complete:
             return
-        try:
-            await asyncio.wait_for(
-                anyio.to_thread.run_sync(self.ensure_registered, abandon_on_cancel=True),
-                timeout=self._lazy_registration_timeout_s,
-            )
-        except TimeoutError as exc:
-            # Registration keeps running in the background thread; surface a
-            # retryable error rather than blocking this request indefinitely.
-            raise ToolRegistrationTimeoutError(
-                "Tool registration has not finished yet and exceeded its "
-                f"{self._lazy_registration_timeout_s:g}s budget. It continues in the "
-                "background — retry shortly."
-            ) from exc
+        # The call waits for registration however long it takes (it normally takes well
+        # under a second); a stopped call stops waiting at once (abandon_on_cancel).
+        await anyio.to_thread.run_sync(self.ensure_registered, abandon_on_cancel=True)
 
     def tool(  # type: ignore[override]
         self,
@@ -1167,6 +1153,7 @@ class KiCadFastMCP(FastMCP):
                 event_store=event_store,
                 retry_interval=retry_interval,
                 max_request_body_size=max_request_body_size,
+                # limit-ok: reaps idle HTTP sessions, not an operation
                 session_idle_timeout=session_idle_timeout,
                 max_sessions=max_sessions,
                 transport_security=transport_security,
@@ -1240,6 +1227,7 @@ class KiCadFastMCP(FastMCP):
             stateless_http=resolved_stateless,
             event_store=event_store,
             retry_interval=retry_interval,
+            # limit-ok: reaps idle HTTP sessions, not an operation
             max_request_body_size=max_request_body_size,
             session_idle_timeout=session_idle_timeout,
             max_sessions=max_sessions,
@@ -1399,11 +1387,13 @@ class KiCadFastMCP(FastMCP):
                     status, error_code = _status_from_result(result)
                     logger.warning("tool_denied_by_mode", tool=name, mode=mode.value)
                     return result
-                if limiter is None:
-                    result = await super().call_tool(name, arguments, context)
-                else:
-                    async with limiter:
+                # Long work the tool starts reports progress and stops with the call.
+                with run_to_end.bound(context):
+                    if limiter is None:
                         result = await super().call_tool(name, arguments, context)
+                    else:
+                        async with limiter:
+                            result = await super().call_tool(name, arguments, context)
                 failure_message = _tool_failure_message(name, result)
                 if failure_message is not None:
                     result = _structured_tool_error_from_message(failure_message, tool_name=name)
@@ -3775,7 +3765,9 @@ def _terminate_watch_process(proc: subprocess.Popen[bytes] | None, timeout: floa
         return
     proc.terminate()
     try:
+        # limit-ok: the stop's grace before kill
         proc.wait(timeout=timeout)
+    # limit-ok: the stop's grace before kill
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
@@ -3860,6 +3852,7 @@ def _run_with_watch(
                 changed=changed_path,
                 change_type=change_type,
             )
+            # limit-ok: shutdown grace
             _terminate_watch_process(proc, timeout=5)
             log.info("hot_reload_spawning", cmd=cmd)
             proc = subprocess.Popen(
@@ -3868,6 +3861,7 @@ def _run_with_watch(
                 stderr=sys.stderr,
             )
     finally:
+        # limit-ok: shutdown grace
         _terminate_watch_process(proc, timeout=3)
 
 

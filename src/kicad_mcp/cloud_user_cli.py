@@ -11,7 +11,6 @@ import os
 import re
 import shutil
 import socket
-import subprocess
 import sys
 import time
 import uuid
@@ -23,6 +22,7 @@ import typer
 
 from kicad_mcp.cloud_owner_cli import register_owner_commands
 from kicad_mcp.cloud_windows_enrollment import WindowsRegisteredProject
+from kicad_mcp.utils import run_to_end
 
 DEFAULT_CLOUD_ORIGIN = "https://kicad-mcp-pro.oaslananka.dev"
 _DEFAULT_DEVICE_ALIAS = "My computer"
@@ -187,19 +187,17 @@ def _browse_local_project_folder() -> Path:
     zenity = shutil.which("zenity") if sys.platform.startswith("linux") else None
     if zenity:
         try:
-            selected = subprocess.run(
+            # No time limit: the person takes as long as they need to choose.
+            selected = run_to_end.run(
                 [
                     zenity,
                     "--file-selection",
                     "--directory",
                     "--title=Choose your local KiCad project folder",
                 ],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=120,
+                what="Choosing the project folder",
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except OSError as exc:
             raise typer.BadParameter(
                 "Folder picker unavailable; use --project-dir /path/to/project."
             ) from exc

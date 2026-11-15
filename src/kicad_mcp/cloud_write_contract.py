@@ -113,6 +113,7 @@ def parse_local_write_contract(
     ):
         raise LocalWriteDeniedError(_DENIED)
     command = cast(dict[str, object], untrusted_command)
+    # limit-ok: the cloud's signed expiry on the message
     deadline = body["deadlineUnixMs"]
     if (
         body["kind"] != "connector.write_request"

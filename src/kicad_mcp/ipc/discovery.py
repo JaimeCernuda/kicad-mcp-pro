@@ -16,7 +16,9 @@ class IpcDiscoveryConfig(Protocol):
 
     kicad_socket_path: str | Path | None
     kicad_token: str | None
-    ipc_connection_timeout: float
+
+    @property
+    def timeout_ms(self) -> int: ...
 
 
 ConfigFactory = Callable[[], IpcDiscoveryConfig]
@@ -69,7 +71,7 @@ class KiCadIpcDiscovery:
                 if env_socket and _endpoints_equal(env_socket, cfg.kicad_socket_path)
                 else "config",
                 token_configured=bool(cfg.kicad_token),
-                timeout_ms=int(cfg.ipc_connection_timeout * 1000),
+                timeout_ms=cfg.timeout_ms,
             )
 
         if env_socket:
@@ -77,12 +79,12 @@ class KiCadIpcDiscovery:
                 socket_path=_normalize_endpoint(env_socket),
                 source="environment",
                 token_configured=bool(cfg.kicad_token or os.environ.get("KICAD_API_TOKEN")),
-                timeout_ms=int(cfg.ipc_connection_timeout * 1000),
+                timeout_ms=cfg.timeout_ms,
             )
 
         return KiCadIpcEndpoint(
             socket_path=None,
             source="default",
             token_configured=bool(cfg.kicad_token or os.environ.get("KICAD_API_TOKEN")),
-            timeout_ms=int(cfg.ipc_connection_timeout * 1000),
+            timeout_ms=cfg.timeout_ms,
         )

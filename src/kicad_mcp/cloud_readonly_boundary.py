@@ -114,6 +114,7 @@ def _validate_frame(
         raise LocalReadDeniedError(_READ_DENIED) from exc
     if not isinstance(body, dict) or set(body) != _FIELDS:
         raise LocalReadDeniedError(_READ_DENIED)
+    # limit-ok: the cloud's signed expiry on the message
     deadline = body.get("deadlineUnixMs")
     operation = body.get("operation")
     if (

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -233,8 +232,6 @@ def _run_variant_safe(
     try:
         return_code, _stdout, stderr = run_cli_variants([variant])
         return return_code, stderr
-    except subprocess.TimeoutExpired:
-        return 124, "The kicad-cli command timed out."
     except OSError as exc:
         return str(exc)
 

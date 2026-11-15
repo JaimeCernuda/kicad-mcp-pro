@@ -130,6 +130,8 @@ class ConnectorLifecycleManager:
 
             if self._task is not None:
                 try:
+                    # Shutdown grace before the task is cancelled, not a limit on work.
+                    # limit-ok: shutdown grace before cancelling
                     await asyncio.wait_for(asyncio.shield(self._task), timeout=5.0)
                 except TimeoutError:
                     self._task.cancel()

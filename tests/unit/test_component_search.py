@@ -135,7 +135,7 @@ def test_request_json_builds_expected_request(monkeypatch) -> None:
     assert payload == {"components": []}
     assert seen["url"] == "https://example.com/search?q=10k&limit=5"
     assert seen["user_agent"] == DEFAULT_USER_AGENT
-    assert seen["timeout"] == 20
+    assert seen["timeout"] is None  # no time limit: the source answers when it answers
 
 
 def test_jlcsearch_get_part_falls_back_to_exact_mpn_only(monkeypatch) -> None:
@@ -663,9 +663,9 @@ def test_actual_component_transports_install_safe_redirect_handler(monkeypatch) 
     installed: list[SafeSearchRedirectHandler] = []
 
     class FakeOpener:
-        def open(self, request, timeout: int):
+        def open(self, request, timeout: int | None):
             assert isinstance(request, urllib.request.Request)
-            assert timeout == 20
+            assert timeout is None  # no time limit
             return io.BytesIO(b'{"ok": true}')
 
     def fake_build_opener(handler: SafeSearchRedirectHandler):

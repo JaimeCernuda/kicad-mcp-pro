@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 import structlog
 
+from .utils import run_to_end
+
 logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -271,7 +273,8 @@ class KiCadTrayApp:
             cfg = get_config()
             if cfg.pcb_file and cfg.pcb_file.exists():
                 output_dir = cfg.ensure_output_dir("gerber")
-                subprocess.run(
+                # No time limit: the export runs to the end on a large board too.
+                run_to_end.run(
                     [
                         str(cfg.kicad_cli),
                         "pcb",
@@ -281,9 +284,7 @@ class KiCadTrayApp:
                         str(output_dir),
                         str(cfg.pcb_file),
                     ],
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
+                    what="kicad-cli pcb export gerber",
                 )
                 self._show_notification(f"Gerber exported to {output_dir}")
                 logger.info("tray_gerber_exported", output=str(output_dir))
@@ -318,7 +319,7 @@ class KiCadTrayApp:
             logger.info("tray_stopping_server", pid=self._server_proc.pid)
             self._server_proc.terminate()
             try:
-                self._server_proc.wait(timeout=5)
+                self._server_proc.wait(timeout=5)  # shutdown grace before kill, not a limit
             except subprocess.TimeoutExpired:
                 self._server_proc.kill()
                 self._server_proc.wait()

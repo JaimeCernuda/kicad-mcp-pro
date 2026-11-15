@@ -599,7 +599,7 @@ async def _await_authorized_session(
 ) -> bool:
     """Terminate a socket when owner authorization or the local stop marker is lost."""
     while not task.done() and not revoked.done():
-        await asyncio.wait((task, revoked), timeout=1)
+        await asyncio.wait((task, revoked), timeout=1)  # a poll tick, not a limit
         if not _current_authorization(project):
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
@@ -785,6 +785,8 @@ async def run_connector(
         failures = _next_failure_count(result, failures, status_callback)
         delay = reconnect_delay_seconds(failures, secrets.randbelow(1001) / 1000)
         try:
+            # An interruptible sleep between retries, not a limit.
+            # limit-ok: an interruptible sleep between reconnect attempts
             await asyncio.wait_for(stop.wait(), timeout=delay)
         except TimeoutError:
             pass

@@ -60,7 +60,7 @@ class KiCadConnectionTimeoutError(KiCadNotRunningError):
     """Raised when KiCad IPC connection attempts time out."""
 
     code = "KICAD_CONNECTION_TIMEOUT"
-    hint = "Increase KICAD_MCP_TIMEOUT_MS or verify that the KiCad IPC API is responding."
+    hint = "Verify that KiCad is running and its IPC API is responding."
     retryable = True
     transient_class: TransientClass = "timeout"
     retry_after_ms = 2000
@@ -122,11 +122,8 @@ class IpcDisconnectedError(KiCadNotRunningError):
 
 
 class ToolRegistrationTimeoutError(KiCadMcpError):
-    """Raised when deferred tool registration does not finish within its budget.
-
-    Registration runs in the background; if a request waits longer than the
-    configured timeout it gets this retryable error instead of hanging forever.
-    """
+    """Kept for callers that still name it; nothing raises it since registration has no
+    time limit (a call waits for it and can be stopped)."""
 
     code = "SERVER_INITIALIZING"
     hint = "Tool registration is still in progress; retry in a moment."

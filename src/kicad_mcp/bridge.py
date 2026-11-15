@@ -87,7 +87,6 @@ def bridge_status() -> None:
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(2)
         s.connect(("127.0.0.1", DEFAULT_BRIDGE_PORT))
         s.close()
         typer.echo(f"Bridge is running (PID: {pid}, port: {DEFAULT_BRIDGE_PORT})")
@@ -296,7 +295,8 @@ async def _handle_bridge_client(
 
     try:
         while True:
-            data = await asyncio.wait_for(reader.readline(), timeout=300.0)
+            # No time limit: a quiet client stays connected until it closes.
+            data = await reader.readline()
             if not data:
                 break
             await _process_client_line(data, writer, state)
@@ -310,8 +310,6 @@ async def _handle_bridge_client(
             await writer.drain()
         except Exception as write_err:
             logger.debug("bridge_message_too_large_response_failed", error=str(write_err))
-    except TimeoutError:
-        logger.info("bridge_client_timeout", peer=peer)
     except ConnectionResetError:
         logger.info("bridge_client_reset", peer=peer)
     except Exception as exc:
@@ -445,7 +443,8 @@ async def _proxy_to_local(
         headers["Authorization"] = f"Bearer {auth_token}"
 
     try:
-        async with httpx.AsyncClient(base_url=state.target_url, timeout=30.0) as client:
+        # No time limit: a tool call through the bridge runs to the end.
+        async with httpx.AsyncClient(base_url=state.target_url, timeout=None) as client:  # noqa: S113 - no time limit by design
             resp = await client.post("/mcp", json=local_payload, headers=headers)
             resp.raise_for_status()
             result = resp.json()

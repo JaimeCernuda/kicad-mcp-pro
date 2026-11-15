@@ -5,13 +5,15 @@ from __future__ import annotations
 import importlib
 import math
 import shutil
-import subprocess
+import subprocess  # noqa: F401  # nosec B404 - tests replace subprocess.run through this module
 from dataclasses import dataclass, field
 from pathlib import Path, PurePath
 from types import ModuleType
 from typing import Any, Literal, Protocol, cast
 
 import structlog
+
+from . import run_to_end
 
 logger = structlog.get_logger(__name__)
 
@@ -233,9 +235,8 @@ def _is_float(token: str) -> bool:
 class NgspiceRunner:
     """Run simulations through ngspice CLI, using InSpice only when available."""
 
-    def __init__(self, ngspice_cli: Path | None = None, cli_timeout: float = 120.0) -> None:
+    def __init__(self, ngspice_cli: Path | None = None) -> None:
         self._configured_cli = ngspice_cli
-        self._cli_timeout = cli_timeout
 
     def resolve_cli(self) -> Path:
         """Return the resolved ngspice CLI path or raise an actionable error."""
@@ -499,13 +500,8 @@ class NgspiceRunner:
         )
         deck_path.write_text(deck_text, encoding="utf-8")
 
-        result = subprocess.run(
-            [str(cli), "-b", "-o", str(log_path), str(deck_path)],
-            capture_output=True,
-            text=True,
-            errors="replace",
-            timeout=self._cli_timeout,
-            check=False,
+        result = run_to_end.run(
+            [str(cli), "-b", "-o", str(log_path), str(deck_path)], what=f"ngspice {analysis}"
         )
         if result.returncode != 0 and not data_path.exists():
             stderr = (result.stderr or "").strip()

@@ -121,7 +121,8 @@ def _fetch_latest_stable() -> str:
     pool = urllib3.HTTPSConnectionPool(
         _PYPI_HOST,
         443,
-        timeout=urllib3.Timeout(connect=5, read=5),
+        # No time limit: the update check waits for PyPI's answer however long.
+        timeout=urllib3.Timeout(connect=None, read=None),
         retries=False,
         cert_reqs="CERT_REQUIRED",
     )

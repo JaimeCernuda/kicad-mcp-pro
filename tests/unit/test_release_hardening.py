@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import subprocess
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -569,8 +568,8 @@ def test_tool_failure_message_does_not_flag_intentional_non_error_text() -> None
 def test_tool_failure_message_detects_missing_dependency_and_manufacturing_evidence() -> None:
     """A handful of genuine top-level tool failures used other unrecognized shapes:
 
-    a missing-dependency message with no "failed"/"could not" wording, a
-    subprocess-timeout message, and the ``export_manufacturing_package``
+    a missing-dependency message with no "failed"/"could not" wording, and the
+    ``export_manufacturing_package``
     approval-evidence rejections (``_load_approval_evidence`` /
     ``_verify_approved_project_files`` / ``_current_approved_project_files``).
     None of these matched any existing prefix, so they reached the caller as
@@ -583,10 +582,6 @@ def test_tool_failure_message_detects_missing_dependency_and_manufacturing_evide
             "sch_list_subcircuit_templates",
             "Template tools require PyYAML. Install it to inspect bundled templates.",
         )
-        is not None
-    )
-    assert (
-        _tool_failure_message("pcb_panelize", "KiKit panelization timed out after 120 seconds.")
         is not None
     )
     assert (
@@ -704,21 +699,20 @@ async def test_manufacturing_gate_block_returns_structured_validation_error(
     assert "VALIDATION_FAILED" in text
 
 
-def test_run_cli_retries_transient_timeout(fake_cli: Path, monkeypatch) -> None:
+def test_run_cli_retries_a_busy_kicad(fake_cli: Path, monkeypatch) -> None:
     from kicad_mcp.tools import export
 
     attempts = 0
 
-    def fake_run(*_args: object, **_kwargs: object):
+    def fake_run(*_args: object, **kwargs: object):
         nonlocal attempts
         attempts += 1
-        if attempts < 3:
-            raise subprocess.TimeoutExpired(cmd="kicad-cli", timeout=0.1)
+        assert kwargs.get("timeout") is None  # no time limit on kicad-cli
 
         class Result:
-            returncode = 0
-            stdout = "ok"
-            stderr = ""
+            returncode = 0 if attempts >= 3 else 1
+            stdout = "ok" if attempts >= 3 else ""
+            stderr = "" if attempts >= 3 else "KiCad is busy"
 
         return Result()
 

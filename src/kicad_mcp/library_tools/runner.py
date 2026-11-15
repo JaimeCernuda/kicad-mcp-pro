@@ -15,20 +15,19 @@ import json
 import re
 import secrets
 import shutil
-import subprocess  # nosec B404 - argv-only Library Tools scripts, shell=False
+import subprocess  # noqa: F401  # nosec B404 - tests replace subprocess.run through this module
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from ..utils import run_to_end
 from .install import Installed
 
 RECORDS = "footprint-records.json"
 # KLC rules about a library's naming and its model folder: they bind KiCad's own library,
 # not a project library, so they are reported as notes.
 NAMING_RULES = frozenset({"G1.1", "F9.1", "F9.3"})
-_GENERATE_TIMEOUT_S = 900
-_CHECK_TIMEOUT_S = 120
 
 
 class LibraryToolsError(RuntimeError):
@@ -152,7 +151,7 @@ def generate(tools: Installed, family: str, entry: str, *, models: bool) -> Gene
         ]
         if models:
             argv[4:4] = ["-m", str(out / "3d")]
-        code, text = _run(argv, cwd=tools.generators, timeout=_GENERATE_TIMEOUT_S)
+        code, text = _run(argv, cwd=tools.generators)
         result = _collect(out)
         result.messages = _tail(text)
         if code != 0 or not result.footprints:
@@ -180,7 +179,7 @@ def generate_custom(tools: Installed, script: str) -> Generated:
         "KICAD_MCP_MODEL_DIR": str(out / "3d"),
         "PYTHONPATH": f"{tools.root / 'src'}:{tools.root}",
     }
-    code, text = _run([str(tools.python), str(path)], cwd=out, timeout=_GENERATE_TIMEOUT_S, env=env)
+    code, text = _run([str(tools.python), str(path)], cwd=out, env=env)
     result = _collect(out)
     result.messages = _tail(text)
     if code != 0 or not result.footprints:
@@ -263,13 +262,13 @@ def check(
 ) -> CheckResult:
     """KLC on the file, and every datasheet pad against the footprint's."""
     argv = [str(tools.python), "check_footprint.py", "-vv", "--nocolor", str(footprint)]
-    code, text = _run(argv, cwd=tools.klc_check, timeout=_CHECK_TIMEOUT_S)
+    code, text = _run(argv, cwd=tools.klc_check)
     if code == 1:
         raise LibraryToolsError(f"The KLC checker could not read {footprint.name}: {_tail(text)}")
     error_rules: set[str] = set()
     if code == 3:
         # ``-w`` hides warnings, so the rules it still prints are the ones with errors.
-        _, errors_only = _run([*argv, "-w"], cwd=tools.klc_check, timeout=_CHECK_TIMEOUT_S)
+        _, errors_only = _run([*argv, "-w"], cwd=tools.klc_check)
         error_rules = {rule for rule, _ in _violations(errors_only)}
     result = CheckResult(footprint=footprint.stem)
     for rule, detail in _violations(text):
@@ -390,24 +389,14 @@ def check_record(result: CheckResult, datasheet: str, tolerance_mm: float) -> di
 # --- process ----------------------------------------------------------------------------
 
 
-def _run(
-    argv: list[str], *, cwd: Path, timeout: int, env: dict[str, str] | None = None
-) -> tuple[int, str]:
+def _run(argv: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> tuple[int, str]:
     import os  # noqa: PLC0415
 
     full_env = {**os.environ, **(env or {})}
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            argv,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-            env=full_env,
+        result = run_to_end.run(
+            argv, cwd=cwd, env=full_env, what=f"Library Tools {Path(argv[-1]).name}"
         )
-    except subprocess.TimeoutExpired as exc:
-        raise LibraryToolsError(f"Library Tools did not finish in {timeout} s.") from exc
     except OSError as exc:
         raise LibraryToolsError(f"Library Tools could not start ({exc}).") from exc
     return result.returncode, (result.stdout or "") + (result.stderr or "")

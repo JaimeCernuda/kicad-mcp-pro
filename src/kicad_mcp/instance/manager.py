@@ -23,6 +23,8 @@ from typing import Any
 
 import structlog
 
+from ..kicad import ipc_watch
+from ..utils import run_to_end
 from . import config_home, processes
 from .board_file import file_problem
 
@@ -170,15 +172,20 @@ class Probe:
     error: str = ""
 
 
-def probe(socket_url: str, timeout_ms: int = 3000) -> Probe:
-    """Ask a KiCad API socket for its version and open boards."""
+def probe(socket_url: str, timeout_ms: int = ipc_watch.NO_LIMIT_MS) -> Probe:
+    """Ask a KiCad API socket for its version and open boards.
+
+    A socket nobody listens on refuses at once; a KiCad that listens is waited for however
+    long it takes to answer (a busy KiCad is still this board's KiCad, not an absent one),
+    and the wait ends if that KiCad goes away (ipc_watch).
+    """
     try:
         from kipy import KiCad  # noqa: PLC0415
         from kipy.proto.common.types import DocumentType  # noqa: PLC0415
     except ImportError as exc:  # pragma: no cover - kipy is a dependency
         return Probe(False, error=f"kicad-python is not installed: {exc}")
     try:
-        client = KiCad(socket_path=socket_url, timeout_ms=timeout_ms)
+        client = ipc_watch.watch(KiCad(socket_path=socket_url, timeout_ms=timeout_ms), socket_url)
         version = client.get_version()
     except Exception as exc:  # noqa: BLE001 - kipy raises its own and transport errors
         text = str(exc)
@@ -229,22 +236,18 @@ def _is_development(cli: Path) -> bool:
 
 def _supports_api_server(cli: Path) -> bool:
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            [str(cli), "--help"], capture_output=True, text=True, timeout=15, check=False
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        result = run_to_end.run([str(cli), "--help"])
+    except OSError:
         return False
     return "api-server" in (result.stdout + result.stderr)
 
 
 def _version(cli: Path) -> str:
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            [str(cli), "version"], capture_output=True, text=True, timeout=15, check=False
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        result = run_to_end.run([str(cli), "version"])
+    except OSError:
         return ""
-    return (result.stdout or result.stderr).strip()
+    return str(result.stdout or result.stderr).strip()
 
 
 def _pcbnew_for(cli: Path | None) -> Path | None:
@@ -291,10 +294,8 @@ def _kicad_has_open(board: Path) -> bool:
     if platform.system() == "Windows" or ps is None:
         return False
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            [ps, "-eo", "args"], capture_output=True, text=True, timeout=10, check=False
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        result = run_to_end.run([ps, "-eo", "args"])
+    except OSError:
         return False
     return any(
         str(board) in line and ("pcbnew" in line or "kicad" in line)
@@ -550,8 +551,9 @@ class InstanceManager:
             return
         _record_started(_home(), None)
         processes.stop_tree(started.process.pid)  # its group (POSIX) or tree (Windows)
+        # limit-ok: reaping after the forced stop
         with contextlib.suppress(OSError, subprocess.TimeoutExpired):
-            started.process.wait(timeout=5)
+            started.process.wait(timeout=5)  # reaping after the forced stop, not a limit
         temp = private_temp(_home())
         if not temp.is_symlink():  # KiCad's own temp files: nothing in it outlives KiCad
             shutil.rmtree(temp, ignore_errors=True)

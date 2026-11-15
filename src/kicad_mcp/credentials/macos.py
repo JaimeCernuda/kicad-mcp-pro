@@ -6,6 +6,7 @@ import json
 import re
 import subprocess  # nosec B404
 
+from ..utils import run_to_end
 from . import PlatformCredentialStore
 
 _SERVICE_NAME = "KiCadMCPPro"
@@ -36,14 +37,15 @@ def _write_secret(slot: str, secret: bytes) -> None:
         raise ValueError("Keychain secret exceeds the supported size")
     command = f"add-generic-password -U -s {_SERVICE_NAME} -a {slot} -w {secret.hex()}\nquit\n"
     try:
-        result = subprocess.run(
+        # No time limit: Keychain may ask the person to unlock it, which takes them as
+        # long as it takes.
+        result = run_to_end.run(
             [_SECURITY_EXECUTABLE, "-i"],
             input=command.encode("ascii"),
-            capture_output=True,
-            check=False,
-            timeout=15,
-        )  # nosec B603 # nosemgrep
-    except (OSError, subprocess.TimeoutExpired) as error:
+            what="Keychain write",
+            text=False,
+        )
+    except OSError as error:
         raise RuntimeError("Keychain write unavailable") from error
     if result.returncode != 0:
         # Do not include stdout/stderr: the batch interpreter may echo input.

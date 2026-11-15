@@ -261,7 +261,6 @@ class StudioContextClient:
         mount_path: str = "/mcp",
         *,
         auth_token: str = "",
-        timeout: float = 5.0,
         opener: Opener | None = None,
     ) -> None:
         _validate_loopback_base_url(base_url)
@@ -269,17 +268,14 @@ class StudioContextClient:
         self._url = f"{self._base_url}/{mount_path.strip('/')}"
         self._health_url = f"{self._base_url}/api/health"
         self._auth_token = auth_token
-        self._timeout = timeout
         self._opener = opener or self._default_opener
 
     def _default_opener(self, request: urllib.request.Request) -> _HttpResponse:
         # urlopen is typed to return Any-ish; localhost-only call, narrow to our Protocol.
         return cast(
             _HttpResponse,
-            urllib.request.urlopen(  # noqa: S310  # nosec B310
-                request,
-                timeout=self._timeout,
-            ),
+            # No time limit: the loopback server answers when it is done.
+            urllib.request.urlopen(request),  # noqa: S310  # nosec B310
         )
 
     def health(self, compatibility: dict[str, object]) -> CompanionHealthStatus:

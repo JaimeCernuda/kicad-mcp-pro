@@ -112,7 +112,7 @@ def _resolve_netlist_path(raw_path: str) -> Path:
 
 def _runner() -> NgspiceRunner:
     cfg = get_config()
-    return NgspiceRunner(cfg.ngspice_cli, cfg.cli_timeout)
+    return NgspiceRunner(cfg.ngspice_cli)
 
 
 def _format_result_header(title: str, result: SimulationResult) -> list[str]:

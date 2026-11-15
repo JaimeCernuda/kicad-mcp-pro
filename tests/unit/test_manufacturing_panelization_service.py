@@ -155,17 +155,3 @@ def test_panelization_executes_variants_and_preserves_failures(tmp_path: Path) -
         failing.panelize(dry_run=False, confirm=True)
         == "KiKit panelization failed (exit 2):\nbad panel"
     )
-
-    def timeout(_cmd: list[str]):  # type: ignore[no-untyped-def]
-        raise module.PanelizationTimeoutError
-
-    timed = module.PanelizationService(
-        kikit_available=lambda: True,
-        get_pcb_file=lambda: pcb,
-        ensure_output_dir=lambda name: tmp_path / name,
-        resolve_output_path=lambda path_text: tmp_path / path_text,
-        run_command=timeout,
-    )
-    assert timed.panelize(dry_run=False, confirm=True) == (
-        "KiKit panelization timed out after 120 seconds."
-    )

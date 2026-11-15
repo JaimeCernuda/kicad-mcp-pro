@@ -129,7 +129,7 @@ def test_approve_browser_once_then_store_only_valid_management_token(
         return {"status": state, **({"token": _TOKEN} if state == "approved" else {})}
 
     monkeypatch.setattr(CloudOwnerApi, "request", fake_request)
-    cloud_owner_management.authorize(_ORIGIN, label="Office PC", timeout_seconds=30)
+    cloud_owner_management.authorize(_ORIGIN, label="Office PC")
     assert seen[0] == ("browser", _ORIGIN + "/api/owner/cli/approve?request_id=" + request_id)
     assert seen[1] == ("saved", _ORIGIN, _TOKEN)
     assert _TOKEN not in capsys.readouterr().out

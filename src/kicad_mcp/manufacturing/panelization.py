@@ -8,10 +8,6 @@ from pathlib import Path
 from typing import Protocol
 
 
-class PanelizationTimeoutError(TimeoutError):
-    """Raised when KiKit panelization exceeds the runner timeout."""
-
-
 class PanelizationProcessResult(Protocol):
     @property
     def returncode(self) -> int: ...
@@ -104,9 +100,7 @@ class PanelizationService:
             )
 
         try:
-            result = self.run_command(cmd)
-        except PanelizationTimeoutError:
-            return "KiKit panelization timed out after 120 seconds."
+            result = self.run_command(cmd)  # however long KiKit takes (run_to_end)
         except OSError as exc:
             return f"Failed to run KiKit: {exc}"
 

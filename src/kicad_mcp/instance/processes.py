@@ -29,8 +29,10 @@ def command_line(pid: int) -> str:
     else:
         argv = ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"]
     try:
+        # No time limit; plain subprocess (not run_to_end): this runs inside the stop path,
+        # where a pending cancellation must not interrupt the stop.
         result = subprocess.run(  # noqa: S603, S607  # nosec B603 B607 - system ps / tasklist
-            argv, capture_output=True, text=True, timeout=15, check=False
+            argv, capture_output=True, text=True, check=False
         )
     except (OSError, subprocess.SubprocessError):
         return ""
@@ -63,9 +65,9 @@ def stop_tree(pid: int, wait_s: float = 10.0) -> None:
                 subprocess.run(  # noqa: S603  # nosec B603 B607 - system taskkill
                     ["taskkill", "/PID", str(pid), "/T", *force],  # noqa: S607
                     capture_output=True,
-                    timeout=30,
                     check=False,
                 )
+            # The stop's own grace before forcing: not a limit on any operation.
             deadline = time.monotonic() + wait_s
             while alive(pid) and time.monotonic() < deadline:
                 time.sleep(0.2)
@@ -74,6 +76,7 @@ def stop_tree(pid: int, wait_s: float = 10.0) -> None:
         return
     with contextlib.suppress(OSError):
         os.killpg(pid, signal.SIGTERM)
+    # The stop's own grace before SIGKILL: not a limit on any operation.
     deadline = time.monotonic() + wait_s
     while alive(pid) and time.monotonic() < deadline:
         time.sleep(0.2)
