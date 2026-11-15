@@ -1,6 +1,6 @@
 Machine-maintained catalog. Refresh with `pnpm run docs:tools`.
 
-Total public tools: 391.
+Total public tools: 392.
 
 | Tool | Profile(s) | Read-Only | Destructive | Open-World | Idempotent | Headless | Requires KiCad Running | Summary |
 |---|---|---:|---:|---:|---:|---:|---:|---|
@@ -84,6 +84,7 @@ Total public tools: 391.
 | `kicad_list_recent_projects` | agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | List recently opened KiCad projects from KiCad's config files. This KiCad MCP Pro tool supports production EDA automa... |
 | `kicad_list_tool_categories` | all | yes | no | no | yes | no | no | List all available tool categories and capabilities. This KiCad MCP Pro tool supports production EDA automation workf... |
 | `kicad_scan_directory` | agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation | yes | no | no | yes | yes | no | Scan a directory and report any KiCad project files it contains. |
+| `kicad_session_status` | agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Report which KiCad this server uses, how it got it, and what is missing. |
 | `kicad_set_project` | all | no | yes | no | yes | yes | no | Set the active KiCad project directory and file paths. This KiCad MCP Pro tool supports production EDA automation wor... |
 | `lib_assign_footprint` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Assign a footprint property to a schematic symbol. This KiCad MCP Pro tool supports production EDA automation workflo... |
 | `lib_assign_lcsc_to_symbol` | agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation | no | no | no | no | yes | no | Assign an LCSC part code to a schematic symbol property. |
@@ -478,6 +479,7 @@ Total public tools: 391.
 - `kicad_list_recent_projects`: profiles=agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `kicad_list_tool_categories`: profiles=all; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
 - `kicad_scan_directory`: profiles=agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation; readOnly=yes; destructive=no; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
+- `kicad_session_status`: profiles=agent_full, analysis, beginner, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, minimal, pcb, pcb_layout, pcb_only, power, read_only_inspection, release_manager, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `kicad_set_project`: profiles=all; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=yes; requiresKiCadRunning=no.
 - `lib_assign_footprint`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `lib_assign_lcsc_to_symbol`: profiles=agent_full, builder, expert, full, schematic, schematic_authoring, schematic_only, simulation; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.

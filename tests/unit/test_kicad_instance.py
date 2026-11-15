@@ -1,0 +1,145 @@
+"""The KiCad instance the server attaches to or starts (KICAD_MCP_KICAD_INSTANCE)."""
+
+from __future__ import annotations
+
+import json
+import socket
+from pathlib import Path
+
+import pytest
+
+from kicad_mcp.instance import config_home
+from kicad_mcp.instance import manager as instance_manager
+from kicad_mcp.instance.manager import InstanceManager, clear_stale_locks
+
+
+def test_seeded_settings_skip_the_first_run_wizard_and_enable_the_api(tmp_path: Path) -> None:
+    template = tmp_path / "share" / "kicad" / "template"
+    template.mkdir(parents=True)
+    (template / "sym-lib-table").write_text("(sym_lib_table (version 7) (lib (name X)))\n")
+    (template / "fp-lib-table").write_text("(fp_lib_table (version 7))\n")
+    cli = tmp_path / "bin" / "kicad-cli"
+    cli.parent.mkdir()
+    cli.write_text("")
+    folder = config_home.seed(tmp_path / "cfg", "10.0.8", cli)
+    assert folder.name == "10.0"
+    common = json.loads((folder / "kicad_common.json").read_text())
+    assert common["api"]["enable_server"] is True
+    assert common["do_not_show_again"]["data_collection_prompt"] is True
+    assert "(name X)" in (folder / "sym-lib-table").read_text()
+    # KiCad 10 ships no design-block template; an empty table is what skips the wizard.
+    assert "(design_block_lib_table" in (folder / "design-block-lib-table").read_text()
+    assert config_home.api_enabled(tmp_path / "cfg", "10.0.8")
+
+
+def test_seeding_keeps_existing_settings_but_turns_the_api_back_on(tmp_path: Path) -> None:
+    folder = tmp_path / "cfg" / "10.99"
+    folder.mkdir(parents=True)
+    (folder / "kicad_common.json").write_text(
+        json.dumps({"api": {"enable_server": False}, "system": {"language": "German"}})
+    )
+    config_home.seed(tmp_path / "cfg", "10.99.0-nightly", None)
+    common = json.loads((folder / "kicad_common.json").read_text())
+    assert common["api"]["enable_server"] is True
+    assert common["system"]["language"] == "German"
+
+
+@pytest.mark.parametrize(("text", "folder"), [("10.0.8", "10.0"), ("11.0.1", "11.0"), ("", "10.0")])
+def test_settings_folder_follows_the_version(text: str, folder: str) -> None:
+    assert config_home.settings_version(text) == folder
+
+
+def test_stale_locks_from_this_host_are_removed_only_when_no_kicad_has_the_board(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "led.kicad_pcb"
+    board.write_text("(kicad_pcb)")
+    lock = tmp_path / "~led.kicad_pcb.lck"
+    other = tmp_path / "~led.kicad_pro.lck"
+    foreign = tmp_path / "~led.kicad_sch.lck"
+    host = socket.gethostname()
+    lock.write_text(json.dumps({"hostname": host, "username": "me"}))
+    other.write_text(json.dumps({"hostname": host, "username": "me"}))
+    foreign.write_text(json.dumps({"hostname": "someone-elses-machine", "username": "x"}))
+    assert clear_stale_locks(board, lambda _board: True) == []
+    assert lock.exists()
+    removed = clear_stale_locks(board, lambda _board: False)
+    assert sorted(removed) == ["~led.kicad_pcb.lck", "~led.kicad_pro.lck"]
+    assert foreign.exists()
+
+
+def test_attach_mode_never_starts_kicad_and_says_how(monkeypatch, tmp_path: Path) -> None:
+    board = tmp_path / "led.kicad_pcb"
+    board.write_text("(kicad_pcb)")
+    monkeypatch.delenv(instance_manager.INSTANCE_ENV, raising=False)
+    monkeypatch.setattr(instance_manager, "probe", lambda url: instance_manager.Probe(False))
+    started: list[object] = []
+    monkeypatch.setattr(InstanceManager, "_start", lambda *args: started.append(args))
+    status = InstanceManager().ensure(board)
+    assert status.case == "none" and not started
+    assert "KICAD_MCP_KICAD_INSTANCE=auto" in status.next_step
+
+
+def test_a_running_kicad_with_the_board_is_attached_not_started(
+    monkeypatch, tmp_path: Path
+) -> None:
+    board = tmp_path / "led.kicad_pcb"
+    board.write_text("(kicad_pcb)")
+    monkeypatch.setenv(instance_manager.INSTANCE_ENV, "auto")
+    monkeypatch.setattr(
+        instance_manager,
+        "probe",
+        lambda url: instance_manager.Probe(True, True, "10.0.8", (str(board),)),
+    )
+    status = InstanceManager().ensure(board)
+    assert status.case == "attached"
+    assert status.started_by_server is False
+
+
+def test_no_kicad_on_the_machine_says_where_to_get_it(monkeypatch, tmp_path: Path) -> None:
+    board = tmp_path / "led.kicad_pcb"
+    board.write_text("(kicad_pcb)")
+    monkeypatch.setenv(instance_manager.INSTANCE_ENV, "auto")
+    monkeypatch.setattr(instance_manager, "probe", lambda url: instance_manager.Probe(False))
+    monkeypatch.setattr(instance_manager, "_cli_candidates", lambda configured: [])
+    monkeypatch.setattr(instance_manager, "_pcbnew_for", lambda cli: None)
+    status = InstanceManager().ensure(board)
+    assert status.problem == "KiCad was not found on this machine."
+    assert "kicad.org/download" in status.next_step and "KICAD_CLI_PATH" in status.next_step
+
+
+def test_no_display_and_no_xvfb_says_what_to_install(monkeypatch, tmp_path: Path) -> None:
+    board = tmp_path / "led.kicad_pcb"
+    board.write_text("(kicad_pcb)")
+    cli = tmp_path / "kicad-cli"
+    cli.write_text("")
+    monkeypatch.setenv(instance_manager.INSTANCE_ENV, "auto")
+    monkeypatch.setenv(instance_manager.HOME_ENV, str(tmp_path / "home"))
+    monkeypatch.setattr(instance_manager, "probe", lambda url: instance_manager.Probe(False))
+    monkeypatch.setattr(instance_manager, "_cli_candidates", lambda configured: [cli])
+    monkeypatch.setattr(instance_manager, "_supports_api_server", lambda path: False)
+    monkeypatch.setattr(instance_manager, "_pcbnew_for", lambda path: tmp_path / "pcbnew")
+    monkeypatch.setattr(instance_manager, "_has_display", lambda: False)
+    monkeypatch.setattr(instance_manager.shutil, "which", lambda name: None)
+    status = InstanceManager().ensure(board)
+    assert "xvfb-run was not found" in status.problem
+    assert "api-server" in status.next_step
+
+
+def test_no_board_asks_for_a_project(tmp_path: Path) -> None:
+    status = InstanceManager().ensure(None)
+    assert status.problem.startswith("No board file")
+    assert "kicad_set_project" in status.next_step
+
+
+def test_status_tool_reports_the_case_and_what_to_do() -> None:
+    from mcp.server.mcpserver import MCPServer as FastMCP
+
+    from kicad_mcp.tools import kicad_instance
+
+    server = FastMCP("x")
+    kicad_instance.register(server)
+    tool = server._tool_manager.get_tool("kicad_session_status")
+    text = tool.fn()
+    assert text.startswith("KiCad instance:")
+    assert '"case":' in text

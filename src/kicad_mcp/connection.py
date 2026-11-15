@@ -50,8 +50,36 @@ def _connection_error(exc: KiCadMcpError) -> KiCadConnectionError:
     )
 
 
+def _ensure_instance() -> bool:
+    """With ``KICAD_MCP_KICAD_INSTANCE=auto``, attach to or start a KiCad for the board.
+
+    Returns whether a KiCad now answers, after pointing the connection at it.
+    """
+    from .instance import get_instance_manager  # noqa: PLC0415
+    from .instance.manager import _mode  # noqa: PLC0415
+
+    if _mode() != "auto":
+        return False
+    cfg = get_config()
+    status = get_instance_manager().ensure(cfg.pcb_file, cfg.kicad_cli)
+    if not status.socket:
+        raise KiCadConnectionError(f"{status.problem}\n{status.next_step}".strip())
+    cfg.kicad_socket_path = status.socket
+    reset_connection()
+    return True
+
+
 def get_kicad() -> KiCad:
     """Return a thread-safe KiCad IPC connection."""
+    try:
+        return _get_kicad()
+    except KiCadConnectionError:
+        if not _ensure_instance():
+            raise
+        return _get_kicad()
+
+
+def _get_kicad() -> KiCad:
     global _kicad
     _ = get_config()
     try:
@@ -64,7 +92,16 @@ def get_kicad() -> KiCad:
 
 
 def get_board() -> Board:
-    """Return the active board from KiCad."""
+    """Return the active board from KiCad, starting KiCad when the server may."""
+    try:
+        return _get_board()
+    except KiCadConnectionError:
+        if not _ensure_instance():
+            raise
+        return _get_board()
+
+
+def _get_board() -> Board:
     try:
         return cast(Board, _get_session().board())
     except KiCadConnectionError:

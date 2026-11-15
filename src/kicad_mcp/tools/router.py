@@ -136,6 +136,7 @@ TOOL_CATEGORIES: dict[str, ToolCategory] = {
         "description": "Project setup, server discovery, and quick help.",
         "tools": [
             "kicad_set_project",
+            "kicad_session_status",
             "kicad_get_project_info",
             "project_design_workflow",
             "project_set_design_intent",

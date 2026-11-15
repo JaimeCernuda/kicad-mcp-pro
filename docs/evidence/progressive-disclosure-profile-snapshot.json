@@ -3,7 +3,7 @@
     "build": {
       "callableTools": 24,
       "catalogCharacters": 9377,
-      "catalogReductionVsExpertPct": 95.9,
+      "catalogReductionVsExpertPct": 96.0,
       "declaredTools": 24,
       "estimatedCatalogTokens": 2345,
       "forbiddenToolExposures": 2,
@@ -49,7 +49,7 @@
     "default": {
       "callableTools": 25,
       "catalogCharacters": 9612,
-      "catalogReductionVsExpertPct": 95.8,
+      "catalogReductionVsExpertPct": 95.9,
       "declaredTools": 25,
       "estimatedCatalogTokens": 2403,
       "forbiddenToolExposures": 0,
@@ -94,11 +94,11 @@
       ]
     },
     "expert": {
-      "callableTools": 391,
-      "catalogCharacters": 231172,
+      "callableTools": 392,
+      "catalogCharacters": 231759,
       "catalogReductionVsExpertPct": 0.0,
-      "declaredTools": 391,
-      "estimatedCatalogTokens": 57793,
+      "declaredTools": 392,
+      "estimatedCatalogTokens": 57940,
       "forbiddenToolExposures": 8,
       "goldenCases": 65,
       "goldenCasesCovered": 55,
@@ -193,6 +193,7 @@
         "kicad_list_recent_projects",
         "kicad_list_tool_categories",
         "kicad_scan_directory",
+        "kicad_session_status",
         "kicad_set_project",
         "lib_assign_footprint",
         "lib_assign_lcsc_to_symbol",
@@ -555,7 +556,7 @@
     "review": {
       "callableTools": 25,
       "catalogCharacters": 9612,
-      "catalogReductionVsExpertPct": 95.8,
+      "catalogReductionVsExpertPct": 95.9,
       "declaredTools": 25,
       "estimatedCatalogTokens": 2403,
       "forbiddenToolExposures": 0,
