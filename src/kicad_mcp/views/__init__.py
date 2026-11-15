@@ -177,7 +177,8 @@ def register(mcp: FastMCP) -> None:
         """Open the bill of materials with stock, price, lifecycle, datasheets and key specs.
 
         From the view the person can see alternates, choose one, mark parts not fitted and
-        reprice at ``quantity`` boards.
+        reprice at ``quantity`` boards. A row the person selects highlights its footprints on
+        a board view only when the views share a selection, as in a workbench dashboard.
         """
         _use_project(project)
         rows = data.bom_data(quantity=quantity, sourcing=False)["rows"]
@@ -185,7 +186,13 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(meta=_meta("checks"))
     def view_checks(project: str = "", kind: str = "both") -> CallToolResult:
-        """Open DRC and ERC results grouped by rule (``kind``: drc, erc or both)."""
+        """Open DRC and ERC results grouped by rule (``kind``: drc, erc or both).
+
+        A violation the person selects reaches you as context with its position. It moves a
+        board view only when the two views share a selection, as in a workbench dashboard
+        that holds both; a board view in its own tab does not follow it, so show the place
+        with that view's ``focus`` (the violation's position) when you discuss it.
+        """
         _use_project(project)
         if kind not in ("drc", "erc", "both"):
             return CallToolResult(
