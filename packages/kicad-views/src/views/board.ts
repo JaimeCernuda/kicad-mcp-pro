@@ -31,6 +31,25 @@ export function padOnBoard(pad: { x: number; y: number }, at: { x: number; y: nu
     return { x: at.x + pad.x * Math.cos(a) + pad.y * Math.sin(a), y: at.y - pad.x * Math.sin(a) + pad.y * Math.cos(a) };
 }
 
+/** A footprint's box on the board from its pads (ecad-viewer's own footprint box is wrong
+ * for footprints drawn from pads only), with its origin when it has none. */
+export function footprintBox(fp: any): { x: number; y: number; w: number; h: number } | null {
+    const at = fp?.at?.position;
+    if (!at) return null;
+    const rotation = Number(fp.at?.rotation ?? 0);
+    const pads: any[] = fp.pads ?? [...(fp.items?.() ?? [])].filter((item: any) => item?.typeId === "Pad");
+    let [x1, y1, x2, y2] = [at.x, at.y, at.x, at.y];
+    for (const pad of pads) {
+        const local = pad?.at?.position;
+        if (!local) continue;
+        const centre = padOnBoard(local, at, rotation);
+        const r = Math.max(Number(pad.size?.x ?? 0), Number(pad.size?.y ?? 0)) / 2;
+        [x1, y1] = [Math.min(x1, centre.x - r), Math.min(y1, centre.y - r)];
+        [x2, y2] = [Math.max(x2, centre.x + r), Math.max(y2, centre.y + r)];
+    }
+    return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+
 function itemSelection(raw: any, viewer: AnyViewer): Selection | null {
     if (!raw) return null;
     const item = raw.item ?? raw;
@@ -248,10 +267,10 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
         overlay.setPointerCapture(event.pointerId);
         dragStart = { x: event.clientX, y: event.clientY, world: viewer.screenToWorld(event.clientX, event.clientY) };
         const fp = footprintBy(selection.reference!);
-        const box = fp?.bbox;
+        const box = footprintBox(fp);
         if (box) {
             const a = viewer.worldToScreen(box.x, box.y);
-            const b = viewer.worldToScreen(box.x2 ?? box.x + box.w, box.y2 ?? box.y + box.h);
+            const b = viewer.worldToScreen(box.x + box.w, box.y + box.h);
             const bounds = frame.body.getBoundingClientRect();
             Object.assign(ghost.style, {
                 left: `${Math.min(a.x, b.x) - bounds.left}px`,
@@ -397,9 +416,13 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
         if (target) {
             const fp = footprintBy(target);
             if (fp) {
-                const box = fp.bbox;
-                viewer.highlight_fp?.(fp);
-                if (box) viewer.viewport.camera.bbox = box.grow(Math.max(box.w, 2) * 2, Math.max(box.h, 2) * 2);
+                const box = footprintBox(fp);
+                const camera = viewer.viewport.camera;
+                if (box && camera?.bbox) {
+                    const margin = Math.max(3, Math.max(box.w, box.h) * 1.5);
+                    const BBox = camera.bbox.constructor;
+                    camera.bbox = new BBox(box.x - margin, box.y - margin, box.w + 2 * margin, box.h + 2 * margin);
+                }
                 viewer.draw();
                 select(itemSelection(fp, viewer));
                 return textResult(`Focused ${target}.`);
