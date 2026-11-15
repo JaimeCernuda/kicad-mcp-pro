@@ -241,6 +241,31 @@ def test_clean_tool_error_unwraps_sdk_v2_hidden_cause() -> None:
         assert _clean_tool_error(wrapped) == "invalid footprint"
 
 
+def test_a_wrapped_failure_keeps_its_cause_in_the_answer() -> None:
+    from kicad_mcp.server import _structured_tool_error
+
+    try:
+        try:
+            try:
+                raise ModuleNotFoundError("No module named 'kicad_sch_api'")
+            except ModuleNotFoundError as exc:
+                raise RuntimeError("Could not load schematic 'a.kicad_sch'.") from exc
+        except RuntimeError as exc:
+            raise RuntimeError("Error executing tool sch_get_symbols") from exc
+    except RuntimeError as wrapped:
+        text = _structured_tool_error(wrapped, tool_name="sch_get_symbols").content[0].text
+    assert "Could not load schematic 'a.kicad_sch'." in text
+    assert "Cause: ModuleNotFoundError: No module named 'kicad_sch_api'" in text
+    assert text.index("Cause:") < text.index("Hint:")
+
+
+def test_an_unwrapped_failure_has_no_cause_line() -> None:
+    from kicad_mcp.server import _structured_tool_error
+
+    text = _structured_tool_error(RuntimeError("Error executing tool x: bad input")).content[0].text
+    assert "Cause:" not in text
+
+
 def test_audit_log_records_keys_without_sensitive_values(monkeypatch) -> None:
     from kicad_mcp import server as server_module
 

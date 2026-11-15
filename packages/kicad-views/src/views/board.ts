@@ -108,6 +108,21 @@ function describe(selection: Selection | null): string {
     return parts.join(" ");
 }
 
+/** How long the board view waits for the 3D export (the server allows kicad-cli 180 s). */
+const GLB_TIMEOUT_MS = 240_000;
+
+function nextFrame(): Promise<void> {
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+}
+
+/** Decode base64 without a callback per character (a model is several megabytes). */
+export function base64Bytes(text: string): Uint8Array<ArrayBuffer> {
+    const binary = atob(text);
+    const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+
 export async function boardView(bridge: Bridge, root: HTMLElement, project: Record<string, unknown>): Promise<void> {
     const frame = new Frame(root, "Board");
     const host = h("div", { class: "kv-viewer" });
@@ -117,7 +132,12 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
     let viewer: AnyViewer = null;
     let selection: Selection | null = null;
     let moveMode = false;
-    let glbUrl: string | null = null;
+    // The 3D model: one export kept as bytes; each ecad-viewer element gets its own URL,
+    // released when the element goes (an edit replaces the element).
+    let glb: Blob | null = null;
+    let elementGlbUrl: string | null = null;
+    // Fit again when the view changes size, until the person moves the board themselves.
+    let autoFit = true;
     const buttons: Record<string, HTMLButtonElement> = {};
 
     const footprintBy = (reference: string): any =>
@@ -157,18 +177,22 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
         const saved = camera ? { center: camera.center.copy?.() ?? camera.center, zoom: camera.zoom } : null;
         const next = ecadElement("ecad-viewer", { style: "position:absolute;inset:0;height:auto;max-height:none;aspect-ratio:auto" });
         next.append(ecadElement("ecad-blob", { filename: data.board_name, content: data.text }));
-        if (glbUrl) next.append(ecadElement("ecad-3d-source", { src: glbUrl }));
+        const nextGlbUrl = glb ? URL.createObjectURL(glb) : null;
+        if (nextGlbUrl) next.append(ecadElement("ecad-3d-source", { src: nextGlbUrl }));
         host.append(next);
         const nextViewer = await waitViewer(next);
         element?.remove();
+        if (elementGlbUrl) URL.revokeObjectURL(elementGlbUrl);
         element = next;
+        elementGlbUrl = nextGlbUrl;
         viewer = nextViewer;
         if (saved && viewer.viewport?.camera) {
             viewer.viewport.camera.center = saved.center;
             viewer.viewport.camera.zoom = saved.zoom;
             viewer.draw();
         } else {
-            viewer.zoom_to_board?.();
+            await nextFrame();
+            fitBoard();
         }
         viewer.addEventListener("kicanvas:select", (event: any) => select(itemSelection(event.detail?.item, viewer)));
         shown = data.revision;
@@ -240,7 +264,7 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
             return typeof summary === "string" ? summary : textOf(result).split("\n")[0];
         }),
     );
-    const fit = button("Fit", () => viewer?.zoom_to_board?.());
+    const fit = button("Fit", () => fitBoard());
     frame.bar.append(
         buttons.move,
         buttons.rotate,
@@ -384,6 +408,29 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
         },
     });
 
+    /** Frame the whole board outline. ecad-viewer's zoom_to_board only sets the camera,
+     * so the board is drawn again here. */
+    function fitBoard(): void {
+        if (!viewer) return;
+        viewer.zoom_to_board?.();
+        viewer.draw?.();
+        autoFit = true;
+    }
+
+    // The view settles its size after the board is drawn (the host's display mode, a
+    // fullscreen request): fit again then, unless the person has moved the board.
+    for (const kind of ["pointerdown", "wheel", "keydown"]) {
+        host.addEventListener(kind, () => (autoFit = false), { capture: true, passive: true });
+    }
+    let lastSize = "";
+    new ResizeObserver(() => {
+        const box = host.getBoundingClientRect();
+        const size = `${Math.round(box.width)}x${Math.round(box.height)}`;
+        if (size === lastSize) return;
+        lastSize = size;
+        if (autoFit) requestAnimationFrame(() => fitBoard());
+    }).observe(host);
+
     async function capture(rect?: Rect): Promise<string> {
         if (!viewer?.canvas) throw new Error("The board is not drawn yet.");
         viewer.draw();
@@ -456,17 +503,42 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
     if (Array.isArray(project.layers) && project.layers.length) {
         await bridge.tools.get("set_layers")!.run({ layers: project.layers });
     }
-    // The 3D model is exported once and kept for the 3D tab (KQ15).
-    void bridge
-        .callData<{ glb_base64: string }>("view_data_glb", project)
-        .then((data) => {
-            const bytes = Uint8Array.from(atob(data.glb_base64), (c) => c.charCodeAt(0));
-            glbUrl = URL.createObjectURL(new Blob([bytes], { type: "model/gltf-binary" }));
+    // The 3D model for the 3D tab (KQ15): exported once, and again after the board
+    // changes. The tab reads its model when it opens, so a model that arrives later is
+    // announced to it (3d:url:ready); a model that fails to load says why.
+    window.addEventListener("3d:viewer:failed", (event) =>
+        frame.say(`The 3D model could not be shown: ${(event as CustomEvent<string>).detail}`, "error"),
+    );
+    let glbBusy = false;
+    let glbAgain = false;
+    const refreshGlb = async (): Promise<void> => {
+        if (glbBusy) {
+            glbAgain = true;
+            return;
+        }
+        glbBusy = true;
+        try {
+            const data = await bridge.callData<{ glb_base64: string }>("view_data_glb", project, GLB_TIMEOUT_MS);
+            glb = new Blob([base64Bytes(data.glb_base64)], { type: "model/gltf-binary" });
+            const url = URL.createObjectURL(glb);
+            if (elementGlbUrl) URL.revokeObjectURL(elementGlbUrl);
+            elementGlbUrl = url;
             const ecad = element as any;
-            if (ecad?.project) ecad.project.ov_3d_url = glbUrl;
-        })
-        .catch((error) => frame.say(`3D is not available: ${error instanceof Error ? error.message : String(error)}`));
+            if (ecad?.project) ecad.project.ov_3d_url = url;
+            window.dispatchEvent(new CustomEvent("3d:url:ready", { detail: url }));
+        } catch (error) {
+            frame.say(`3D is not available: ${error instanceof Error ? error.message : String(error)}`, "error");
+        } finally {
+            glbBusy = false;
+            if (glbAgain) {
+                glbAgain = false;
+                void refreshGlb();
+            }
+        }
+    };
+    void refreshGlb();
     followRevisions(bridge, project, () => shown, async () => {
         await load(true);
+        void refreshGlb();
     });
 }

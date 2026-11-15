@@ -22,6 +22,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer as FastMCP
 from mcp.server.mcpserver.resources.types import TextResource
+from mcp.types import CallToolResult, TextContent
 
 from ..config import get_config
 from . import data
@@ -116,14 +117,29 @@ def register(mcp: FastMCP) -> None:
 
     # ------------------------------------------------------------ opening tools
 
-    def opened(view: str, extra: str = "") -> str:
+    def opened(view: str, extra: str = "", **arguments: object) -> CallToolResult:
+        """The opening answer: text for the model, and the project for the view.
+
+        ``structuredContent.arguments`` carries the project the view was opened on, so the
+        view's data calls name it even when the server restarted in between.
+        """
         cfg = get_config()
         name = Path(cfg.project_dir).name if cfg.project_dir is not None else "the project"
         how = "in a tab" if enabled else "as text only (this server has no views enabled)"
-        return f"Opened the {view} view of {name} {how}.{(' ' + extra) if extra else ''}"
+        text = f"Opened the {view} view of {name} {how}.{(' ' + extra) if extra else ''}"
+        if cfg.restored_project is not None and cfg.restored_project == cfg.project_dir:
+            text += " (The project was set again from this folder's last kicad_set_project.)"
+        if cfg.project_dir is not None:
+            arguments = {"project": str(cfg.project_dir), **arguments}
+        return CallToolResult(
+            content=[TextContent(type="text", text=text)],
+            structuredContent={"text": text, "arguments": arguments},
+        )
 
     @mcp.tool(meta=_meta("board"))
-    def view_board(project: str = "", layers: list[str] | None = None, focus: str = "") -> str:
+    def view_board(
+        project: str = "", layers: list[str] | None = None, focus: str = ""
+    ) -> CallToolResult:
         """Open the board in a view the person can see and work in: layers, nets, 2D and 3D.
 
         ``focus`` centres a reference (U1), a net (GND) or nothing in the new view. Each call
@@ -140,19 +156,17 @@ def register(mcp: FastMCP) -> None:
             f"{counts['footprints']} footprints, {counts['nets']} nets, {counts['tracks']} track "
             f"segments; board from the {origin}."
         )
-        _ = layers, focus
-        return opened("board", extra)
+        return opened("board", extra, layers=layers or [], focus=focus)
 
     @mcp.tool(meta=_meta("schematic"))
-    def view_schematic(project: str = "", sheet: str = "", focus: str = "") -> str:
+    def view_schematic(project: str = "", sheet: str = "", focus: str = "") -> CallToolResult:
         """Open the schematic in a view: every sheet, symbol selection and "not fitted"."""
         _use_project(project)
         sheets = data.schematic_data()["files"]
-        _ = sheet, focus
-        return opened("schematic", f"{len(sheets)} sheet files.")
+        return opened("schematic", f"{len(sheets)} sheet files.", sheet=sheet, focus=focus)
 
     @mcp.tool(meta=_meta("bom"))
-    def view_bom(project: str = "", quantity: int = 1) -> str:
+    def view_bom(project: str = "", quantity: int = 1) -> CallToolResult:
         """Open the bill of materials with stock, price, lifecycle, datasheets and key specs.
 
         From the view the person can see alternates, choose one, mark parts not fitted and
@@ -160,20 +174,25 @@ def register(mcp: FastMCP) -> None:
         """
         _use_project(project)
         rows = data.bom_data(quantity=quantity, sourcing=False)["rows"]
-        return opened("bom", f"{len(rows)} rows.")
+        return opened("bom", f"{len(rows)} rows.", quantity=quantity)
 
     @mcp.tool(meta=_meta("checks"))
-    def view_checks(project: str = "", kind: str = "both") -> str:
+    def view_checks(project: str = "", kind: str = "both") -> CallToolResult:
         """Open DRC and ERC results grouped by rule (``kind``: drc, erc or both)."""
         _use_project(project)
         if kind not in ("drc", "erc", "both"):
-            return "View failed: kind must be drc, erc or both."
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text="View failed: kind must be drc, erc or both.")
+                ],
+                isError=True,
+            )
         result = data.checks_data(kind)
         summary = "; ".join(f"{name.upper()} {text}" for name, text in result["summaries"].items())
-        return opened("checks", summary)
+        return opened("checks", summary, kind=kind)
 
     @mcp.tool(meta=_meta("stackup"))
-    def view_stackup(project: str = "") -> str:
+    def view_stackup(project: str = "") -> CallToolResult:
         """Open the board's stackup and net classes; the person can edit thicknesses there."""
         _use_project(project)
         layers = data.stackup_data()["layers"]
@@ -187,7 +206,7 @@ def register(mcp: FastMCP) -> None:
         candidates: list[str] | None = None,
         package: str = "",
         symbol: str = "",
-    ) -> str:
+    ) -> CallToolResult:
         """Open a parts table with specs, filters, column choice and side-by-side compare.
 
         Give ``category`` (and ``filters`` as for lib_search_parametric) to search, or your
@@ -217,10 +236,22 @@ def register(mcp: FastMCP) -> None:
         return _with_revision(data.schematic_data)
 
     @mcp.tool(meta=_meta("board", app_only=True))
-    def view_data_glb(project: str = "") -> dict[str, Any]:
+    def view_data_glb(project: str = "") -> CallToolResult:
         """The board's 3D model (GLB, base64) for the board view's 3D tab."""
         _use_project(project)
-        return _with_revision(data.glb_data)
+        payload = _with_revision(data.glb_data)
+        # The model goes once, as structured content: a text copy would double a result
+        # that is already several megabytes.
+        size = payload.get("size", 0)
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text",
+                    text=f"3D model of the board, {size} bytes, revision {payload['revision']}.",
+                )
+            ],
+            structuredContent=payload,
+        )
 
     @mcp.tool(meta=_meta("bom", app_only=True))
     def view_data_bom(project: str = "", quantity: int = 1) -> dict[str, Any]:

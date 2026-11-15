@@ -3,6 +3,7 @@ import { css, html } from "../base/web-components";
 import { KCUIElement } from "../kc-ui/element";
 import type { Project } from "../kicanvas/project";
 import {
+    Online3dViewerFailed,
     Online3dViewerLoaded,
     Online3dViewerUrlReady,
 } from "../viewers/base/events";
@@ -34,20 +35,31 @@ export class Online3dViewer extends KCUIElement {
         `,
     ];
 
+    // kicad-views: the listener is kept so a viewer that left the page stops loading
+    // models (each board edit replaces the whole ecad-viewer element).
+    _on_url_ready = (evt: Online3dViewerUrlReady) => {
+        if (this._viewer_container) {
+            this._load_src(evt.detail);
+        } else {
+            this._pending_3d_url = evt.detail;
+        }
+    };
+
     constructor() {
         super();
 
         window.addEventListener(
             Online3dViewerUrlReady.type,
-            (evt: Online3dViewerUrlReady) => {
-                console.log("[3DViewer] Online3dViewerUrlReady received, viewer_container ready:", !!this._viewer_container);
-                if (this._viewer_container) {
-                    this._load_src(evt.detail);
-                } else {
-                    this._pending_3d_url = evt.detail;
-                }
-            },
+            this._on_url_ready as EventListener,
         );
+    }
+
+    override disconnectedCallback() {
+        window.removeEventListener(
+            Online3dViewerUrlReady.type,
+            this._on_url_ready as EventListener,
+        );
+        super.disconnectedCallback();
     }
 
     override connectedCallback() {
@@ -94,9 +106,17 @@ export class Online3dViewer extends KCUIElement {
             return;
         }
         this._loaded = true;
-        console.log("[3DViewer] _load_src loading model from URL");
-        await this._viewer_container.load(url, new Map());
-        URL.revokeObjectURL(url);
+        // kicad-views: a model that fails to load says so (Online3dViewerFailed) and can be
+        // tried again; the URL belongs to whoever made it, so it is not revoked here.
+        try {
+            await this._viewer_container.load(url, new Map());
+        } catch (error) {
+            this._loaded = false;
+            window.dispatchEvent(
+                new Online3dViewerFailed(error instanceof Error ? error.message : String(error)),
+            );
+            return;
+        }
         this.project.dispatchEvent(new Online3dViewerLoaded());
         this.on_show();
     }

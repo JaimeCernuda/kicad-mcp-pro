@@ -182,6 +182,15 @@ export class Online3dViewerLoaded extends CustomEvent<void> {
     }
 }
 
+// kicad-views: the 3D model could not be loaded; ``detail`` says why.
+export class Online3dViewerFailed extends CustomEvent<string> {
+    static readonly type = "3d:viewer:failed";
+
+    constructor(reason: string) {
+        super(Online3dViewerFailed.type, { detail: reason });
+    }
+}
+
 export class SchViewerLoaded extends CustomEvent<void> {
     static readonly type = "sch:viewer:loaded";
 

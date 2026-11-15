@@ -584,22 +584,59 @@ def _structured_tool_error_from_message(
     message: str,
     *,
     tool_name: str = "",
+    cause: str = "",
 ) -> mcp_types.CallToolResult:
     code = _tool_error_code(message, tool_name=tool_name)
     hint = _tool_error_hint(message)
+    because = f"\nCause: {cause}" if cause else ""
     return mcp_types.CallToolResult(
         isError=True,
         content=[
             mcp_types.TextContent(
                 type="text",
-                text=f"{code}: {message}\nHint: {hint}",
+                text=f"{code}: {message}{because}\nHint: {hint}",
             )
         ],
     )
 
 
+_MAX_CAUSES = 3
+_MAX_CAUSE_CHARS = 240
+
+
+def _error_causes(exc: BaseException, message: str) -> str:
+    """The exceptions under the one whose message is shown, as one bounded line.
+
+    A tool that wraps a failure (``raise RuntimeError("Could not load ...") from exc``)
+    would otherwise hide what actually went wrong; only the server log had it.
+    """
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(current)
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
+    shown = next((i for i, item in enumerate(chain) if str(item) == message), 0)
+    parts: list[str] = []
+    for item in chain[shown + 1 :]:
+        text = str(item).strip()
+        if text == message or text.startswith("Error executing tool "):
+            continue
+        name = type(item).__name__
+        parts.append(f"{name}: {text[:_MAX_CAUSE_CHARS]}" if text else name)
+        if len(parts) == _MAX_CAUSES:
+            break
+    return " <- ".join(parts)
+
+
 def _structured_tool_error(exc: BaseException, *, tool_name: str = "") -> mcp_types.CallToolResult:
-    return _structured_tool_error_from_message(_clean_tool_error(exc), tool_name=tool_name)
+    message = _clean_tool_error(exc)
+    return _structured_tool_error_from_message(
+        message, tool_name=tool_name, cause=_error_causes(exc, message)
+    )
 
 
 def _result_text(result: object) -> str:

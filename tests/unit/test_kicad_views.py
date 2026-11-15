@@ -162,9 +162,53 @@ def test_view_board_answers_in_text_for_a_host_without_apps(
     get_config().apply_project(sample_project)
     monkeypatch.setattr(data, "live_board_text", lambda: None)
     server = _server(monkeypatch, enabled=False)
-    text = _tools(server)["view_board"].fn()
+    result = _tools(server)["view_board"].fn()
+    text = result.content[0].text
     assert text.startswith("Opened the board view of project as text only")
     assert "board from the board file" in text
+    # The view's data calls name the project even if the server restarts in between.
+    assert result.structured_content["arguments"]["project"] == str(sample_project.resolve())
+
+
+def test_a_reopened_view_finds_the_project_after_a_restart(
+    sample_project: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from kicad_mcp import config
+
+    monkeypatch.chdir(tmp_path)
+    config.get_config().apply_project(sample_project)  # what kicad_set_project does
+    monkeypatch.delenv("KICAD_MCP_PROJECT_DIR")  # the host names no project
+    config.reset_config()  # the host restarted the server
+    monkeypatch.setattr(data, "live_board_text", lambda: None)
+    server = _server(monkeypatch, enabled=True)
+    result = _tools(server)["view_board"].fn()  # the saved opening call, replayed
+    assert config.get_config().project_dir == sample_project.resolve()
+    assert "set again from this folder's last kicad_set_project" in result.content[0].text
+
+
+def test_a_gone_project_is_not_restored(
+    sample_project: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import shutil
+
+    from kicad_mcp import config
+
+    copy = tmp_path / "copy"
+    shutil.copytree(sample_project, copy)
+    monkeypatch.chdir(tmp_path)
+    config.get_config().apply_project(copy)
+    shutil.rmtree(copy)
+    monkeypatch.delenv("KICAD_MCP_PROJECT_DIR")
+    config.reset_config()
+    assert config.get_config().restored_project is None
+
+
+def test_the_3d_model_is_sent_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(data, "glb_data", lambda: {"glb_base64": "QUJD", "size": 3})
+    server = _server(monkeypatch, enabled=True)
+    result = _tools(server)["view_data_glb"].fn()
+    assert result.structured_content["glb_base64"] == "QUJD"
+    assert "QUJD" not in result.content[0].text
 
 
 def test_board_summary_counts() -> None:
