@@ -1,7 +1,7 @@
 // The board view (KV10): ecad-viewer draws the board; every operation is a server tool.
 
 import { textOf, textResult, type Bridge, type ToolResult } from "../bridge";
-import { button, dataUrlToBase64, ecadElement, followRevisions, Frame, h } from "../ui";
+import { button, dataUrlToBase64, ecadElement, followRevisions, Frame, h, SELECT_SCHEMA, sharedTarget } from "../ui";
 import { regionOnBoard, type Rect } from "./region";
 
 interface BoardData {
@@ -290,6 +290,23 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
             },
         },
         run: async (args) => focus(args),
+    });
+    bridge.tools.set("select", {
+        name: "select",
+        description: "Show on the board what another view selected: footprints by reference, or a point.",
+        inputSchema: SELECT_SCHEMA,
+        run: async (args) => {
+            const target = sharedTarget(args.selection);
+            const first = target.references.find((ref) => footprintBy(ref));
+            if (first) return focus({ target: first });
+            if (target.position_mm) {
+                viewer.viewport.camera.center.set?.(target.position_mm.x, target.position_mm.y);
+                viewer.viewport.camera.zoom = Math.max(viewer.viewport.camera.zoom, 8);
+                viewer.draw();
+                return textResult(`Centred on (${target.position_mm.x}, ${target.position_mm.y}) mm.`);
+            }
+            return textResult("Nothing on the board matches that selection.");
+        },
     });
     bridge.tools.set("set_layers", {
         name: "set_layers",

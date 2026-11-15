@@ -1,7 +1,7 @@
 // The BOM view (KV12): rows with sourcing and key specs; every operation is a server tool.
 
 import { textOf, textResult, type Bridge } from "../bridge";
-import { button, followRevisions, Frame, h } from "../ui";
+import { button, followRevisions, Frame, h, SELECT_SCHEMA, sharedTarget } from "../ui";
 
 export interface SpecCell {
     name: string;
@@ -199,6 +199,20 @@ export async function bomView(bridge: Bridge, root: HTMLElement, project: Record
             showActions();
             table.querySelector('tr[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
             return textResult(`Selected ${selectedRows().length} BOM rows.`);
+        },
+    });
+    bridge.tools.set("select", {
+        name: "select",
+        description: "Select the BOM rows of the references another view selected.",
+        inputSchema: SELECT_SCHEMA,
+        run: async (args) => {
+            const refs = sharedTarget(args.selection).references;
+            if (!refs.length) return textResult("That selection names no part of the BOM.");
+            selected = new Set(refs);
+            render();
+            showActions();
+            table.querySelector('tr[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+            return textResult(`Selected the rows of ${refs.join(", ")}.`);
         },
     });
     bridge.toolsChanged();

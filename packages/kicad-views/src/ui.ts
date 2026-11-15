@@ -174,3 +174,39 @@ export function ecadElement(tag: string, attrs: Record<string, string> = {}): HT
     for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
     return document.adoptNode(node) as HTMLElement;
 }
+
+/** What a shared selection (the workbench's /pcb/selection) names, from whichever view. */
+export interface SharedTarget {
+    references: string[];
+    position_mm?: { x: number; y: number };
+    part?: string;
+}
+
+export function sharedTarget(selection: unknown): SharedTarget {
+    const out: SharedTarget = { references: [] };
+    if (!selection || typeof selection !== "object") return out;
+    const sel = selection as Record<string, unknown>;
+    const refs = new Set<string>();
+    const add = (value: unknown) => {
+        if (typeof value === "string" && value) refs.add(value.split(".")[0]!);
+    };
+    add(sel.reference);
+    if (Array.isArray(sel.references)) sel.references.forEach(add);
+    const where = sel.position_mm as { x?: unknown; y?: unknown } | undefined;
+    if (where && typeof where.x === "number" && typeof where.y === "number") out.position_mm = { x: where.x, y: where.y };
+    const part = sel.part as Record<string, unknown> | undefined;
+    if (part && typeof part === "object") out.part = String(part.lcsc || part.mpn || "");
+    out.references = [...refs];
+    return out;
+}
+
+export const SELECT_SCHEMA = {
+    type: "object",
+    properties: {
+        selection: {
+            type: "object",
+            description: "A selection another view reported (references, a position or a part).",
+        },
+    },
+    required: ["selection"],
+};

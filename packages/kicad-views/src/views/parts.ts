@@ -2,7 +2,7 @@
 // Search is lib_search_parametric, compare lib_compare_parts, pick lib_bind_part_to_symbol.
 
 import { textOf, textResult, type Bridge } from "../bridge";
-import { button, Frame, h } from "../ui";
+import { button, Frame, h, SELECT_SCHEMA, sharedTarget } from "../ui";
 import type { SpecCell } from "./bom";
 
 interface PartRow {
@@ -195,6 +195,20 @@ export async function partsView(bridge: Bridge, root: HTMLElement, project: Reco
             renderTable();
             report();
             return textResult("Selected.");
+        },
+    });
+    bridge.tools.set("select", {
+        name: "select",
+        description: "Select the part another view selected (by MPN or LCSC code).",
+        inputSchema: SELECT_SCHEMA,
+        run: async (args) => {
+            const part = sharedTarget(args.selection).part;
+            const rows = rowsBy();
+            const k = part ? [...rows.keys()].find((key) => key === part || rows.get(key)?.mpn === part) : undefined;
+            if (!k) return textResult("That selection names no part in this table.");
+            focusRow = k;
+            renderTable();
+            return textResult(`Selected ${part}.`);
         },
     });
     bridge.toolsChanged();

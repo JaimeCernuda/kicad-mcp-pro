@@ -1,7 +1,7 @@
 // The schematic view (KV11): ecad-viewer draws every sheet; "not fitted" is sch_set_dnp.
 
 import { textOf, textResult, type Bridge } from "../bridge";
-import { button, dataUrlToBase64, ecadElement, followRevisions, Frame, h } from "../ui";
+import { button, dataUrlToBase64, ecadElement, followRevisions, Frame, h, SELECT_SCHEMA, sharedTarget } from "../ui";
 import { regionOnSchematic, type Rect } from "./region";
 
 interface SchematicData {
@@ -94,6 +94,17 @@ export async function schematicView(bridge: Bridge, root: HTMLElement, project: 
         run: async (args) => {
             focus(String(args.target));
             return textResult(`Focused ${String(args.target)} in the schematic.`);
+        },
+    });
+    bridge.tools.set("select", {
+        name: "select",
+        description: "Show the symbol another view selected.",
+        inputSchema: SELECT_SCHEMA,
+        run: async (args) => {
+            const ref = sharedTarget(args.selection).references[0];
+            if (!ref) return textResult("That selection names no symbol.");
+            focus(ref);
+            return textResult(`Focused ${ref}.`);
         },
     });
     bridge.tools.set("capture", {
