@@ -53,7 +53,7 @@ export async function schematicView(bridge: Bridge, root: HTMLElement, project: 
     };
 
     const waitViewer = (target: any) =>
-        waitForViewer(() => (target?.schematic_viewer?.schematic ? target.schematic_viewer : undefined), "schematic", frame);
+        waitForViewer(() => (target?.schematic_viewer?.schematic ? target.schematic_viewer : undefined), "schematic", frame, target);
 
     const load = async () => {
         const data = await bridge.callData<SchematicData>("view_data_schematic", project);

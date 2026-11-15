@@ -1,8 +1,8 @@
 """Whether a KiCad board or schematic file is complete enough to open.
 
 A file cut short (a crash mid-save, a partial copy) still starts with its header, so
-KiCad's editor opens a dialog nobody can see on a virtual display and the server would
-wait out its whole start timeout, and ecad-viewer reads it as an empty board. Checking
+KiCad's editor opens a dialog nobody can see on a virtual display and never answers the
+server, and ecad-viewer reads it as an empty board. Checking
 first lets the answer say what is wrong with the file instead.
 """
 

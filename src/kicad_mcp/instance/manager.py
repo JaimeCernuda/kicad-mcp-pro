@@ -21,16 +21,18 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+import structlog
+
 from . import config_home, processes
 from .board_file import file_problem
+
+logger = structlog.get_logger(__name__)
 
 #: ``attach`` (the default): only connect to a KiCad the user started.
 #: ``auto``: attach, or start KiCad when none serves the board.
 INSTANCE_ENV = "KICAD_MCP_KICAD_INSTANCE"
 #: Where the server keeps its private KiCad settings and sockets.
 HOME_ENV = "KICAD_MCP_INSTANCE_HOME"
-#: Seconds to wait for a started KiCad to answer.
-START_TIMEOUT_ENV = "KICAD_MCP_INSTANCE_START_TIMEOUT"
 
 ATTACHED = "attached"
 HEADLESS = "headless"
@@ -93,13 +95,6 @@ def _user() -> str:
         return getpass.getuser()
     except Exception:  # noqa: BLE001 - no login name (a container without passwd entry)
         return str(os.getuid()) if hasattr(os, "getuid") else "user"
-
-
-def _start_timeout() -> float:
-    try:
-        return max(5.0, float(os.environ.get(START_TIMEOUT_ENV, "90")))
-    except ValueError:
-        return 90.0
 
 
 def default_socket() -> str:
@@ -517,9 +512,11 @@ class InstanceManager:
         _record_started(home, process.pid)
         self._watcher = _watch(process.pid)
         status.pid, status.started_by_server = process.pid, True
-        deadline = time.monotonic() + _start_timeout()
-        last = ""
-        while time.monotonic() < deadline:
+        # Wait as long as KiCad is starting: it either answers or exits (a dialog nobody
+        # sees is caught before the start, board_file). The wait is logged as it goes.
+        started_at = time.monotonic()
+        said = 0.0
+        while True:
             if process.poll() is not None:
                 status.case = NONE
                 status.problem = f"KiCad exited with code {process.returncode} while starting."
@@ -531,14 +528,16 @@ class InstanceManager:
                 status.socket = socket_url
                 status.version = found.version or version
                 return status
-            last = found.error or last
+            waited = time.monotonic() - started_at
+            if waited - said >= 10:
+                said = waited
+                logger.info(
+                    "kicad_instance_still_starting",
+                    seconds=round(waited),
+                    socket=socket_url,
+                    last_error=found.error,
+                )
             time.sleep(1.0)
-        status.problem = f"KiCad started but did not answer on {socket_url} in time ({last})."
-        status.next_step = (
-            f"Read {log}. A dialog may be open in KiCad's window; {START_TIMEOUT_ENV} sets "
-            "how long the server waits."
-        )
-        return status
 
     def stop(self) -> None:
         """Stop the KiCad this server started; never one it attached to."""

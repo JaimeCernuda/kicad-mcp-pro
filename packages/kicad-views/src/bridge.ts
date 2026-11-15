@@ -8,8 +8,8 @@
 
 export const PROTOCOL = "2026-01-26";
 
-/** How long a view waits for one data call before it says so. */
-export const DATA_TIMEOUT_MS = 120_000;
+/** After this long a view says it is still waiting (it never gives up on its own). */
+export const SAY_WAITING_AFTER_MS = 3_000;
 
 export interface ToolContent {
     type: string;
@@ -60,27 +60,18 @@ export class Bridge {
         window.parent.postMessage({ jsonrpc: "2.0", ...message }, "*");
     }
 
-    /** Send a request to the host; with ``timeoutMs``, give up (and say so) after that long. */
-    request<T = unknown>(method: string, params: Record<string, unknown> = {}, timeoutMs = 0): Promise<T> {
+    /**
+     * Shown while a data call is unanswered: called every second after
+     * SAY_WAITING_AFTER_MS with the seconds waited so far. The view sets it to its status line.
+     */
+    waiting: ((seconds: number) => void) | null = null;
+
+    /** Send a request to the host and wait for its answer, however long it takes. */
+    request<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
         const id = this.#next++;
         this.#send({ id, method, params });
         return new Promise<T>((resolve, reject) => {
-            let timer = 0;
-            const settle = (done: () => void) => {
-                if (timer) window.clearTimeout(timer);
-                done();
-            };
-            this.#pending.set(id, {
-                resolve: (value) => settle(() => resolve(value as T)),
-                reject: (reason) => settle(() => reject(reason)),
-            });
-            if (timeoutMs > 0) {
-                timer = window.setTimeout(() => {
-                    this.#pending.delete(id);
-                    const what = typeof params.name === "string" ? params.name : method;
-                    reject(new Error(`No answer from ${what} after ${Math.round(timeoutMs / 1000)} s.`));
-                }, timeoutMs);
-            }
+            this.#pending.set(id, { resolve: (value) => resolve(value as T), reject });
         });
     }
 
@@ -89,21 +80,27 @@ export class Bridge {
     }
 
     /** Call a server tool through the host. */
-    async callTool(name: string, args: Record<string, unknown> = {}, timeoutMs = 0): Promise<ToolResult> {
-        return this.request<ToolResult>("tools/call", { name, arguments: args }, timeoutMs);
+    async callTool(name: string, args: Record<string, unknown> = {}): Promise<ToolResult> {
+        return this.request<ToolResult>("tools/call", { name, arguments: args });
     }
 
     /**
-     * Call a server tool and return its structured content, or throw with its text. A
-     * view's data call that gets no answer within ``timeoutMs`` fails with a message
-     * instead of leaving the view waiting.
+     * Call a server tool and return its structured content, or throw with its text. The
+     * call is waited for as long as it takes (KiCad may be starting); while it is
+     * unanswered the view says how long it has waited (``waiting``).
      */
-    async callData<T = Record<string, unknown>>(
-        name: string,
-        args: Record<string, unknown> = {},
-        timeoutMs = DATA_TIMEOUT_MS,
-    ): Promise<T> {
-        const result = await this.callTool(name, args, timeoutMs);
+    async callData<T = Record<string, unknown>>(name: string, args: Record<string, unknown> = {}): Promise<T> {
+        const started = Date.now();
+        const ticker = window.setInterval(() => {
+            const waited = Date.now() - started;
+            if (waited >= SAY_WAITING_AFTER_MS) this.waiting?.(Math.floor(waited / 1000));
+        }, 1000);
+        let result: ToolResult;
+        try {
+            result = await this.callTool(name, args);
+        } finally {
+            window.clearInterval(ticker);
+        }
         const text = textOf(result);
         if (result.isError) throw new Error(text || `${name} failed`);
         if (result.structuredContent && typeof result.structuredContent === "object") {

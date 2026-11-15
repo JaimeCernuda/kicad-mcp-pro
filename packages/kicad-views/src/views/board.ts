@@ -109,9 +109,6 @@ function describe(selection: Selection | null): string {
     return parts.join(" ");
 }
 
-/** How long the board view waits for the 3D export (the server allows kicad-cli 180 s). */
-const GLB_TIMEOUT_MS = 240_000;
-
 /** The first element named ``tag`` under ``root``, looking inside shadow roots. */
 function deepFind(root: Element | ShadowRoot | null, tag: string): Element | null {
     if (!root) return null;
@@ -193,7 +190,7 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
     };
 
     const waitViewer = (target: any): Promise<AnyViewer> =>
-        waitForViewer(() => (target?.board_viewer?.board ? target.board_viewer : undefined), "board", frame);
+        waitForViewer(() => (target?.board_viewer?.board ? target.board_viewer : undefined), "board", frame, target);
 
     const load = async (keepCamera: boolean) => {
         const data = await bridge.callData<BoardData>("view_data_board", project);
@@ -596,7 +593,7 @@ export async function boardView(bridge: Bridge, root: HTMLElement, project: Reco
         }
         glbBusy = true;
         try {
-            const data = await bridge.callData<{ glb_base64: string }>("view_data_glb", project, GLB_TIMEOUT_MS);
+            const data = await bridge.callData<{ glb_base64: string }>("view_data_glb", project);
             glb = base64Bytes(data.glb_base64).buffer;
             const url = modelUrl(glb);
             releaseModel(elementGlbUrl);

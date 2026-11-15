@@ -129,7 +129,7 @@ def glb_data() -> dict[str, Any]:
             str(source),
         ]
         result = subprocess.run(  # noqa: S603  # nosec B603
-            argv, capture_output=True, text=True, timeout=180, check=False
+            argv, capture_output=True, text=True, check=False
         )
         if result.returncode != 0 or not out.is_file():
             detail = (result.stderr or result.stdout).strip()[:400]
