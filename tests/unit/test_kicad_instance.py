@@ -234,3 +234,21 @@ def test_a_kicad_left_by_a_killed_server_is_stopped_on_the_next_start(tmp_path: 
             if proc.poll() is None:
                 proc.kill()
                 proc.wait()
+
+
+def test_a_development_build_is_used_only_when_named(monkeypatch, tmp_path: Path) -> None:
+    from kicad_mcp.instance import manager
+
+    stable, nightly = tmp_path / "kicad-cli", tmp_path / "kicad-cli-nightly"
+    for cli in (stable, nightly):
+        cli.write_text("")
+    versions = {stable: "10.0.8", nightly: "10.99.0"}
+    monkeypatch.setattr(manager, "_version", lambda cli: versions.get(cli, "10.99.0"))
+    monkeypatch.delenv("KICAD_CLI_PATH", raising=False)
+    monkeypatch.delenv("KICAD_MCP_KICAD_CLI", raising=False)
+    monkeypatch.setattr(manager.shutil, "which", lambda name: str(stable))
+    assert manager._cli_candidates(None) == [stable]
+    monkeypatch.setattr(manager.shutil, "which", lambda name: str(nightly))
+    assert manager._cli_candidates(None) == []  # only a nightly: not picked unasked
+    monkeypatch.setenv("KICAD_CLI_PATH", str(nightly))
+    assert manager._cli_candidates(nightly) == [nightly]  # named: used

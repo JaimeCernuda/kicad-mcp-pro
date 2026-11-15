@@ -170,17 +170,29 @@ def _has_display() -> bool:
 
 
 def _cli_candidates(configured: Path | None) -> list[Path]:
-    """The CLIs to try: only the one the user named, else every one on ``PATH``."""
-    names = ["kicad-cli", "kicad-cli-nightly"]
+    """The CLIs to try: only the one the user named, else the stable ones on ``PATH``.
+
+    A development build (``kicad-cli-nightly``, or a version whose minor is 99) is used only
+    when the user names it: someone with a nightly installed beside a release gets the
+    release, never a nightly they did not choose.
+    """
     found: list[Path] = []
     if configured is not None and configured.exists():
         found.append(configured)
         if os.environ.get("KICAD_CLI_PATH") or os.environ.get("KICAD_MCP_KICAD_CLI"):
             return found
-    for name in names:
-        if (path := shutil.which(name)) is not None and Path(path) not in found:
+    if (path := shutil.which("kicad-cli")) is not None and Path(path) not in found:
+        if not _is_development(Path(path)):
             found.append(Path(path))
     return found
+
+
+def _is_development(cli: Path) -> bool:
+    """A nightly or development build: by its name, or a ``x.99`` version."""
+    if "nightly" in str(cli.resolve()).casefold():
+        return True
+    parts = _version(cli).split(".")
+    return len(parts) > 1 and parts[1].startswith("99")
 
 
 def _supports_api_server(cli: Path) -> bool:
