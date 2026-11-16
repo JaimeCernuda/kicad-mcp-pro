@@ -100,12 +100,15 @@ def families(tools: Installed) -> list[Family]:
     return found
 
 
-def family_example(tools: Installed, family: str, max_lines: int = 60) -> str:
-    """The head of the family's first data file and its first entry, verbatim."""
+def family_example(tools: Installed, family: str, max_lines: int = 60, prefer: str = "") -> str:
+    """The head of one of the family's data files, verbatim: the first whose name holds
+    ``prefer`` (e.g. a maker, "jst"), else the first."""
     data = tools.root / "data" / family
     files = sorted(data.glob("*.yaml")) if data.is_dir() else []
     if not files:
         return ""
+    wanted = [f for f in files if prefer and prefer.lower() in f.stem.lower()]
+    files = wanted or files
     lines = files[0].read_text(encoding="utf-8", errors="replace").splitlines()
     return f"# {files[0].relative_to(tools.root).as_posix()}\n" + "\n".join(lines[:max_lines])
 

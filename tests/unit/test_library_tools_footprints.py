@@ -211,6 +211,24 @@ def test_an_exposed_pad_is_compared_with_itself_not_its_vias() -> None:
     assert runner.compare_pads([runner.Pad("9", 0.0, 0.0, 1.6, 1.6)], footprint, 0.05) == []
 
 
+def test_the_family_list_names_each_familys_data_files(tools: install.Installed) -> None:
+    """Found live (FQ3): the list said "4 data files", not that JST's SMD series are
+    entries in ``conn_jst``, and the agent wrote a one-off script for a JST connector."""
+    from kicad_mcp.tools.library_footprints_klt import _data_files
+
+    assert _data_files(("conn_hirose.yaml", "conn_jst.yaml")) == "data files: conn_hirose, conn_jst"
+    many = tuple(f"f{i}.yaml" for i in range(10))
+    assert _data_files(many).endswith("f7, ... (10 in all)")
+    data = tools.root / "data" / "package" / "no_lead"
+    (data / "jst.yaml").write_text("Part:\n  pitch: 1\n")
+    assert runner.family_example(tools, "package/no_lead", prefer="JST").startswith(
+        "# data/package/no_lead/jst.yaml"
+    )
+    assert runner.family_example(tools, "package/no_lead", prefer="none").startswith(
+        "# data/package/no_lead/jst.yaml"  # no match: the first file
+    )
+
+
 def test_the_family_list_names_library_tools_python_for_cadquery_scripts(
     tools: install.Installed, tmp_path: Path
 ) -> None:

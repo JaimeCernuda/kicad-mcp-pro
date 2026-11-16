@@ -50,6 +50,16 @@ def _notes(tools: install.Installed) -> list[str]:
     return [f"Setup: {note}" for note in tools.notes]
 
 
+def _data_files(names: tuple[str, ...]) -> str:
+    """A family's data files by name (their entries are what a new part copies).
+
+    Found live (FQ3): "4 data files" did not say that the JST SMD series are entries in
+    ``conn_jst``, so the agent wrote a one-off script for a JST connector."""
+    stems = [Path(name).stem for name in names]
+    shown = ", ".join(stems[:8]) + (f", ... ({len(stems)} in all)" if len(stems) > 8 else "")
+    return f"data files: {shown}"
+
+
 def _python_line(tools: install.Installed) -> str:
     """Library Tools' interpreter, so a CadQuery script (an enclosure, a body) runs in it
     instead of installing CadQuery again for each conversation."""
@@ -147,17 +157,19 @@ def register(mcp: FastMCP) -> None:
         """List KiCad Library Tools' footprint generator families, or show one family's format.
 
         Without ``family``: the families (filtered by ``query``, e.g. "no_lead", "gullwing",
-        "connector"), each marked with whether it makes footprints and 3D models and how
-        many data files it has. With ``family``: where its entry keys are read (the schema is
-        the code) and the head of a real data file, to copy the entry format from. The first
-        call may install Library Tools into the tools folder.
+        "connector"), each marked with whether it makes footprints and 3D models and its data
+        files by name (a connector family's are per maker, e.g. ``conn_jst``). With
+        ``family``: where its entry keys are read (the schema is the code) and the head of a
+        real data file to copy the entry format from, the one whose name holds ``query`` when
+        given (``family=..., query="jst"``). The first call may install Library Tools into the
+        tools folder.
         """
         try:
             tools = _tools(models=False)
         except install.LibraryToolsInstallError as exc:
             return _failure(exc)
         if family:
-            example = runner.family_example(tools, family)
+            example = runner.family_example(tools, family, prefer=query)
             if not example:
                 return (
                     f"The {family} family has no YAML data at this pin: it cannot take an "
@@ -184,7 +196,7 @@ def register(mcp: FastMCP) -> None:
         ]
         for row in rows[:_MAX_LISTED]:
             makes = "footprints" + (" + 3D" if row.models else "") if row.footprints else "3D"
-            data = f"{len(row.data)} data files" if row.data else "no entry format (script)"
+            data = _data_files(row.data) if row.data else "no entry format (script)"
             lines.append(f"- {row.name}: {makes}; {data}")
         if len(rows) > _MAX_LISTED:
             lines.append(f"... {len(rows) - _MAX_LISTED} more; narrow with query.")
