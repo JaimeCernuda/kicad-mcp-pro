@@ -344,6 +344,16 @@ class InstanceManager:
                 self._started = None
                 self._status.case = NONE
                 self._status.pid = None
+            if self._status.case == NONE and self._started is None:
+                # Nothing recorded yet (no project set, nothing started): the person's own
+                # KiCad may already be serving, and IPC talks to it. Say so; start nothing.
+                for url in self._attach_candidates():
+                    found = probe(url)
+                    if found.ready:
+                        self._status.case, self._status.version = ATTACHED, found.version
+                        self._status.socket = url
+                        self._status.board = ", ".join(found.boards)
+                        break
             return self._status
 
     # ------------------------------------------------------------------ acting
