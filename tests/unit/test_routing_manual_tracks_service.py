@@ -8,29 +8,21 @@ from kipy.board_types import Net
 from kipy.geometry import Vector2
 
 from kicad_mcp.models.common import _PadLike
-from kicad_mcp.routing.manual_tracks import RoutingManualTrackService, TrackSpec
+from kicad_mcp.routing.manual_tracks import ReferencedPad, RoutingManualTrackService, TrackSpec
 
 
-def _pad(reference: str, number: str, x_mm: float, y_mm: float, net_name: str) -> _PadLike:
+def _pad(reference: str, number: str, x_mm: float, y_mm: float, net_name: str) -> ReferencedPad:
     net = Net()
     net.name = net_name
-    return cast(
+    pad = cast(
         _PadLike,
-        SimpleNamespace(
-            parent=SimpleNamespace(
-                reference_field=SimpleNamespace(
-                    text=SimpleNamespace(value=reference),
-                )
-            ),
-            number=number,
-            position=Vector2.from_xy_mm(x_mm, y_mm),
-            net=net,
-        ),
+        SimpleNamespace(number=number, position=Vector2.from_xy_mm(x_mm, y_mm), net=net),
     )
+    return reference, pad
 
 
 def _service(
-    pads: list[_PadLike] | None = None,
+    pads: list[ReferencedPad] | None = None,
 ) -> tuple[RoutingManualTrackService, list[tuple[str, list[TrackSpec]]]]:
     writes: list[tuple[str, list[TrackSpec]]] = []
 
@@ -135,3 +127,55 @@ def test_live_write_failure_does_not_claim_route_success() -> None:
         service.route_single(1.0, 2.0, 5.0, 8.0)
     with pytest.raises(RuntimeError, match="KiCad mutation was rejected"):
         service.route_pad_to_pad("R1", "1", "U2", "3")
+
+
+def test_pads_are_found_through_their_footprints_as_kicad_10_reports_them() -> None:
+    """Found live: every route_from_pad_to_pad failed with "reference_field", because a
+    KiCad 10 pad's ``parent`` is only its footprint's ID."""
+    from kicad_mcp.tools.routing_manual_tracks import _referenced_pads
+
+    def kicad_pad(ident: str, number: str) -> SimpleNamespace:
+        net = Net()
+        net.name = "+3V3"
+        return SimpleNamespace(
+            id=SimpleNamespace(value=ident),
+            parent=SimpleNamespace(value="fp-uuid"),  # a KIID, not the footprint
+            number=number,
+            position=Vector2.from_xy_mm(1.0, 2.0),
+            net=net,
+        )
+
+    c4_1, u3_8 = kicad_pad("p1", "1"), kicad_pad("p2", "8")
+    footprints = [
+        SimpleNamespace(
+            reference_field=SimpleNamespace(text=SimpleNamespace(value=ref)),
+            definition=SimpleNamespace(pads=[pad]),
+        )
+        for ref, pad in (("C4", c4_1), ("U3", u3_8))
+    ]
+    board = SimpleNamespace(get_pads=lambda: [c4_1, u3_8], get_footprints=lambda: footprints)
+    writes: list[tuple[str, list[TrackSpec]]] = []
+    service = RoutingManualTrackService(
+        list_pads=lambda: _referenced_pads(board),
+        write_tracks=lambda op, specs: writes.append((op, specs)),
+    )
+
+    result = service.route_pad_to_pad("C4", "1", "U3", "8")
+
+    assert "C4:1 -> U3:8" in result
+    assert writes and writes[0][1][0].net_name == "+3V3"
+
+
+def test_creepage_and_teardrops_name_pads_through_their_footprints() -> None:
+    """The same KiCad 10 shape broke the creepage check and teardrop names."""
+    from kicad_mcp.pcb.pad_mapping import pad_references, reference_of
+
+    pad = SimpleNamespace(id=SimpleNamespace(value="p9"), parent=SimpleNamespace(value="fp"))
+    footprint = SimpleNamespace(
+        reference_field=SimpleNamespace(text=SimpleNamespace(value="J1")),
+        definition=SimpleNamespace(pads=[pad]),
+    )
+    references = pad_references([pad], [footprint])
+    assert references == {"p9": "J1"}
+    assert reference_of(pad, references) == "J1"
+    assert reference_of(pad) is None

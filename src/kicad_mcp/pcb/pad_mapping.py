@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 
@@ -90,3 +90,21 @@ def map_pads_to_footprints(
             )
         )
     return mapped
+
+
+def pad_references(pads: Iterable[object], footprints: Iterable[object]) -> dict[str, str]:
+    """Each pad's footprint reference by pad ID (a KiCad 10 pad names its footprint by ID)."""
+    return {
+        item.pad_id: item.reference
+        for item in map_pads_to_footprints(pads, footprints)
+        if item.pad_id is not None and item.reference is not None
+    }
+
+
+def reference_of(pad: object, references: Mapping[str, str] | None = None) -> str | None:
+    """The reference of the footprint ``pad`` belongs to: from ``references`` (built with
+    ``pad_references``), else from a parent that is the footprint itself."""
+    identifier = pad_id(pad)
+    if references is not None and identifier is not None and identifier in references:
+        return references[identifier]
+    return footprint_reference(getattr(pad, "parent", None))
