@@ -15,7 +15,7 @@ from ..connection import get_board
 from ..models.common import _PadLike
 from ..pcb.board_access import board_footprints, board_pads
 from ..pcb.live_edit_runtime import execute_live_board_mutation
-from ..pcb.pad_mapping import map_pads_to_footprints
+from ..pcb.pad_mapping import pad_references, reference_of
 from ..routing.manual_tracks import ReferencedPad, RoutingManualTrackService, TrackSpec
 from ..utils.layers import resolve_layer
 from ..utils.units import mm_to_nm
@@ -51,8 +51,9 @@ def _write_tracks(operation: str, specs: list[TrackSpec]) -> None:
 
 def _referenced_pads(board: object) -> list[ReferencedPad]:
     """Board pads with their footprint's reference, found through the footprints."""
-    mapped = map_pads_to_footprints(board_pads(board), board_footprints(board))
-    return [(item.reference, cast(_PadLike, item.pad)) for item in mapped]
+    pads = board_pads(board)
+    references = pad_references(pads, board_footprints(board))
+    return [(reference_of(pad, references), cast(_PadLike, pad)) for pad in pads]
 
 
 def _default_dependencies() -> RoutingManualTrackDependencies:
