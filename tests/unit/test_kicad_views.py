@@ -252,3 +252,22 @@ def test_a_view_given_the_project_file_uses_its_folder(
     with pytest.raises(ValueError, match="does not exist"):
         _tools(server)["view_board"].fn(project=str(tmp_path / "gone" / "x.kicad_pro"))
     assert get_config().project_dir == other.resolve()  # a bad name changes nothing
+
+
+def test_the_parts_view_points_at_its_project_so_a_pick_can_be_bound(
+    monkeypatch: pytest.MonkeyPatch, sample_project: Path
+) -> None:
+    """Found live (KQ39): the agent opened the parts view for U2 with no project set, and the
+    person's pick failed with "No schematic file is configured"."""
+    from kicad_mcp.config import get_config
+
+    server = _server(monkeypatch, enabled=True)
+    view_parts = server._tool_manager.get_tool("view_parts").fn
+    for name in ("project_dir", "project_file", "pcb_file", "sch_file"):
+        monkeypatch.setattr(get_config(), name, None)  # nothing set in this conversation
+    unset = view_parts(candidates=["C2887809"], symbol="U2")
+    assert "cannot be bound to U2 yet: no project is set" in unset.content[0].text
+
+    opened = view_parts(candidates=["C2887809"], symbol="U2", project=str(sample_project))
+    assert get_config().sch_file is not None
+    assert "cannot be bound" not in opened.content[0].text

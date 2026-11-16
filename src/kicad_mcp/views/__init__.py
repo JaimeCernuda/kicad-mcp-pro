@@ -220,20 +220,28 @@ def register(mcp: FastMCP) -> None:
         candidates: list[str] | None = None,
         package: str = "",
         symbol: str = "",
+        project: str = "",
     ) -> CallToolResult:
         """Open a parts table with specs, filters, column choice and side-by-side compare.
 
         Give ``category`` (and ``filters`` as for lib_search_parametric) to search, or your
         shortlist in ``candidates`` (MPNs or LCSC codes). ``symbol`` (U2) is where the
-        person's pick is bound.
+        person's pick is bound, in ``project``'s schematic (the project folder).
         """
-        _ = query, filters, package, symbol
+        _ = query, filters, package
+        _use_project(project)
         shown = (
             f"{len(candidates)} candidates"
             if candidates
             else f"category {category or query or '(none yet)'}"
         )
-        return opened("parts", f"{shown}.")
+        unbound = ""
+        if symbol and get_config().sch_file is None:
+            unbound = (
+                f" The person's pick cannot be bound to {symbol} yet: no project is set. "
+                "Call kicad_set_project, or open the view again with project."
+            )
+        return opened("parts", f"{shown}.{unbound}")
 
     # ------------------------------------------------------------ data tools
 
