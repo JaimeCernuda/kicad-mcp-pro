@@ -183,3 +183,29 @@ def test_the_four_tools_are_registered() -> None:
         "lib_generate_footprint_custom",
         "lib_check_footprint",
     }
+
+
+def test_two_mounting_tabs_with_one_number_are_compared_with_two_tabs() -> None:
+    """Found live (FQ3): a JST SMD footprint's two tabs are both pad "MP"; the check compared
+    both datasheet tabs with one footprint tab and reported a tab that was in place."""
+    footprint = [
+        runner.Pad("1", -0.5, 0.0, 0.6, 1.55),
+        runner.Pad("2", 0.5, 0.0, 0.6, 1.55),
+        runner.Pad("MP", -2.1, -2.0, 1.0, 2.8),
+        runner.Pad("MP", 2.1, -2.0, 1.0, 2.8),
+    ]
+    sheet = [runner.Pad(p.number, p.x, p.y, p.w, p.h) for p in footprint]
+    assert runner.compare_pads(sheet, footprint, 0.05) == []
+    moved = [*sheet[:3], runner.Pad("MP", 2.4, -2.0, 1.0, 2.8)]
+    assert runner.compare_pads(moved, footprint, 0.05) == [
+        "pad MP: at (2.1, -2) mm, the datasheet (2.4, -2) mm"
+    ]
+
+
+def test_an_exposed_pad_is_compared_with_itself_not_its_vias() -> None:
+    footprint = [
+        runner.Pad("9", 0.0, 0.0, 1.6, 1.6),
+        runner.Pad("9", -0.5, -0.5, 0.3, 0.3),
+        runner.Pad("9", 0.5, 0.5, 0.3, 0.3),
+    ]
+    assert runner.compare_pads([runner.Pad("9", 0.0, 0.0, 1.6, 1.6)], footprint, 0.05) == []

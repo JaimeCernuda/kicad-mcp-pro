@@ -12,6 +12,7 @@ check.
 from __future__ import annotations
 
 import json
+import math
 import re
 import secrets
 import shutil
@@ -331,14 +332,28 @@ def parse_pads(text: str) -> list[Pad]:
 
 
 def compare_pads(expected: list[Pad], actual: list[Pad], tolerance_mm: float) -> list[str]:
-    """Each datasheet pad against the footprint's largest pad with that number."""
+    """Each datasheet pad against the footprint's nearest unpaired pad with that number.
+
+    Pads may share a number (two mounting tabs ``MP``, an exposed pad with its thermal
+    vias): each datasheet pad takes the closest footprint pad of its number not already
+    taken, the larger on a tie, so two tabs are compared with two tabs.
+    """
     mismatches: list[str] = []
+    taken: set[int] = set()
     for want in expected:
-        same = [p for p in actual if p.number == want.number]
+        same = [i for i, p in enumerate(actual) if p.number == want.number and i not in taken]
         if not same:
             mismatches.append(f"pad {want.number}: not in the footprint")
             continue
-        got = max(same, key=lambda p: p.w * p.h)
+        index = min(
+            same,
+            key=lambda i: (
+                round(math.hypot(actual[i].x - want.x, actual[i].y - want.y), 6),
+                -actual[i].w * actual[i].h,
+            ),
+        )
+        taken.add(index)
+        got = actual[index]
         w, h = (got.h, got.w) if round(got.rotation) % 180 == 90 else (got.w, got.h)
         problems = []
         if abs(got.x - want.x) > tolerance_mm or abs(got.y - want.y) > tolerance_mm:
