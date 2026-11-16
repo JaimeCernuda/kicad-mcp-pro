@@ -38,6 +38,17 @@ def _notes(tools: install.Installed) -> list[str]:
     return [f"Setup: {note}" for note in tools.notes]
 
 
+def _python_line(tools: install.Installed) -> str:
+    """Library Tools' interpreter, so a CadQuery script (an enclosure, a body) runs in it
+    instead of installing CadQuery again for each conversation."""
+    venv = tools.python.parent.parent
+    has_cadquery = any(venv.glob("lib/python*/site-packages/cadquery")) or any(
+        venv.glob("Lib/site-packages/cadquery")
+    )
+    with_what = "KicadModTree and CadQuery" if has_cadquery else "KicadModTree (no CadQuery yet)"
+    return f"Library Tools' Python, with {with_what}: {tools.python}"
+
+
 def _pads(rows: list[dict[str, Any]]) -> list[runner.Pad]:
     pads: list[runner.Pad] = []
     for row in rows:
@@ -154,7 +165,11 @@ def register(mcp: FastMCP) -> None:
                 ]
             )
         rows = [f for f in runner.families(tools) if query.lower() in f.name.lower()]
-        lines = [*_notes(tools), f"{len(rows)} generator families at {tools.pin[:10]}:"]
+        lines = [
+            *_notes(tools),
+            _python_line(tools),
+            f"{len(rows)} generator families at {tools.pin[:10]}:",
+        ]
         for row in rows[:_MAX_LISTED]:
             makes = "footprints" + (" + 3D" if row.models else "") if row.footprints else "3D"
             data = f"{len(row.data)} data files" if row.data else "no entry format (script)"

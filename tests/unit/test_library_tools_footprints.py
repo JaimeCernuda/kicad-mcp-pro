@@ -209,3 +209,21 @@ def test_an_exposed_pad_is_compared_with_itself_not_its_vias() -> None:
         runner.Pad("9", 0.5, 0.5, 0.3, 0.3),
     ]
     assert runner.compare_pads([runner.Pad("9", 0.0, 0.0, 1.6, 1.6)], footprint, 0.05) == []
+
+
+def test_the_family_list_names_library_tools_python_for_cadquery_scripts(
+    tools: install.Installed, tmp_path: Path
+) -> None:
+    """Found live (FQ7): each conversation installed CadQuery again (about 1.7 GB in its
+    scratch) to run the enclosure scripts, while Library Tools' environment has it."""
+    from kicad_mcp.tools.library_footprints_klt import _python_line
+
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin" / "python").write_text("")
+    with_cq = install.Installed(tools.root, venv / "bin" / "python", tools.pin, models=True)
+    assert _python_line(with_cq).endswith(
+        "with KicadModTree (no CadQuery yet): " + str(venv / "bin" / "python")
+    )
+    (venv / "lib" / "python3.13" / "site-packages" / "cadquery").mkdir(parents=True)
+    assert "with KicadModTree and CadQuery: " in _python_line(with_cq)
