@@ -265,8 +265,11 @@ def test_the_parts_view_points_at_its_project_so_a_pick_can_be_bound(
     view_parts = server._tool_manager.get_tool("view_parts").fn
     for name in ("project_dir", "project_file", "pcb_file", "sch_file"):
         monkeypatch.setattr(get_config(), name, None)  # nothing set in this conversation
+    monkeypatch.chdir(sample_project.parent)  # the server runs in its workspace folder
     unset = view_parts(candidates=["C2887809"], symbol="U2")
-    assert "cannot be bound to U2 yet: no project is set" in unset.content[0].text
+    text = unset.content[0].text
+    assert "cannot be bound to U2 yet: no project is set" in text
+    assert f"this workspace has the KiCad project {sample_project}" in text
 
     opened = view_parts(candidates=["C2887809"], symbol="U2", project=str(sample_project))
     assert get_config().sch_file is not None

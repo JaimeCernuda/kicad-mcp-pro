@@ -85,6 +85,24 @@ def _use_project(project: str) -> None:
     cfg.apply_project(target)
 
 
+def _projects_here(limit: int = 5) -> str:
+    """The KiCad projects in this server's workspace (its working folder), named so the
+    agent can pass one; the server picks none itself."""
+    root = Path.cwd()
+    found = sorted(
+        path.parent
+        for depth in ("*.kicad_pro", "*/*.kicad_pro", "*/*/*.kicad_pro")
+        for path in root.glob(depth)
+        if not any(part.startswith(".") or part.endswith("-backups") for part in path.parts)
+    )
+    if not found:
+        return "."
+    shown = ", ".join(str(folder) for folder in found[:limit])
+    more = f" and {len(found) - limit} more" if len(found) > limit else ""
+    noun = "project" if len(found) == 1 else "projects"
+    return f"; this workspace has the KiCad {noun} {shown}{more}."
+
+
 def _meta(view: str, *, app_only: bool = False) -> dict[str, Any] | None:
     if not apps_enabled():
         return None
@@ -239,7 +257,7 @@ def register(mcp: FastMCP) -> None:
         if symbol and get_config().sch_file is None:
             unbound = (
                 f" The person's pick cannot be bound to {symbol} yet: no project is set. "
-                "Call kicad_set_project, or open the view again with project."
+                "Open the view again with project (the project folder)" + _projects_here()
             )
         return opened("parts", f"{shown}.{unbound}")
 
