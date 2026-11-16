@@ -172,6 +172,7 @@ export function followRevisions(
                 const answer = await bridge.callData<{ revision: number; changed: boolean }>(
                     "view_wait_revision",
                     { ...project, since: getShown(), timeout_s: 25 },
+                    { watch: true },
                 );
                 if (!stopped && answer.changed && answer.revision > getShown()) await onChange(answer.revision);
             } catch {

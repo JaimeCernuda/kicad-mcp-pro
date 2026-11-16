@@ -59,11 +59,24 @@ async function main(): Promise<void> {
     const args = { ...((structured.arguments as Record<string, unknown>) ?? {}), ...bridge.toolInput };
     if (name !== "checks") void bridge.requestFullscreen();
     // A data call still unanswered after a few seconds shows in the view's status line.
+    // The line goes back to what it said once the call answers, unless the view wrote it since.
+    let before: { text: string; kind: string | undefined; shown: string } | null = null;
     bridge.waiting = (seconds) => {
         const line = root.querySelector<HTMLElement>(".kv-status");
         if (!line) return;
+        if (before === null) before = { text: line.textContent ?? "", kind: line.dataset.kind, shown: "" };
         line.textContent = `Waiting for KiCad\u2026 (${seconds} s)`;
         line.dataset.kind = "busy";
+        before.shown = line.textContent;
+    };
+    bridge.waited = () => {
+        const line = root.querySelector<HTMLElement>(".kv-status");
+        if (line && before && line.textContent === before.shown) {
+            line.textContent = before.text;
+            if (before.kind === undefined) delete line.dataset.kind;
+            else line.dataset.kind = before.kind;
+        }
+        before = null;
     };
     try {
         await view(bridge, root, args);

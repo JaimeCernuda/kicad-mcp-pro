@@ -66,6 +66,9 @@ export class Bridge {
      */
     waiting: ((seconds: number) => void) | null = null;
 
+    /** Called when a call that was shown as waiting has answered (the view restores its line). */
+    waited: (() => void) | null = null;
+
     /** Send a request to the host and wait for its answer, however long it takes. */
     request<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
         const id = this.#next++;
@@ -89,17 +92,30 @@ export class Bridge {
      * call is waited for as long as it takes (KiCad may be starting); while it is
      * unanswered the view says how long it has waited (``waiting``).
      */
-    async callData<T = Record<string, unknown>>(name: string, args: Record<string, unknown> = {}): Promise<T> {
+    async callData<T = Record<string, unknown>>(
+        name: string,
+        args: Record<string, unknown> = {},
+        options: { watch?: boolean } = {},
+    ): Promise<T> {
+        // A watch (a long-poll for the next change) waits for the board to change, not for
+        // KiCad: it is not reported as waiting.
         const started = Date.now();
-        const ticker = window.setInterval(() => {
-            const waited = Date.now() - started;
-            if (waited >= SAY_WAITING_AFTER_MS) this.waiting?.(Math.floor(waited / 1000));
-        }, 1000);
+        let shown = false;
+        const ticker = options.watch
+            ? 0
+            : window.setInterval(() => {
+                  const waited = Date.now() - started;
+                  if (waited >= SAY_WAITING_AFTER_MS) {
+                      shown = true;
+                      this.waiting?.(Math.floor(waited / 1000));
+                  }
+              }, 1000);
         let result: ToolResult;
         try {
             result = await this.callTool(name, args);
         } finally {
-            window.clearInterval(ticker);
+            if (ticker) window.clearInterval(ticker);
+            if (shown) this.waited?.();
         }
         const text = textOf(result);
         if (result.isError) throw new Error(text || `${name} failed`);
