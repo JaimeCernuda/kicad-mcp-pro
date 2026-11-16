@@ -30,6 +30,18 @@ def _project() -> tuple[Path, str]:
     return project_dir, name
 
 
+def _record_project(footprint: Path) -> Path | None:
+    """The project whose footprint records take a check: the set project, else the nearest
+    folder above the footprint holding a .kicad_pro (a check needs no project of its own)."""
+    cfg = get_config()
+    if cfg.project_dir is not None:
+        return Path(cfg.project_dir)
+    for folder in footprint.resolve().parents:
+        if any(folder.glob("*.kicad_pro")):
+            return folder
+    return None
+
+
 def _tools(*, models: bool) -> install.Installed:
     return install.ensure(models=models)
 
@@ -272,14 +284,17 @@ def register(mcp: FastMCP) -> None:
             ValueError,
         ) as exc:
             return _failure(exc)
-        project_dir, _ = _project()
-        runner.update_record(
-            project_dir,
-            target.stem,
-            check=runner.check_record(result, datasheet_ref, tolerance_mm),
-        )
+        record_dir = _record_project(target)
+        if record_dir is not None:
+            runner.update_record(
+                record_dir,
+                target.stem,
+                check=runner.check_record(result, datasheet_ref, tolerance_mm),
+            )
         verdict = "PASS" if result.passed else "FAIL"
         lines = [*_notes(tools), f"{verdict}: {target.stem}"]
+        if record_dir is None:
+            lines.append("Not recorded: no project holds this footprint and none is set.")
         if pads:
             lines.append(
                 f"Datasheet pads compared: {result.compared} within {tolerance_mm:g} mm"

@@ -227,3 +227,47 @@ def test_the_family_list_names_library_tools_python_for_cadquery_scripts(
     )
     (venv / "lib" / "python3.13" / "site-packages" / "cadquery").mkdir(parents=True)
     assert "with KicadModTree and CadQuery: " in _python_line(with_cq)
+
+
+def test_a_footprint_file_is_checked_with_no_project_set(
+    tools: install.Installed, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Found live (FQ5): the check ran, then failed with "No project is set" while recording
+    its result, and the agent compared the pads by hand."""
+    import asyncio
+
+    from fastmcp import FastMCP
+
+    from kicad_mcp.config import get_config
+    from kicad_mcp.tools import library_footprints_klt
+
+    project = tmp_path / "board"
+    library = project / "libs" / "board.pretty"
+    library.mkdir(parents=True)
+    (project / "board.kicad_pro").write_text("{}")
+    footprint = library / "U3.kicad_mod"
+    footprint.write_text('(footprint "U3" (pad "1" smd rect (at -1.4125 -0.75) (size 0.625 0.25)))')
+    for name in ("project_dir", "project_file", "pcb_file", "sch_file"):
+        monkeypatch.setattr(get_config(), name, None)
+    monkeypatch.setattr(get_config(), "workspace_root", None)
+    monkeypatch.chdir(tmp_path)  # the server runs in its workspace folder
+    monkeypatch.setattr(
+        runner,
+        "check",
+        lambda _tools, target, pads, tol: runner.CheckResult(
+            footprint=target.stem,
+            compared=len(pads),
+            mismatches=runner.compare_pads(pads, runner.parse_pads(target.read_text()), tol),
+        ),
+    )
+    mcp = FastMCP("t")
+    library_footprints_klt.register(mcp)
+    shifted = [{"number": "1", "x": -1.1125, "y": -0.75, "w": 0.625, "h": 0.25}]
+    result = asyncio.run(
+        mcp.call_tool("lib_check_footprint", {"path": str(footprint), "land_pattern": shifted})
+    )
+    text = result.content[0].text
+    assert "FAIL: U3" in text
+    assert "pad 1: at (-1.4125, -0.75) mm, the datasheet (-1.1125, -0.75) mm" in text
+    records = json.loads((project / "libs" / "footprint-records.json").read_text())
+    assert records["U3"]["check"]["passed"] is False
