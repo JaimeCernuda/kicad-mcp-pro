@@ -6912,6 +6912,15 @@ def _update_symbol_property_text_fallback(reference: str, field: str, value: str
     return f"Updated {payload.reference}.{payload.field} on {updated_count} instance(s)."
 
 
+def symbol_properties(reference: str) -> dict[str, str]:
+    """The properties of the placed symbol ``reference`` (first instance), as written."""
+    content = _get_schematic_file().read_text(encoding="utf-8")
+    matches = _find_placed_symbol_blocks(content, reference)
+    if not matches:
+        raise ValueError(f"Reference '{reference}' was not found in the schematic.")
+    return _symbol_property_values(matches[0][0])
+
+
 def update_symbol_property(reference: str, field: str, value: str) -> str:
     """Update a symbol property through the active backend adapter."""
     return get_schematic_backend().update_symbol_property(reference, field, value)

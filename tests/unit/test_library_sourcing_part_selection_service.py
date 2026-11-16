@@ -245,3 +245,55 @@ def test_check_derating_compliance_preserves_warning_and_error_behavior() -> Non
 
     failure = service.check_derating_compliance("unobtanium", "flux", 1.0, 0.1)
     assert failure.startswith("Derating check failed: No derating policy for 'unobtanium'/'flux'.")
+
+
+def test_binding_a_new_part_leaves_no_field_naming_the_old_one() -> None:
+    """Found live (KQ39): after the person picked BCT2038EUK33-TR for U2, its LCSC and MPN
+    changed but Value still read AP2112K-3.3TRG1 and Manufacturer "Diodes Inc"."""
+    from dataclasses import replace
+
+    from kicad_mcp.utils.part_specs import PartSpec
+
+    part = replace(
+        _record(code="C2887783", package=""),
+        mpn="BCT2038EUK33-TR",
+        datasheet_url="https://example.com/bct2038.pdf",
+        specs=(
+            PartSpec(
+                name="manufacturer", display="Broadchip", number=None, unit="", source="jlcsearch"
+            ),
+        ),
+    )
+    updates: list[tuple[str, str, str]] = []
+    service = replace(
+        _service(FakeClient([], part=part), updates),
+        symbol_properties=lambda _ref: {
+            "Value": "AP2112K-3.3TRG1",
+            "MPN": "AP2112K-3.3TRG1",
+            "LCSC": "C51118",
+            "Manufacturer": "Diodes Inc",
+            "Datasheet": "https://example.com/ap2112.pdf",
+        },
+    )
+
+    service.bind_part_to_symbol("U2", "C2887783", auto_assign_footprint=False)
+
+    assert dict((field, value) for _ref, field, value in updates) == {
+        "LCSC": "C2887783",
+        "MPN": "BCT2038EUK33-TR",
+        "Manufacturer": "Broadchip",
+        "Datasheet": "https://example.com/bct2038.pdf",
+        "Value": "BCT2038EUK33-TR",
+    }
+
+
+def test_a_passives_value_is_kept_when_its_part_changes() -> None:
+    from dataclasses import replace
+
+    updates: list[tuple[str, str, str]] = []
+    service = replace(
+        _service(FakeClient([], part=_record(code="C15850")), updates),
+        symbol_properties=lambda _ref: {"Value": "10uF", "MPN": "CL21A106KAYNNNE"},
+    )
+    service.bind_part_to_symbol("C4", "C15850", auto_assign_footprint=False)
+    assert "Value" not in {field for _ref, field, _value in updates}

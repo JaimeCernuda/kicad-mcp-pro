@@ -51,7 +51,12 @@ from . import (
     library_sourcing,
 )
 from .export_support import _run_cli
-from .schematic import get_schematic_backend, project_schematic_files, update_symbol_property
+from .schematic import (
+    get_schematic_backend,
+    project_schematic_files,
+    symbol_properties,
+    update_symbol_property,
+)
 
 # Compatibility alias retained for downstream/tests that historically imported it here.
 _parse_lib_table = _shared_parse_lib_table
@@ -630,6 +635,7 @@ def register(mcp: FastMCP) -> None:
         update_symbol_property=lambda reference, field, value: update_symbol_property(
             reference, field, value
         ),
+        symbol_properties=lambda reference: symbol_properties(reference),
     )
     sourcing_deps = library_sourcing.LibrarySourcingDependencies(service=sourcing_service)
     library_sourcing.register(mcp, sourcing_deps)
