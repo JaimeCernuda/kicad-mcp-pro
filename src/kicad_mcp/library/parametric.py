@@ -95,6 +95,8 @@ class SourcingAnswer:
     outcomes: list[SourceOutcome] = field(default_factory=list)
     # A filter whose name no returned part has, with the spec names those parts do have.
     unmatched: dict[str, list[str]] = field(default_factory=dict)
+    # Sources that returned a full page: only that many parts were examined (by source).
+    partial: dict[str, int] = field(default_factory=dict)
 
     @property
     def answered_by(self) -> list[str]:
@@ -312,6 +314,9 @@ class ParametricService:
             for item in parsed:
                 if found and canonical_name(item.name) not in seen:
                     answer.unmatched[item.name] = sorted(seen)
+            page = _JLC_PAGE_LIMIT if source == "jlcsearch" else 50
+            if len(found) >= page:  # a full page: parts beyond it were never seen
+                answer.partial[source] = len(found)
             kept = [item for item in found if _matches(item, parsed, min_stock, package)]
             kept.sort(key=lambda item: (item.price is None, item.price or 0.0, -item.stock))
             answer.outcomes.append(SourceOutcome(source, True, count=len(kept)))

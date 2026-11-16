@@ -64,6 +64,13 @@ def format_search(category: str, answer: SourcingAnswer) -> str:
             f"No part returned has a spec named {name!r}, so that filter matched nothing. "
             f"Spec names these parts have: {', '.join(names) or 'none'}."
         )
+    for source, examined in answer.partial.items():
+        lines.append(
+            f"{source} returned only its first {examined} parts for this category and package "
+            "(a full page, which it does not page past), and the filters were applied to "
+            "those. Parts beyond them were not examined, so a part missing here may still "
+            "exist; narrow the search (an exact value or package) or ask another source."
+        )
     lines.extend(_account_lines(answer))
     lines.append("Specs: " + json.dumps(_records_json(answer.records), ensure_ascii=False))
     return "\n".join(lines)
