@@ -394,6 +394,28 @@ def update_record(project_dir: Path, name: str, **fields: object) -> dict[str, o
     return record
 
 
+def mark_assigned(project_dir: Path, name: str, reference: str) -> bool:
+    """Record that a footprint with a record was assigned (``accepted``: assigning a custom
+    footprint is what follows the person's acceptance). Library footprints have no record and
+    get none. Found live (FQ4): the record kept ``accepted: false`` after the person accepted
+    the module's footprint and it was assigned."""
+    path = project_dir / "libs" / RECORDS
+    try:
+        records = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except ValueError:
+        return False
+    if name not in records:
+        return False
+    assigned = list(records[name].get("assigned_to") or [])
+    update_record(
+        project_dir,
+        name,
+        accepted=True,
+        assigned_to=sorted({*assigned, reference}),
+    )
+    return True
+
+
 def check_record(result: CheckResult, datasheet: str, tolerance_mm: float) -> dict[str, object]:
     return {
         "passed": result.passed,

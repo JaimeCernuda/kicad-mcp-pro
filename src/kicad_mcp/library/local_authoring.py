@@ -91,6 +91,15 @@ class LibraryLocalAuthoringService:
             return f"Footprint '{library}:{footprint}' was not found."
         assignment = f"{library}:{footprint}"
         self.update_symbol_property(reference, "Footprint", assignment)
+        project_dir = self.project_dir()
+        if project_dir is not None:
+            from ..library_tools.runner import mark_assigned
+
+            if mark_assigned(project_dir, footprint, reference):
+                return (
+                    f"Assigned footprint '{assignment}' to '{reference}'; its record "
+                    "(libs/footprint-records.json) now says accepted."
+                )
         return f"Assigned footprint '{assignment}' to '{reference}'."
 
     def create_custom_symbol(self, name: str, pins: list[dict[str, Any]]) -> str:

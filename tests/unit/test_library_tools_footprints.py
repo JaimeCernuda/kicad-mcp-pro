@@ -211,6 +211,17 @@ def test_an_exposed_pad_is_compared_with_itself_not_its_vias() -> None:
     assert runner.compare_pads([runner.Pad("9", 0.0, 0.0, 1.6, 1.6)], footprint, 0.05) == []
 
 
+def test_assigning_a_recorded_footprint_records_its_acceptance(tmp_path: Path) -> None:
+    """Found live (FQ4): the record kept accepted false after the person accepted the
+    module's custom footprint and it was assigned."""
+    runner.update_record(tmp_path, "E22-900M22S", rung="custom", accepted=False)
+    assert runner.mark_assigned(tmp_path, "E22-900M22S", "U4")
+    record = json.loads((tmp_path / "libs" / runner.RECORDS).read_text())["E22-900M22S"]
+    assert record["accepted"] is True and record["assigned_to"] == ["U4"]
+    assert not runner.mark_assigned(tmp_path, "SOT-23-5", "U2")  # a library footprint
+    assert "SOT-23-5" not in json.loads((tmp_path / "libs" / runner.RECORDS).read_text())
+
+
 def test_the_family_list_names_each_familys_data_files(tools: install.Installed) -> None:
     """Found live (FQ3): the list said "4 data files", not that JST's SMD series are
     entries in ``conn_jst``, and the agent wrote a one-off script for a JST connector."""
