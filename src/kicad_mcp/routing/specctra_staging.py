@@ -20,6 +20,8 @@ class SpecctraRunner(Protocol):
 
 
 RunnerFactory = Callable[[], SpecctraRunner]
+#: Applies a staged SES to the board headlessly: the board file, segments and vias applied.
+SesApplier = Callable[[Path], tuple[Path, int, int]]
 PcbFileProvider = Callable[[], Path]
 ProjectPathResolver = Callable[[str | Path], Path]
 ProjectRootProvider = Callable[[], Path]
@@ -42,6 +44,7 @@ class RoutingSpecctraStagingService:
     get_pcb_file: PcbFileProvider
     resolve_within_project: ProjectPathResolver
     get_project_root: ProjectRootProvider
+    apply_ses: SesApplier | None = None
 
     def export_dsn(
         self,
@@ -89,15 +92,37 @@ class RoutingSpecctraStagingService:
                 f"Specctra SES staging failed: {exc}",
             )
 
+        staged_at = relative_project_path(staged, self.get_project_root())
+        reason = "no headless applier is configured"
+        if self.apply_ses is not None:
+            # Found live (KQ32 fork): the GUI-only message made an agent abandon FreeRouting
+            # and write its own router, though KiCad's Python applies the session headlessly.
+            try:
+                board, segments, vias = self.apply_ses(staged)
+            except (OSError, ValueError) as exc:
+                reason = str(exc) or type(exc).__name__
+            else:
+                return ToolResult.success(
+                    "route_import_ses",
+                    changed=True,
+                    artifacts=[ArtifactRef(path=str(staged), kind="ses")],
+                    state_delta=StateDelta(
+                        summary=(
+                            f"Applied the routed session {staged_at} to "
+                            f"{relative_project_path(board, self.get_project_root())}: "
+                            f"{segments} track segments and {vias} vias. Run DRC next."
+                        ),
+                        changed_files=[str(board)],
+                    ),
+                )
         result = ToolResult.success(
             "route_import_ses",
             changed=False,
             artifacts=[ArtifactRef(path=str(staged), kind="ses")],
             state_delta=StateDelta(
                 summary=(
-                    "Specctra SES session staged at "
-                    f"{relative_project_path(staged, self.get_project_root())}. "
-                    "KiCad has no headless SES import: open the PCB Editor and run "
+                    f"Specctra SES session staged at {staged_at}, but it could not be applied "
+                    f"headlessly ({reason}): open the PCB Editor and run "
                     "File > Import > Specctra Session to apply the routing, then save."
                 ),
                 changed_files=[str(staged)],

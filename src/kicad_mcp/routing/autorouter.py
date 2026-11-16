@@ -128,36 +128,51 @@ def _validate_ses_output(
     return ses_path_obj, None
 
 
+def apply_ses_now(
+    ses_path_obj: Path,
+    transactional_board_write: TransactionalBoardWriter,
+) -> tuple[Path, SesRoute]:
+    """Apply a routed Specctra SES to the board headlessly; the board file and the route.
+
+    Raises ``ValueError`` (or ``OSError``) when the session cannot be applied. Shared by
+    ``route_autoroute_freerouting`` and ``route_import_ses``.
+    """
+    applied_route: SesRoute | None = None
+    ses_text = ses_path_obj.read_text(encoding="utf-8", errors="ignore")
+
+    def apply_ses(current: str) -> str:
+        nonlocal applied_route
+        try:
+            updated, applied_route = apply_ses_to_pcb(current, ses_text)
+        except ValueError as exc:
+            if "named-only net encoding" not in str(exc):
+                raise
+            # KiCad 10 names nets on pads and copper; KiCad's own SES import writes them.
+            from ..config import get_config  # noqa: PLC0415
+            from ..utils.freerouting import import_ses_with_kicad  # noqa: PLC0415
+            from ..utils.router_core import parse_ses  # noqa: PLC0415
+
+            applied_route = parse_ses(ses_text)
+            updated = import_ses_with_kicad(current, ses_path_obj, get_config().kicad_cli)
+        if not applied_route.segments and not applied_route.vias:
+            raise _NoRouteError
+        if updated == current:
+            raise _AlreadyAppliedError
+        return updated
+
+    applied_pcb_file = Path(transactional_board_write(apply_ses))
+    if applied_route is None:  # the writer returned without calling apply_ses
+        raise _NoRouteError
+    return applied_pcb_file, applied_route
+
+
 async def _apply_ses_headless(
     ses_path_obj: Path,
     transactional_board_write: TransactionalBoardWriter,
 ) -> tuple[Path | None, SesRoute | None, str | None]:
-    applied_route: SesRoute | None = None
     try:
-        ses_text = ses_path_obj.read_text(encoding="utf-8", errors="ignore")
-
-        def apply_ses(current: str) -> str:
-            nonlocal applied_route
-            try:
-                updated, applied_route = apply_ses_to_pcb(current, ses_text)
-            except ValueError as exc:
-                if "named-only net encoding" not in str(exc):
-                    raise
-                # KiCad 10 names nets on pads and copper; KiCad's own SES import writes them.
-                from ..config import get_config  # noqa: PLC0415
-                from ..utils.freerouting import import_ses_with_kicad  # noqa: PLC0415
-                from ..utils.router_core import parse_ses  # noqa: PLC0415
-
-                applied_route = parse_ses(ses_text)
-                updated = import_ses_with_kicad(current, ses_path_obj, get_config().kicad_cli)
-            if not applied_route.segments and not applied_route.vias:
-                raise _NoRouteError
-            if updated == current:
-                raise _AlreadyAppliedError
-            return updated
-
-        applied_pcb_file = Path(
-            await anyio.to_thread.run_sync(lambda: transactional_board_write(apply_ses))
+        applied_pcb_file, applied_route = await anyio.to_thread.run_sync(
+            lambda: apply_ses_now(ses_path_obj, transactional_board_write)
         )
         return applied_pcb_file, applied_route, None
     except (ValueError, OSError) as exc:
