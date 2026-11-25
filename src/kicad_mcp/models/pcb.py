@@ -4,9 +4,15 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 
-LayerName = Literal[
+
+def _kicad_layer_name(value: object) -> object:
+    """Accept KiCad's own layer names (``B.Cu``) as well as ``B_Cu``."""
+    return value.strip().replace(".", "_") if isinstance(value, str) else value
+
+
+_LayerLiteral = Literal[
     "F_Cu",
     "B_Cu",
     "In1_Cu",
@@ -31,6 +37,7 @@ LayerName = Literal[
     "Eco1_User",
     "Eco2_User",
 ]
+LayerName = Annotated[_LayerLiteral, BeforeValidator(_kicad_layer_name)]
 PlacementStrategy = Literal["cluster", "linear", "star"]
 PlacementSide = Literal["same", "opposite"]
 AlignAxis = Literal["x", "y"]

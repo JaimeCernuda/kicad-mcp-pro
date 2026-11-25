@@ -63,7 +63,7 @@ Total public tools: 414.
 | `export_xao` | agent_full, expert, full, high_speed, minimal, pcb, power, schematic, simulation | no | yes | yes | yes | yes | no | Export an XAO model for the active board. This KiCad MCP Pro tool supports production EDA automation workflows for MC... |
 | `fp_export` | agent_full, expert, full, manufacturing, manufacturing_release | no | no | yes | yes | yes | no | Export a KiCad footprint to an interchange format. |
 | `fp_export_svg` | agent_full, expert, full, manufacturing, manufacturing_release | no | yes | yes | yes | yes | no | Export a footprint or footprint library to SVG format. |
-| `fp_get_info` | agent_full, expert, full, manufacturing, manufacturing_release | no | no | no | no | yes | no | Return metadata about the active board's footprint library. |
+| `fp_get_info` | agent_full, expert, full, manufacturing, manufacturing_release | no | no | no | no | yes | no | Describe a footprint file, or list the footprints on the active board. |
 | `fp_upgrade` | agent_full, expert, full, manufacturing, manufacturing_release | no | no | no | yes | yes | no | Upgrade a KiCad footprint library file to the current file format. |
 | `generate_board_constraints` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only | no | no | no | no | yes | no | Generate .kicad_dru rules and net-class constraints from the project design intent. |
 | `get_board_stats` | agent_full, expert, full, manufacturing, manufacturing_release, release, release_manager | yes | no | no | yes | yes | no | Export board statistics and return a readable preview. This KiCad MCP Pro tool supports production EDA automation wor... |

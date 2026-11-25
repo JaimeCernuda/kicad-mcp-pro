@@ -2067,16 +2067,20 @@ def _apply_title_block_updates(content: str, updates: dict[str, str]) -> str:
 def _safe_render_output_path(raw_name: str | None, *, default_name: str) -> Path:
     from .export_support import _ensure_output_dir
 
+    render_dir = _ensure_output_dir("schematic-renders")
     name = (raw_name or default_name).strip()
     if not name:
         raise ValueError("output_file cannot be empty.")
     if "/" in name or "\\" in name or Path(name).name != name:
-        raise ValueError("output_file must be a file name relative to the schematic render dir.")
+        raise ValueError(
+            f"output_file must be a file name only, such as '{default_name}'; "
+            f"schematic renders are saved in {render_dir}."
+        )
     if Path(name).suffix.lower() not in {"", ".png"}:
         raise ValueError("output_file must use the .png extension.")
     if not name.lower().endswith(".png"):
         name = f"{name}.png"
-    return _ensure_output_dir("schematic-renders") / name
+    return render_dir / name
 
 
 def _schematic_has_renderable_content(data: dict[str, Any]) -> bool:

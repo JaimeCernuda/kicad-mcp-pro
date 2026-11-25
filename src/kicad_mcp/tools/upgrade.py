@@ -78,7 +78,8 @@ def _perform_upgrade(
     if dry_run:
         return (
             f"Dry run: Would upgrade {kind_label} file '{in_path}' "
-            f"and save to '{out_path}' (force={force})."
+            f"and save to '{out_path}' (force={force}). "
+            "Nothing was written; call again with dry_run=False to write it."
         )
 
     cmd = [subcmd, "upgrade"]
