@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import re
 import threading
 from collections.abc import Callable
@@ -14,6 +15,9 @@ from ..utils.library_tables import lib_table_paths, parse_lib_table
 from ..utils.sexpr import _extract_block
 
 _symbol_index: dict[str, dict[str, str]] | None = None
+#: The libraries ``_symbol_index`` was built from; a different set (KiCad installed
+#: after the server started, a project's sym-lib-table edited) means a rebuild.
+_symbol_index_sources: tuple[tuple[str, str], ...] = ()
 _symbol_index_lock = threading.Lock()
 
 
@@ -39,10 +43,14 @@ def symbol_library_files() -> dict[str, Path]:
     return files
 
 
-def build_symbol_index() -> dict[str, dict[str, str]]:
+def _sources(files: dict[str, Path]) -> tuple[tuple[str, str], ...]:
+    return tuple(sorted((library, str(path)) for library, path in files.items()))
+
+
+def build_symbol_index(files: dict[str, Path] | None = None) -> dict[str, dict[str, str]]:
     """Build the in-memory search index from discoverable symbol libraries."""
     index: dict[str, dict[str, str]] = {}
-    for library, sym_file in symbol_library_files().items():
+    for library, sym_file in (symbol_library_files() if files is None else files).items():
         try:
             content = sym_file.read_text(encoding="utf-8", errors="ignore")
         except OSError:
@@ -72,20 +80,24 @@ def build_symbol_index() -> dict[str, dict[str, str]]:
 
 
 def get_symbol_index() -> dict[str, dict[str, str]]:
-    """Return the lazily-built process-wide symbol search index."""
-    global _symbol_index
-    if _symbol_index is None:
-        with _symbol_index_lock:
-            if _symbol_index is None:
-                _symbol_index = build_symbol_index()
-    return _symbol_index
+    """Return the process-wide symbol search index, rebuilt when its libraries change."""
+    global _symbol_index, _symbol_index_sources
+    files = symbol_library_files()
+    sources = _sources(files)
+    with _symbol_index_lock:
+        if _symbol_index is None or sources != _symbol_index_sources:
+            _symbol_index = build_symbol_index(files)
+            _symbol_index_sources = sources
+        return _symbol_index
 
 
 def rebuild_symbol_index() -> int:
     """Rebuild the process-wide symbol search index and return its size."""
-    global _symbol_index
+    global _symbol_index, _symbol_index_sources
+    files = symbol_library_files()
     with _symbol_index_lock:
-        _symbol_index = build_symbol_index()
+        _symbol_index = build_symbol_index(files)
+        _symbol_index_sources = _sources(files)
         return len(_symbol_index)
 
 
@@ -203,13 +215,30 @@ class LibraryCatalogService:
             lines.append(f"... and {total - end} more matches (use page={page + 1})")
         return "\n".join(lines)
 
+    def _library_not_found(self, library: str, symbol_name: str) -> str:
+        known = sorted({item["library"] for item in self.get_symbol_index().values()})
+        lines = [
+            f"Symbol library '{library}' was not found among the {len(known)} symbol "
+            "libraries in KiCad's symbol folder and the global and project sym-lib-table."
+        ]
+        close = difflib.get_close_matches(library, known, n=5, cutoff=0.5)
+        close += [name for name in known if library.lower() in name.lower() and name not in close]
+        if close:
+            lines.append("Close library names: " + ", ".join(close[:8]) + ".")
+        lines.append(f"Call lib_search_symbols('{symbol_name}') to find which library holds it.")
+        return "\n".join(lines)
+
     def get_symbol_info(self, library: str, symbol_name: str) -> str:
         content = self.read_symbol_file(library)
         if content is None:
-            return f"Symbol library '{library}' was not found."
+            return self._library_not_found(library, symbol_name)
         start = content.find(f'(symbol "{symbol_name}"')
         if start == -1:
-            return f"Symbol '{library}:{symbol_name}' was not found."
+            return (
+                f"Symbol '{library}:{symbol_name}' was not found. "
+                f"Call lib_search_symbols('{symbol_name}', library_filter='{library}') "
+                "to list close names."
+            )
         block, _ = _extract_block(content, start)
         description = re.search(r'\(property\s+"Description"\s+"([^"]*)"', block)
         keywords = re.search(r'\(property\s+"ki_keywords"\s+"([^"]*)"', block)
@@ -241,7 +270,7 @@ class LibraryCatalogService:
     def get_datasheet_url(self, library: str, symbol_name: str) -> str:
         content = self.read_symbol_file(library)
         if content is None:
-            return f"Symbol library '{library}' was not found."
+            return self._library_not_found(library, symbol_name)
         match = re.search(
             rf'\(symbol\s+"{re.escape(symbol_name)}".*?\(property\s+"Datasheet"\s+"([^"]*)"',
             content,
