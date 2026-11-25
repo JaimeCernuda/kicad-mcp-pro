@@ -129,6 +129,32 @@ def test_no_kicad_on_the_machine_says_where_it_looked(monkeypatch, tmp_path: Pat
     )
 
 
+def test_no_kicad_is_the_only_cause_a_tool_shows(monkeypatch) -> None:
+    """The IPC miss that led to looking for KiCad is not why the tool failed."""
+    from kicad_mcp import connection, instance, server
+    from kicad_mcp.connection import KiCadConnectionError
+
+    def refused() -> object:
+        raise KiCadConnectionError("The KiCad IPC connection dropped") from ConnectionError(
+            "Connection refused"
+        )
+
+    missing = instance_manager.InstanceStatus(
+        problem=instance_manager._NOT_FOUND, next_step=instance_manager._NOT_FOUND_NEXT
+    )
+    monkeypatch.setenv(instance_manager.INSTANCE_ENV, "auto")
+    monkeypatch.setattr(connection, "_get_board", refused)
+    monkeypatch.setattr(
+        instance, "get_instance_manager", lambda: type("M", (), {"ensure": lambda *a: missing})()
+    )
+    with pytest.raises(KiCadConnectionError) as caught:
+        connection.get_board()
+    text = server._result_text(server._structured_tool_error(caught.value))
+    assert instance_manager._NOT_FOUND in text
+    assert "Cause:" not in text
+    assert "IPC" not in text
+
+
 def test_no_display_and_no_xvfb_says_what_to_install(monkeypatch, tmp_path: Path) -> None:
     board = tmp_path / "led.kicad_pcb"
     board.write_text("(kicad_pcb)")

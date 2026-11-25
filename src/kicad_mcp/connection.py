@@ -98,7 +98,8 @@ def _ensure_instance() -> bool:
     cfg = get_config()
     status = get_instance_manager().ensure(cfg.pcb_file, cfg.kicad_cli)
     if not status.socket:
-        raise KiCadConnectionError(f"{status.problem}\n{status.next_step}".strip())
+        # Why there is no KiCad is the whole story; the IPC miss that led here is not.
+        raise KiCadConnectionError(f"{status.problem}\n{status.next_step}".strip()) from None
     cfg.kicad_socket_path = status.socket
     reset_connection()
     return True
