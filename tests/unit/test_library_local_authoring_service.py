@@ -68,7 +68,11 @@ def test_create_custom_symbol_preserves_defaults_and_file_shape(tmp_path: Path) 
     library_file = tmp_path / "custom_symbols.kicad_sym"
     content = library_file.read_text(encoding="utf-8")
 
-    assert result == f"Created custom symbol 'Demo' in {library_file}."
+    assert result == (
+        f"Created custom symbol 'Demo' in {library_file}.\n"
+        "Library 'custom_symbols' is in the project's sym-lib-table; "
+        "place the symbol as 'custom_symbols:Demo'."
+    )
     assert upgrades == [library_file]
     assert content.startswith('(kicad_symbol_lib (version 20250316) (generator "kicad-mcp-pro")\n')
     assert '\t(symbol "Demo"' in content
@@ -103,7 +107,7 @@ def test_create_custom_symbol_appends_and_escapes_sexpr_strings(tmp_path: Path) 
     start = content.index(f"\t(symbol {_sexpr_string(name)}")
     block, consumed = _extract_block(content, start)
 
-    assert text == f"Created custom symbol '{name}' in {library_file}."
+    assert text.startswith(f"Created custom symbol '{name}' in {library_file}.\n")
     assert consumed > 0
     assert '\n\t(symbol "Injected"' not in content
     assert "\n\t(pin output line" not in block
@@ -183,6 +187,34 @@ def test_generate_symbol_from_pintable_preserves_default_output_name(tmp_path: P
     assert upgrades == [path]
     assert result.startswith(f"Symbol saved to {path}\nName: Demo/IC, Pins: 1, Ref prefix: J")
     assert "Format note:" not in result
+
+
+def test_a_generated_symbol_library_is_registered_in_the_project(tmp_path: Path) -> None:
+    """Without the table entry no tool can place the symbol, so the person writes one."""
+    from kicad_mcp.utils.library_tables import parse_lib_table
+
+    service, _ = _pin_table_service(tmp_path)
+    pins = [{"number": 1, "name": "A"}]
+    path = tmp_path / "output" / "symbols" / "CC2511F32.kicad_sym"
+
+    first = service.generate_symbol_from_pintable("CC2511F32", pins)
+    again = service.generate_symbol_from_pintable("CC2511F32", pins)
+
+    table = tmp_path / "sym-lib-table"
+    text = table.read_text(encoding="utf-8")
+    assert '(uri "${KIPRJMOD}/output/symbols/CC2511F32.kicad_sym")' in text
+    assert text.count('(name "CC2511F32")') == 1
+    assert parse_lib_table(table, tmp_path) == {"CC2511F32": path}
+    for result in (first, again):
+        assert "place the symbol as 'CC2511F32:CC2511F32'" in result
+
+    other = tmp_path / "elsewhere" / "CC2511F32.kicad_sym"
+    clash = service.generate_symbol_from_pintable(
+        "CC2511F32", pins, output_path="elsewhere/CC2511F32.kicad_sym"
+    )
+    assert other.exists()
+    assert "already has a library named 'CC2511F32'" in clash
+    assert parse_lib_table(table, tmp_path) == {"CC2511F32": path}
 
 
 def test_generate_symbol_from_pintable_reports_invalid_pin_specification(tmp_path: Path) -> None:

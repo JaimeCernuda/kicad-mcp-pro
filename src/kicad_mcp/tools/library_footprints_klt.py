@@ -8,6 +8,7 @@ process (``library_tools.install``); this module never imports it.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +32,15 @@ def _project() -> tuple[Path, str]:
 
 
 def _tools(*, models: bool) -> install.Installed:
-    return install.ensure(models=models)
+    """Library Tools, with 3D models when they install; a footprint never waits on a body."""
+    try:
+        return install.ensure(models=models)
+    except install.LibraryToolsInstallError as exc:
+        if not models:
+            raise
+        tools = install.ensure(models=False)
+        note = f"No 3D bodies this time: {exc.reason} The footprints are made without them."
+        return replace(tools, notes=(*tools.notes, note))
 
 
 def _notes(tools: install.Installed) -> list[str]:
@@ -184,7 +193,7 @@ def register(mcp: FastMCP) -> None:
         """
         try:
             tools = _tools(models=models)
-            generated = runner.generate(tools, family, entry, models=models)
+            generated = runner.generate(tools, family, entry, models=tools.models)
             return _filed(
                 generated,
                 library=output_library,

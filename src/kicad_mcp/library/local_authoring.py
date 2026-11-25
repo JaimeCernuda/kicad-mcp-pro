@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from ..file_formats import GENERATED_SEXPR_DIALECT_VERSION
+from ..utils.library_tables import register_symbol_library
 from ..utils.sexpr import _sexpr_string
 from ..utils.symbol_gen import PinSpec, generate_symbol
 
@@ -54,6 +55,18 @@ def _append_symbol(content: str, symbol_block: str) -> str:
     if content.rstrip().endswith(")"):
         return content.rstrip()[:-1] + f"\n{symbol_block})\n"
     return content + symbol_block
+
+
+def _registered(project_dir: Path, library_file: Path, name: str) -> str:
+    """Register the library in the project's sym-lib-table and say how to place the symbol."""
+    library = library_file.stem
+    problem = register_symbol_library(project_dir, library, library_file)
+    if problem:
+        return f"\n{problem}"
+    return (
+        f"\nLibrary '{library}' is in the project's sym-lib-table; "
+        f"place the symbol as '{library}:{name}'."
+    )
 
 
 def _pin_specs_from_rows(pins: list[dict[str, Any]]) -> tuple[list[PinSpec], str | None]:
@@ -110,7 +123,9 @@ class LibraryLocalAuthoringService:
         library_file.write_text(content, encoding="utf-8")
         if self.upgrade_symbol_library is not None:
             self.upgrade_symbol_library(library_file)
-        return f"Created custom symbol '{name}' in {library_file}."
+        return f"Created custom symbol '{name}' in {library_file}." + _registered(
+            project_dir, library_file, name
+        )
 
     def generate_symbol_from_pintable(
         self,
@@ -171,4 +186,7 @@ class LibraryLocalAuthoringService:
                 "\nFormat note: kept repository writer dialect; "
                 f"KiCad migration was unavailable ({format_upgrade.detail})."
             )
+        project_dir = self.project_dir()
+        if project_dir is not None:
+            result += _registered(project_dir, out_file, name)
         return result
