@@ -98,7 +98,7 @@ def test_a_running_kicad_with_the_board_is_attached_not_started(
     assert status.started_by_server is False
 
 
-def test_no_kicad_on_the_machine_says_where_to_get_it(monkeypatch, tmp_path: Path) -> None:
+def test_no_kicad_on_the_machine_says_where_it_looked(monkeypatch, tmp_path: Path) -> None:
     board = tmp_path / "led.kicad_pcb"
     board.write_text("(kicad_pcb)")
     monkeypatch.setenv(instance_manager.INSTANCE_ENV, "auto")
@@ -106,8 +106,12 @@ def test_no_kicad_on_the_machine_says_where_to_get_it(monkeypatch, tmp_path: Pat
     monkeypatch.setattr(instance_manager, "_cli_candidates", lambda configured: [])
     monkeypatch.setattr(instance_manager, "_pcbnew_for", lambda cli: None)
     status = InstanceManager().ensure(board)
-    assert status.problem == "KiCad was not found on this machine."
-    assert "kicad.org/download" in status.next_step and "KICAD_CLI_PATH" in status.next_step
+    assert status.problem == (
+        "KiCad was not found in KICAD_CLI_PATH, PATH or the standard install folders."
+    )
+    assert status.next_step == (
+        "If it is installed elsewhere, set kicad_cli; otherwise see install-kicad."
+    )
 
 
 def test_no_display_and_no_xvfb_says_what_to_install(monkeypatch, tmp_path: Path) -> None:

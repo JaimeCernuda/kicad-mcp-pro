@@ -425,10 +425,11 @@ class InstanceManager:
     ) -> InstanceStatus:
         clis = _cli_candidates(configured_cli)
         if not clis and _pcbnew_for(None) is None:
-            status.problem = "KiCad was not found on this machine."
+            status.problem = (
+                "KiCad was not found in KICAD_CLI_PATH, PATH or the standard install folders."
+            )
             status.next_step = (
-                "Install KiCad 10 or later (https://www.kicad.org/download/), or point "
-                "KICAD_CLI_PATH at the kicad-cli of an install the server did not find."
+                "If it is installed elsewhere, set kicad_cli; otherwise see install-kicad."
             )
             return status
         home = _home()
