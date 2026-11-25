@@ -71,10 +71,15 @@ def discover_ngspice_cli(configured: Path | None = None) -> Path | None:
     if which_path is not None:
         candidates.append(Path(which_path))
 
+    from ..discovery import windows_install_roots
+
     candidates.extend(
         [
-            Path(r"C:\Program Files\KiCad\10.0\bin\ngspice.exe"),
-            Path(r"C:\Program Files\KiCad\9.0\bin\ngspice.exe"),
+            *(
+                root / version / "bin" / "ngspice.exe"
+                for root in windows_install_roots()
+                for version in ("10.0", "9.0")
+            ),
             Path("/usr/bin/ngspice"),
             Path("/usr/local/bin/ngspice"),
             Path("/Applications/KiCad/KiCad.app/Contents/MacOS/ngspice"),

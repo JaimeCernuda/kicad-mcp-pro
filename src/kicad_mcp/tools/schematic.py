@@ -22,7 +22,7 @@ from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
 from ..connection import KiCadConnectionError, get_kicad
-from ..discovery import is_numbered_duplicate_kicad_file
+from ..discovery import is_numbered_duplicate_kicad_file, windows_install_roots
 from ..errors import SchematicWriteUnsafeError
 from ..file_formats import upgrade_generated_file
 from ..models.schematic import (
@@ -862,9 +862,6 @@ class BBox:
 
 # KiCad system footprint search paths (platform-ordered)
 _KICAD_FP_SEARCH_PATHS: list[Path] = [
-    Path("C:/Program Files/KiCad/10.0/share/kicad/footprints"),
-    Path("C:/Program Files/KiCad/9.0/share/kicad/footprints"),
-    Path("C:/Program Files/KiCad/8.0/share/kicad/footprints"),
     Path("/usr/share/kicad/footprints"),
     Path("/usr/local/share/kicad/footprints"),
     Path("/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints"),
@@ -873,7 +870,12 @@ _KICAD_FP_SEARCH_PATHS: list[Path] = [
 
 def _fp_search_roots() -> list[Path]:
     """Return existing KiCad footprint roots (system + project custom)."""
-    roots = [p for p in _KICAD_FP_SEARCH_PATHS if p.exists()]
+    windows = [
+        root / version / "share" / "kicad" / "footprints"
+        for root in windows_install_roots()
+        for version in ("10.0", "9.0", "8.0")
+    ]
+    roots = [p for p in [*windows, *_KICAD_FP_SEARCH_PATHS] if p.exists()]
     # Also check project-local .pretty dirs
     try:
         cfg = get_config()

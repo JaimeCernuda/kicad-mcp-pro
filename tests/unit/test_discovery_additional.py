@@ -19,6 +19,20 @@ def test_candidate_cli_paths_cover_darwin_and_linux(monkeypatch) -> None:
     assert Path("/flatpak/exports/bin/kicad-cli") in linux
 
 
+def test_candidate_cli_paths_cover_a_per_user_windows_install(monkeypatch, tmp_path: Path) -> None:
+    """A no-administrator install under LocalAppData is probed after Program Files."""
+    monkeypatch.setattr(discovery.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(discovery, "_windows_local_app_data", lambda: [tmp_path])
+    candidates = discovery._candidate_cli_paths()
+
+    assert candidates[0] == Path(r"C:\Program Files\KiCad\10.0\bin\kicad-cli.exe")
+    assert tmp_path / "Programs" / "KiCad" / "10.0" / "bin" / "kicad-cli.exe" in candidates
+    assert (
+        tmp_path / "Programs" / "KiCad" / "10.0" / "share" / "kicad"
+        in discovery._platform_library_roots("Windows")
+    )
+
+
 def test_discover_via_kipy_import_error_and_success(monkeypatch, tmp_path: Path) -> None:
     original_import = builtins.__import__
 
@@ -170,7 +184,7 @@ def test_platform_library_roots_cover_every_supported_platform() -> None:
     macos = discovery._platform_library_roots("Darwin")
     linux = discovery._platform_library_roots("Linux")
 
-    assert all(str(path).startswith("C:\\") for path in windows)
+    assert windows[0] == Path(r"C:\Program Files\KiCad\11.0\share\kicad")
     assert any("KiCad.app" in str(path) for path in macos)
     assert linux == [Path("/usr/share/kicad"), Path("/usr/local/share/kicad")]
     # An unrecognised platform must fall back to the POSIX locations, never to

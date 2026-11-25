@@ -71,17 +71,59 @@ class CliCapabilities:
     supports_ps: bool = False
 
 
+#: KiCad releases probed under each Windows install root, stable first. The KiCad 11
+#: candidate is a future-compatible probe, not an assertion that 11 is installed.
+_WINDOWS_KICAD_VERSIONS = ("10.0", "9.0", "8.0", "11.0")
+_FOLDERID_LOCAL_APP_DATA = "{F1B32785-6FBA-4FCF-9D55-7B8E7F157091}"
+
+
+def _windows_local_app_data() -> list[Path]:
+    """The user's LocalAppData folder, from the shell first, then the environment.
+
+    The shell's known-folder answer comes first because a sandboxed launcher may point
+    ``LOCALAPPDATA`` at a private folder, where a per-user KiCad is never installed.
+    """
+    import os
+
+    found: list[Path] = []
+    try:
+        import ctypes
+        import uuid
+
+        windll = cast(Any, ctypes).windll
+        folder_id = ctypes.create_string_buffer(uuid.UUID(_FOLDERID_LOCAL_APP_DATA).bytes_le)
+        value = ctypes.c_wchar_p()
+        if windll.shell32.SHGetKnownFolderPath(folder_id, 0, None, ctypes.byref(value)) == 0:
+            try:
+                if value.value:
+                    found.append(Path(value.value))
+            finally:
+                windll.ole32.CoTaskMemFree(value)
+    except (AttributeError, OSError, ValueError) as exc:
+        logger.debug("known_folder_local_app_data_failed", error=str(exc))
+    if os.environ.get("LOCALAPPDATA"):
+        found.append(Path(os.environ["LOCALAPPDATA"]))
+    if os.environ.get("USERPROFILE"):
+        found.append(Path(os.environ["USERPROFILE"]) / "AppData" / "Local")
+    return list(dict.fromkeys(found))
+
+
+def windows_install_roots() -> list[Path]:
+    """KiCad's machine-wide root, then its per-user (no administrator) roots."""
+    roots = [Path(r"C:\Program Files\KiCad")]
+    roots.extend(base / "Programs" / "KiCad" for base in _windows_local_app_data())
+    return roots
+
+
 def _candidate_cli_paths() -> list[Path]:
     system = platform.system()
     if system == "Windows":
-        # Prefer the released stable KiCad 10 installation. The KiCad 11
-        # candidate is a future-compatible probe, not an assertion that 11
-        # is installed (or released).
+        # A per-user install (winget --scope user, the installer's "only for me")
+        # lands in %LOCALAPPDATA%\Programs\KiCad\<version> without elevation.
         return [
-            Path(r"C:\Program Files\KiCad\10.0\bin\kicad-cli.exe"),
-            Path(r"C:\Program Files\KiCad\9.0\bin\kicad-cli.exe"),
-            Path(r"C:\Program Files\KiCad\8.0\bin\kicad-cli.exe"),
-            Path(r"C:\Program Files\KiCad\11.0\bin\kicad-cli.exe"),
+            root / version / "bin" / "kicad-cli.exe"
+            for root in windows_install_roots()
+            for version in _WINDOWS_KICAD_VERSIONS
         ]
     if system == "Darwin":
         return [
@@ -294,10 +336,9 @@ def _platform_library_roots(system: str) -> list[Path]:
     """
     if system == "Windows":
         return [
-            Path(r"C:\Program Files\KiCad\11.0\share\kicad"),
-            Path(r"C:\Program Files\KiCad\10.0\share\kicad"),
-            Path(r"C:\Program Files\KiCad\9.0\share\kicad"),
-            Path(r"C:\Program Files\KiCad\8.0\share\kicad"),
+            root / version / "share" / "kicad"
+            for root in windows_install_roots()
+            for version in ("11.0", "10.0", "9.0", "8.0")
         ]
     if system == "Darwin":
         return [
