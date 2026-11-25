@@ -183,6 +183,18 @@ def _discover_via_kipy() -> Path | None:
                 logger.debug("kipy_headless_close_failed", error=str(exc))
 
 
+def find_installed_kicad_cli() -> Path | None:
+    """A kicad-cli on ``PATH`` or in a standard install folder, by file checks only.
+
+    Cheap enough to repeat, so a KiCad installed while the server runs is found
+    without restarting it.
+    """
+    on_path = shutil.which("kicad-cli")
+    if on_path:
+        return Path(on_path)
+    return next((path for path in _candidate_cli_paths() if path.exists()), None)
+
+
 def discover_kicad_cli() -> Path:
     """Find the best available kicad-cli executable."""
     from_kipy = _discover_via_kipy()

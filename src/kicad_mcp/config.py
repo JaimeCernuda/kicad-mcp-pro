@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 import warnings
 from pathlib import Path
 from typing import Literal
@@ -701,6 +702,25 @@ class KiCadMCPConfig(BaseSettings):
         """Return True when the active project came from explicit user configuration."""
         return self._project_dir_explicit
 
+    def refresh_kicad_cli(self) -> bool:
+        """Pick up a KiCad installed after the server started; return whether it changed.
+
+        Only when the CLI path came from discovery: a path the person named (environment,
+        config file or argument) is kept even when it does not exist.
+        """
+        if "kicad_cli" in self.model_fields_set or self.kicad_cli.exists():
+            return False
+        from .discovery import find_installed_kicad_cli  # noqa: PLC0415
+
+        found = find_installed_kicad_cli()
+        if found is None:
+            return False
+        self.kicad_cli = found
+        libraries = _discover_library_paths(found)
+        self.symbol_library_dir = self.symbol_library_dir or libraries.get("symbols")
+        self.footprint_library_dir = self.footprint_library_dir or libraries.get("footprints")
+        return True
+
     def safe_diagnostics(self) -> dict[str, object]:
         """Return sanitized config values for health and doctor output."""
         return {
@@ -734,16 +754,30 @@ class KiCadMCPConfig(BaseSettings):
 
 _config_lock = threading.Lock()
 _config: KiCadMCPConfig | None = None
+#: When a missing kicad-cli was last looked for again (monotonic seconds).
+_cli_checked_at = 0.0
+_CLI_RECHECK_SECONDS = 2.0
 
 
 def get_config() -> KiCadMCPConfig:
-    """Return the lazy singleton config."""
-    global _config
+    """Return the lazy singleton config, with a KiCad installed since start picked up."""
+    global _config, _cli_checked_at
+    changed = False
     with _config_lock:
         if _config is None:
             _config = KiCadMCPConfig()
             _config.restore_last_project()
-    return _config
+        elif not _config.kicad_cli.exists():
+            now = time.monotonic()
+            if now - _cli_checked_at >= _CLI_RECHECK_SECONDS:
+                _cli_checked_at = now
+                changed = _config.refresh_kicad_cli()
+        config = _config
+    if changed:
+        from .instance import get_instance_manager  # noqa: PLC0415
+
+        get_instance_manager().isolate_settings(config.kicad_cli)
+    return config
 
 
 def reset_config() -> None:

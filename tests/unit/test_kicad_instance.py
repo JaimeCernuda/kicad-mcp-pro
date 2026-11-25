@@ -34,6 +34,21 @@ def test_seeded_settings_skip_the_first_run_wizard_and_enable_the_api(tmp_path: 
     assert config_home.api_enabled(tmp_path / "cfg", "10.0.8")
 
 
+def test_tables_seeded_before_kicad_was_installed_are_filled_in_once_it_is(
+    tmp_path: Path,
+) -> None:
+    folder = config_home.seed(tmp_path / "cfg", None, None)
+    assert "(lib " not in (folder / "sym-lib-table").read_text()
+    template = tmp_path / "share" / "kicad" / "template"
+    template.mkdir(parents=True)
+    (template / "sym-lib-table").write_text("(sym_lib_table (version 7) (lib (name X)))\n")
+    cli = tmp_path / "bin" / "kicad-cli"
+    cli.parent.mkdir()
+    cli.write_text("")
+    config_home.seed(tmp_path / "cfg", "10.0.8", cli)
+    assert "(name X)" in (folder / "sym-lib-table").read_text()
+
+
 def test_seeding_keeps_existing_settings_but_turns_the_api_back_on(tmp_path: Path) -> None:
     folder = tmp_path / "cfg" / "10.99"
     folder.mkdir(parents=True)
@@ -132,10 +147,60 @@ def test_no_display_and_no_xvfb_says_what_to_install(monkeypatch, tmp_path: Path
     assert "api-server" in status.next_step
 
 
-def test_no_board_asks_for_a_project(tmp_path: Path) -> None:
+def test_no_board_asks_for_a_project(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(instance_manager, "_cli_candidates", lambda configured: [tmp_path])
     status = InstanceManager().ensure(None)
     assert status.problem.startswith("No board file")
     assert "kicad_set_project" in status.next_step
+
+
+def test_no_board_and_no_kicad_says_kicad_is_missing_first(monkeypatch) -> None:
+    monkeypatch.setattr(instance_manager, "_cli_candidates", lambda configured: [])
+    monkeypatch.setattr(instance_manager, "_pcbnew_for", lambda cli: None)
+    status = InstanceManager().ensure(None)
+    assert status.problem.startswith("KiCad was not found")
+    assert "install-kicad" in status.next_step
+
+
+def test_a_kicad_installed_after_the_server_started_is_found(monkeypatch, tmp_path: Path) -> None:
+    from kicad_mcp import config as config_module
+    from kicad_mcp import discovery
+
+    monkeypatch.delenv("KICAD_CLI_PATH", raising=False)
+    monkeypatch.delenv("KICAD_MCP_KICAD_CLI", raising=False)
+    missing = tmp_path / "none" / "kicad-cli"
+    monkeypatch.setattr(config_module, "_discover_kicad_cli", lambda: missing)
+    monkeypatch.setattr(config_module, "_discover_library_paths", lambda cli: {})
+    seeded: list[Path] = []
+    monkeypatch.setattr(
+        InstanceManager, "isolate_settings", lambda self, cli: seeded.append(cli) or ""
+    )
+    config_module.reset_config()
+    try:
+        assert config_module.get_config().kicad_cli == missing
+        installed = tmp_path / "KiCad" / "bin" / "kicad-cli"
+        installed.parent.mkdir(parents=True)
+        installed.write_text("")
+        monkeypatch.setattr(discovery, "find_installed_kicad_cli", lambda: installed)
+        monkeypatch.setattr(config_module, "_cli_checked_at", 0.0)
+        assert config_module.get_config().kicad_cli == installed
+        assert seeded == [installed]
+    finally:
+        config_module.reset_config()
+
+
+def test_a_kicad_cli_the_person_named_is_kept_even_when_missing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from kicad_mcp import discovery
+    from kicad_mcp.config import KiCadMCPConfig
+
+    named = tmp_path / "named" / "kicad-cli"
+    monkeypatch.setattr(discovery, "find_installed_kicad_cli", lambda: tmp_path)
+    with pytest.warns(UserWarning):
+        cfg = KiCadMCPConfig(kicad_cli=named)
+    assert cfg.refresh_kicad_cli() is False
+    assert cfg.kicad_cli == named
 
 
 def test_status_tool_reports_the_case_and_what_to_do() -> None:

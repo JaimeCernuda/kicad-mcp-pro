@@ -79,14 +79,23 @@ def seed(home: Path, version_text: str | None, cli: Path | None = None) -> Path:
     template = next((d for d in template_dirs(cli) if (d / "sym-lib-table").is_file()), None)
     for name, empty in _EMPTY_TABLES.items():
         target = folder / name
-        if target.exists():
-            continue
         source = template / name if template is not None else None
-        if source is not None and source.is_file():
+        has_source = source is not None and source.is_file()
+        # An empty table seeded before KiCad was installed is replaced once its template is.
+        if target.exists() and not (has_source and _is_empty_table(target, empty)):
+            continue
+        if source is not None and has_source:
             target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
         else:
             target.write_text(empty, encoding="utf-8")
     return folder
+
+
+def _is_empty_table(path: Path, empty: str) -> bool:
+    try:
+        return path.read_text(encoding="utf-8") == empty
+    except OSError:
+        return False
 
 
 def api_enabled(home: Path, version_text: str | None) -> bool:

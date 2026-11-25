@@ -38,6 +38,8 @@ WINDOW = "window"
 NONE = "none"
 
 _NOT_READY = "not ready"
+_NOT_FOUND = "KiCad was not found in KICAD_CLI_PATH, PATH or the standard install folders."
+_NOT_FOUND_NEXT = "If it is installed elsewhere, set kicad_cli; otherwise see install-kicad."
 
 
 @dataclass
@@ -347,11 +349,13 @@ class InstanceManager:
             return ""
         if (documents := documents_home(_home())) is not None:
             os.environ["KICAD_DOCUMENTS_HOME"] = str(documents)
-        if os.environ.get("KICAD_CONFIG_HOME"):
+        config = _home() / "config"
+        # A folder the person set is theirs; this server's own is seeded again, so a KiCad
+        # installed after the server started gets its version's folder and library tables.
+        if os.environ.get("KICAD_CONFIG_HOME") not in (None, "", str(config)):
             return ""
         clis = _cli_candidates(configured_cli)
         cli = clis[0] if clis else None
-        config = _home() / "config"
         config_home.seed(config, _version(cli) if cli is not None else None, cli)
         os.environ["KICAD_CONFIG_HOME"] = str(config)
         return str(config)
@@ -378,6 +382,11 @@ class InstanceManager:
         with self._lock:
             status = InstanceStatus(mode=_mode())
             if board is None or not board.is_file():
+                if not _cli_candidates(configured_cli) and _pcbnew_for(None) is None:
+                    status.problem = _NOT_FOUND
+                    status.next_step = _NOT_FOUND_NEXT
+                    self._status = status
+                    return status
                 status.problem = "No board file is set for this project."
                 status.next_step = (
                     "Call kicad_set_project with a folder that has a .kicad_pcb file."
@@ -425,12 +434,8 @@ class InstanceManager:
     ) -> InstanceStatus:
         clis = _cli_candidates(configured_cli)
         if not clis and _pcbnew_for(None) is None:
-            status.problem = (
-                "KiCad was not found in KICAD_CLI_PATH, PATH or the standard install folders."
-            )
-            status.next_step = (
-                "If it is installed elsewhere, set kicad_cli; otherwise see install-kicad."
-            )
+            status.problem = _NOT_FOUND
+            status.next_step = _NOT_FOUND_NEXT
             return status
         home = _home()
         removed = clear_stale_locks(board, _kicad_has_open)

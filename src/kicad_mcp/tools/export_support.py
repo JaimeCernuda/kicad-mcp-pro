@@ -60,7 +60,9 @@ def _run_cli(*args: str, timeout: float | None = None) -> tuple[int, str, str]:
         try:
             if not cfg.kicad_cli.exists():
                 raise FileNotFoundError(
-                    "kicad-cli is not available. Set KICAD_MCP_KICAD_CLI to a valid executable."
+                    "KiCad was not found in KICAD_CLI_PATH, PATH or the standard install "
+                    "folders. If it is installed elsewhere, set kicad_cli; otherwise see "
+                    "install-kicad."
                 )
 
             for attempt in range(_CLI_RETRY_ATTEMPTS):
