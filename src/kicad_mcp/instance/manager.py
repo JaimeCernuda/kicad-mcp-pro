@@ -51,6 +51,7 @@ class InstanceStatus:
     board: str = ""
     socket: str = ""
     config_home: str = ""
+    documents_home: str = ""
     #: The kicad-cli of the KiCad in use, when the server started it (exports match it).
     cli: str = ""
     started_by_server: bool = False
@@ -85,6 +86,21 @@ def _home() -> Path:
     # on every start, so it lives in the per-user temp folder: writable on every OS and
     # under sandboxes that leave the home folder read-only.
     return Path(tempfile.gettempdir()) / f"kicad-mcp-{_user()}" / "instance"
+
+
+def documents_home(home: Path) -> Path | None:
+    """The private ``KICAD_DOCUMENTS_HOME`` of a KiCad this server runs, or ``None``.
+
+    KiCad makes its documents folder (``Documents/KiCad`` with its scripting plugins and
+    templates) at every start. A private one keeps a KiCad this server runs from writing
+    the person's Documents, which a sandboxed server may not reach. A
+    ``KICAD_DOCUMENTS_HOME`` the person set is kept (``None``).
+    """
+    if os.environ.get("KICAD_DOCUMENTS_HOME"):
+        return None
+    folder = home / "documents"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
 
 
 def _user() -> str:
@@ -322,10 +338,16 @@ class InstanceManager:
         The window or headless server it starts already uses the private settings folder;
         this points ``KICAD_CONFIG_HOME`` there for the whole process too, so ``kicad-cli``
         exports, checks and the 3D model do not rewrite the person's ``pcbnew.json`` and
-        friends. A ``KICAD_CONFIG_HOME`` the person set is kept. Returns the folder used,
-        or ``""`` when nothing was changed.
+        friends, and ``KICAD_DOCUMENTS_HOME`` to a private documents folder
+        (:func:`documents_home`). A ``KICAD_CONFIG_HOME`` or ``KICAD_DOCUMENTS_HOME`` the
+        person set is kept. Returns the settings folder used, or ``""`` when it was not
+        changed.
         """
-        if _mode() != "auto" or os.environ.get("KICAD_CONFIG_HOME"):
+        if _mode() != "auto":
+            return ""
+        if (documents := documents_home(_home())) is not None:
+            os.environ["KICAD_DOCUMENTS_HOME"] = str(documents)
+        if os.environ.get("KICAD_CONFIG_HOME"):
             return ""
         clis = _cli_candidates(configured_cli)
         cli = clis[0] if clis else None
@@ -468,6 +490,9 @@ class InstanceManager:
         config = home / "config"
         config_home.seed(config, version, cli)
         env = {**os.environ, "KICAD_CONFIG_HOME": str(config)}
+        if (documents := documents_home(home)) is not None:
+            env["KICAD_DOCUMENTS_HOME"] = str(documents)
+        status.documents_home = env.get("KICAD_DOCUMENTS_HOME", "")
         if case != HEADLESS:  # a window's socket follows its temp folder: give it its own
             temp = private_temp(home)
             sock_path = socket_url.removeprefix("ipc://")

@@ -56,6 +56,8 @@ def register(mcp: FastMCP) -> None:
             lines.append(f"Process {status.pid}, started by this server; it stops with the server.")
         if status.config_home:
             lines.append(f"Private KiCad settings: {status.config_home}.")
+        if status.documents_home:
+            lines.append(f"KiCad documents folder: {status.documents_home}.")
         if status.problem:
             lines.append(f"Problem: {status.problem}")
         if status.next_step:

@@ -201,6 +201,28 @@ def test_auto_mode_keeps_every_kicad_the_server_runs_off_the_persons_settings(
     assert os.environ["KICAD_CONFIG_HOME"] == str(tmp_path / "mine")
 
 
+def test_auto_mode_gives_kicad_a_private_documents_folder(monkeypatch, tmp_path: Path) -> None:
+    """KiCad makes Documents/KiCad at every start; a KiCad the server runs uses its own."""
+    import os
+
+    from kicad_mcp.instance import manager
+
+    monkeypatch.setattr(manager, "_cli_candidates", lambda _configured: [])
+    monkeypatch.setenv(manager.HOME_ENV, str(tmp_path / "home"))
+    monkeypatch.setenv(manager.INSTANCE_ENV, "auto")
+    monkeypatch.delenv("KICAD_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("KICAD_DOCUMENTS_HOME", raising=False)
+
+    manager.InstanceManager().isolate_settings(None)
+    assert os.environ["KICAD_DOCUMENTS_HOME"] == str(tmp_path / "home" / "documents")
+    assert (tmp_path / "home" / "documents").is_dir()
+
+    monkeypatch.setenv("KICAD_DOCUMENTS_HOME", str(tmp_path / "mine"))
+    assert manager.documents_home(tmp_path / "home") is None
+    manager.InstanceManager().isolate_settings(None)
+    assert os.environ["KICAD_DOCUMENTS_HOME"] == str(tmp_path / "mine")
+
+
 def _fake(name: str) -> subprocess.Popen[bytes]:
     bash = shutil.which("bash") or "/bin/bash"
     return subprocess.Popen([bash, "-c", f"exec -a {name} sleep 30"], start_new_session=True)
