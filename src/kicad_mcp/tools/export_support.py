@@ -17,18 +17,6 @@ from ..utils import telemetry as otel
 _CLI_RETRY_ATTEMPTS = 3
 _CLI_RETRY_BASE_DELAY_SEC = 0.1
 __all__ = ["_run_cli", "_run_cli_variants", "subprocess", "time"]
-_TRANSIENT_CLI_PATTERNS = (
-    "timeout",
-    "timed out",
-    "connection refused",
-    "resource busy",
-    "kicad is busy",
-    "cannot respond to api requests",
-    "gui appears to be busy",
-    "temporarily unavailable",
-    "ipc",
-    "socket",
-)
 
 
 def _sanitize_cli_text(text: str) -> str:
@@ -36,20 +24,21 @@ def _sanitize_cli_text(text: str) -> str:
     sanitized = text.replace(str(cfg.kicad_cli), "kicad-cli")
     if cfg.project_dir is not None:
         sanitized = sanitized.replace(str(cfg.project_dir), "<project>")
-    sanitized = sanitized.strip()
-    if (
-        "kicad is busy" in sanitized.casefold()
-        or "cannot respond to api requests" in sanitized.casefold()
-    ):
-        return (
-            f"{sanitized} KiCad GUI appears to be busy or modal; retry after closing dialogs, "
-            "finishing the current edit, or saving the board."
-        )
-    return sanitized
+    return sanitized.strip()
+
+
+def _timeout_output(value: str | bytes | None) -> str:
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return value or ""
 
 
 def _run_cli(*args: str, timeout: float | None = None) -> tuple[int, str, str]:
-    """Run kicad-cli with the supplied arguments."""
+    """Run kicad-cli with the supplied arguments.
+
+    Only a run that exceeded its timeout is tried again; any other failure returns
+    kicad-cli's own exit code and output on the first attempt.
+    """
     cfg = get_config()
     command = otel.safe_cli_command(args)
     started = time.perf_counter()
@@ -66,6 +55,7 @@ def _run_cli(*args: str, timeout: float | None = None) -> tuple[int, str, str]:
                 )
 
             for attempt in range(_CLI_RETRY_ATTEMPTS):
+                timed_out = False
                 try:
                     result = subprocess.run(
                         [str(cfg.kicad_cli), *args],
@@ -81,33 +71,27 @@ def _run_cli(*args: str, timeout: float | None = None) -> tuple[int, str, str]:
                         _sanitize_cli_text(result.stderr),
                     )
                 except subprocess.TimeoutExpired as exc:
+                    timed_out = True
+                    output = _sanitize_cli_text(_timeout_output(exc.stderr))
                     last_result = (
                         124,
-                        _sanitize_cli_text(str(exc.stdout or "")),
-                        "The kicad-cli command timed out.",
+                        _sanitize_cli_text(_timeout_output(exc.stdout)),
+                        f"The kicad-cli command timed out after {exc.timeout:g} s."
+                        + (f"\n{output}" if output else ""),
                     )
                 except OSError as exc:
                     last_result = (1, "", _sanitize_cli_text(str(exc)))
 
-                code, _stdout, stderr = last_result
+                code = last_result[0]
                 return_code = code
                 status = {0: "ok", 124: "timeout"}.get(code, "error")
-                if code == 0:
-                    return last_result
-                if attempt == _CLI_RETRY_ATTEMPTS - 1:
-                    return last_result
-                if not _is_transient_cli_failure(stderr):
+                if not timed_out or attempt == _CLI_RETRY_ATTEMPTS - 1:
                     return last_result
                 time.sleep(_CLI_RETRY_BASE_DELAY_SEC * (2**attempt))
             return last_result
         finally:
             otel.record_cli_invocation(command, status, time.perf_counter() - started)
             otel.finish_cli_span(span, status=status, return_code=return_code)
-
-
-def _is_transient_cli_failure(stderr: str) -> bool:
-    lowered = stderr.casefold()
-    return any(pattern in lowered for pattern in _TRANSIENT_CLI_PATTERNS)
 
 
 def _run_cli_variants(variants: list[list[str]]) -> tuple[int, str, str]:

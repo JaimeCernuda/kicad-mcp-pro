@@ -59,7 +59,7 @@ def test_board_file_helpers_parse_geometry_nets_and_frame() -> None:
     assert not board_file._placement_boxes_overlap(0, 0, 2, 2, 5, 0, 2, 2, 0.0)
 
 
-def test_export_support_retries_transient_cli_errors(
+def test_export_support_returns_cli_failure_without_retry(
     sample_project: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -97,10 +97,10 @@ def test_export_support_retries_transient_cli_errors(
 
     code, stdout, stderr = export_support._run_cli("pcb", "export", "gerbers")
 
-    assert code == 0
-    assert stdout == "exported by kicad-cli"
-    assert stderr == ""
-    assert len(attempts) == 2
+    assert code == 1
+    assert stdout == ""
+    assert stderr == "kicad-cli IPC socket timeout"
+    assert len(attempts) == 1
 
 
 def test_export_support_reports_missing_files_and_variant_timeouts(
