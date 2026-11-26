@@ -888,8 +888,7 @@ def _indent_of(text: str, sheet: SheetBlock, index: int) -> str:
         raise ValueError(
             f"Sheet '{sheet.name}' has its pin anchor mid-line, after {prefix.strip()[:40]!r}, "
             "so a new pin cannot be indented safely; refusing to risk corrupting the file. "
-            "This usually means the whole (sheet ...) block is written on one line -- "
-            "open the file in KiCad and save it once, then retry."
+            "Open the file in KiCad and save it once, then retry."
         )
     return prefix
 
@@ -926,8 +925,7 @@ def check_edits_non_overlapping(edits: Sequence[tuple[int, int, str]], subject: 
             raise ValueError(
                 f"{subject} has overlapping edits at character spans "
                 f"{previous[:2]} and {current[:2]}; refusing to risk corrupting the file. "
-                "This usually means a (pin ...) node shares a source line with "
-                "(instances ...) or (size ...) -- reformat the file in KiCad and retry."
+                "Reformat the file in KiCad and retry."
             )
 
 

@@ -6391,10 +6391,7 @@ def _validate_schematic_text(content: str) -> None:
     duplicate_uuids = _duplicate_uuids(content)
     if duplicate_uuids:
         sample = ", ".join(sorted(duplicate_uuids)[:5])
-        raise ValueError(
-            "Refusing to write a schematic with duplicate element UUIDs "
-            f"(a string/regex mutation likely cloned a block): {sample}."
-        )
+        raise ValueError(f"Refusing to write a schematic with duplicate element UUIDs: {sample}.")
 
 
 def _guard_schematic_structural_loss(
