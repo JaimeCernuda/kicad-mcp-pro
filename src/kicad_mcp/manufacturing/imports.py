@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ..errors import ToolFailedError
+
 
 class ImportCapabilities(Protocol):
     @property
@@ -64,9 +66,10 @@ class ManufacturingImportService:
         import_format: str = "auto",
         report_format: str = "none",
         report_file: str = "",
+        failure_label: str = _BOARD_IMPORT_FAILURE_PREFIX,
     ) -> str:
         if import_format.strip().casefold() == "allegro":
-            return (
+            raise ToolFailedError(
                 "blocked: KiCad CLI import --format allegro is not a supported product capability"
             )
 
@@ -76,7 +79,7 @@ class ManufacturingImportService:
             raise ValueError(f"Unsafe input file path: {exc}") from exc
 
         if not in_path.exists():
-            return f"Input file was not found: {input_file}"
+            raise ToolFailedError(f"Input file was not found: {input_file}")
 
         cmd = ["pcb", "import", "--format", import_format, "--report-format", report_format]
         if report_file:
@@ -96,21 +99,24 @@ class ManufacturingImportService:
         cmd.append(str(in_path))
         code, stdout, stderr = self.run_cli_variants([cmd])
         if code != 0:
-            return f"Board import failed: {stderr or stdout or 'unknown error'}"
+            raise ToolFailedError(
+                f"{failure_label}: {stderr or stdout or 'unknown error'}", exit_code=code
+            )
         return f"Board imported successfully. Output: {output_file or 'default location'}"
 
     def import_allegro(self, allegro_brd_path: str, output_dir: str = "") -> str:
         _ = allegro_brd_path, output_dir
-        return "blocked: KiCad CLI import --format allegro is not a supported product capability"
+        raise ToolFailedError(
+            "blocked: KiCad CLI import --format allegro is not a supported product capability"
+        )
 
     def import_pads(self, pads_pcb_path: str, output_dir: str = "") -> str:
         result = self.import_board(
             input_file=pads_pcb_path,
             output_file=output_dir,
             import_format="pads",
+            failure_label="pads import failed",
         )
-        if _BOARD_IMPORT_FAILURE_PREFIX in result:
-            return result.replace(_BOARD_IMPORT_FAILURE_PREFIX, "pads import failed")
         return result.replace(_BOARD_IMPORT_SUCCESS_PREFIX, "pads import completed")
 
     def import_geda(self, geda_pcb_path: str, output_dir: str = "") -> str:
@@ -118,9 +124,8 @@ class ManufacturingImportService:
             input_file=geda_pcb_path,
             output_file=output_dir,
             import_format="geda",
+            failure_label="geda import failed",
         )
-        if _BOARD_IMPORT_FAILURE_PREFIX in result:
-            return result.replace(_BOARD_IMPORT_FAILURE_PREFIX, "geda import failed")
         return result.replace(_BOARD_IMPORT_SUCCESS_PREFIX, "geda import completed")
 
     def import_specctra(self, specctra_ses_path: str, output_dir: str = "") -> str:
@@ -128,7 +133,6 @@ class ManufacturingImportService:
             input_file=specctra_ses_path,
             output_file=output_dir,
             import_format="specctra",
+            failure_label="specctra import failed",
         )
-        if _BOARD_IMPORT_FAILURE_PREFIX in result:
-            return result.replace(_BOARD_IMPORT_FAILURE_PREFIX, "specctra import failed")
         return result.replace(_BOARD_IMPORT_SUCCESS_PREFIX, "specctra import completed")
