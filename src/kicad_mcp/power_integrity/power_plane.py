@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from ..errors import ToolFailedError
 from ..models.power_integrity import PowerPlaneInput
 
 
@@ -36,13 +37,15 @@ class PowerIntegrityPowerPlaneService:
     def generate(self, payload: PowerPlaneInput, backend: PowerPlaneBackend) -> str:
         layer_value = backend.resolve_layer(payload.layer)
         if not backend.is_supported_copper_layer(layer_value):
-            return "Power plane generation currently supports only F_Cu and B_Cu."
+            raise ToolFailedError("Power plane generation currently supports only F_Cu and B_Cu.")
         if backend.zone_exists(payload.net_name, layer_value):
-            return f"A copper zone for '{payload.net_name}' already exists on {payload.layer}."
+            raise ToolFailedError(
+                f"A copper zone for '{payload.net_name}' already exists on {payload.layer}."
+            )
 
         bounds = backend.plane_bounds()
         if bounds is None:
-            return (
+            raise ToolFailedError(
                 "Could not determine board bounds. Add an Edge.Cuts outline or at least one "
                 "footprint before generating a power plane."
             )
