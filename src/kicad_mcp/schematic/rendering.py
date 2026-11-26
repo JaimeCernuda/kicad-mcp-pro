@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, TypeGuard, cast
 
+from ..errors import ToolFailedError
+
 _INVALID_DPI_MESSAGE = "dpi must be between 72 and 600."
 
 
@@ -52,10 +54,6 @@ class SchematicRenderingService:
     now_ns: Callable[[], int]
 
     @staticmethod
-    def _text(message: str) -> SchematicRenderingResponse:
-        return SchematicRenderingResponse(text=message)
-
-    @staticmethod
     def _json(metadata: dict[str, Any]) -> SchematicRenderingResponse:
         return SchematicRenderingResponse(
             text=json.dumps(metadata, indent=2),
@@ -77,7 +75,7 @@ class SchematicRenderingService:
     ) -> SchematicRenderingResponse:
         """Render a schematic sheet to a PNG response."""
         if dpi < 72 or dpi > 600:
-            return self._text(_INVALID_DPI_MESSAGE)
+            raise ToolFailedError(_INVALID_DPI_MESSAGE)
 
         target = self.resolve_target(sheet, sheet_file)
         data = self.parse_schematic(target.path)
@@ -95,7 +93,7 @@ class SchematicRenderingService:
                 f"{target.path.stem}.png",
             )
         except ValueError as exc:
-            return self._text(f"Invalid output path: {exc}")
+            raise ToolFailedError(f"Invalid output path: {exc}") from exc
         try:
             svg_file, image_metadata = self.render_png_artifact(
                 target.path,
@@ -105,7 +103,7 @@ class SchematicRenderingService:
                 include_title_block,
             )
         except RuntimeError as exc:
-            return self._text(f"Schematic PNG render failed: {exc}")
+            raise ToolFailedError(f"Schematic PNG render failed: {exc}") from exc
         metadata = {
             "status": "ok",
             "png_path": str(png_file),
@@ -127,7 +125,7 @@ class SchematicRenderingService:
     ) -> SchematicRenderingResponse:
         """Render the exact visual delta from the latest mutation snapshot."""
         if dpi < 72 or dpi > 600:
-            return self._text(_INVALID_DPI_MESSAGE)
+            raise ToolFailedError(_INVALID_DPI_MESSAGE)
 
         target = self.resolve_target(sheet, sheet_file)
         state = self.load_visual_diff(target.path)
@@ -166,7 +164,7 @@ class SchematicRenderingService:
                 f"{target.path.stem}-visual-diff.png",
             )
         except ValueError as exc:
-            return self._text(f"Invalid output path: {exc}")
+            raise ToolFailedError(f"Invalid output path: {exc}") from exc
 
         artifact_dir = diff_file.parent / "_visual-diff"
         artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -193,7 +191,7 @@ class SchematicRenderingService:
                 diff_file,
             )
         except RuntimeError as exc:
-            return self._text(f"Schematic visual diff failed: {exc}")
+            raise ToolFailedError(f"Schematic visual diff failed: {exc}") from exc
 
         metadata2: dict[str, Any] = {
             "status": "ok",
@@ -332,9 +330,9 @@ class SchematicRenderingService:
     ) -> SchematicRenderingResponse:
         """Poll and optionally refresh a safe live schematic preview."""
         if debounce_ms < 0 or debounce_ms > 60_000:
-            return self._text("debounce_ms must be between 0 and 60000.")
+            raise ToolFailedError("debounce_ms must be between 0 and 60000.")
         if dpi < 72 or dpi > 600:
-            return self._text(_INVALID_DPI_MESSAGE)
+            raise ToolFailedError(_INVALID_DPI_MESSAGE)
 
         target = self.resolve_target(sheet, sheet_file)
         files = self.preview_files(target.path, include_child_sheets)

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ..errors import ToolFailedError
+
 
 class SeverityLike(Protocol):
     value: str
@@ -166,7 +168,9 @@ class SchematicSemanticIRService:
             circuit = self.parse_circuit(schematic_file)
         except Exception as exc:
             self.warn_parse_failure(exc)
-            return self.with_diagnostics(f"Could not parse IR: {exc}", schematic_file)
+            raise ToolFailedError(
+                self.with_diagnostics(f"Could not parse IR: {exc}", schematic_file)
+            ) from exc
 
         lines = [
             f"# Semantic Circuit IR — {circuit.title}",

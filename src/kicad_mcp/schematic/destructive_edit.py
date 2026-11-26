@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from ..errors import ToolFailedError
+
 type ParsedRecord = dict[str, Any]
 type SymbolMatch = tuple[str, int, int, ParsedRecord]
 type ActiveSchematicFile = Callable[[], Path]
@@ -177,10 +179,12 @@ class SchematicDestructiveEditService:
             if wire.get("uuid") and self.wire_id_matches(str(wire["uuid"]), wire_id)
         ]
         if not matches:
-            return f"Wire '{wire_id}' was not found in the active schematic."
+            raise ToolFailedError(f"Wire '{wire_id}' was not found in the active schematic.")
         if len(matches) > 1:
             matching_ids = ", ".join(str(wire["uuid"]) for wire in matches[:5])
-            return f"Wire identifier '{wire_id}' is ambiguous. Matching UUIDs: {matching_ids}"
+            raise ToolFailedError(
+                f"Wire identifier '{wire_id}' is ambiguous. Matching UUIDs: {matching_ids}"
+            )
 
         target = matches[0]
         target_signature = self.wire_signature(
@@ -197,7 +201,7 @@ class SchematicDestructiveEditService:
                 allow_node_loss=True,
             )
         except ValueError as exc:
-            return str(exc)
+            raise ToolFailedError(str(exc)) from exc
         return (
             f"{self.reload_schematic()}\n"
             f"Deleted wire '{target['uuid']}' from "
@@ -282,7 +286,7 @@ class SchematicDestructiveEditService:
         try:
             self.transactional_write(mutator, allow_node_loss=True)
         except ValueError as exc:
-            return str(exc)
+            raise ToolFailedError(str(exc)) from exc
 
         return (
             f"{self.reload_schematic()}\n"
@@ -337,7 +341,7 @@ class SchematicDestructiveEditService:
         try:
             self.transactional_write(mutator, allow_node_loss=True)
         except ValueError as exc:
-            return str(exc)
+            raise ToolFailedError(str(exc)) from exc
         return (
             f"{self.reload_schematic()}\n"
             f"Deleted {removed} label(s) '{name}' at "
@@ -386,7 +390,7 @@ class SchematicDestructiveEditService:
         try:
             self.transactional_write(mutator, allow_node_loss=True)
         except ValueError as exc:
-            return str(exc)
+            raise ToolFailedError(str(exc)) from exc
         return (
             f"{self.reload_schematic()}\n"
             f"Deleted {removed} no-connect marker(s) at "
@@ -467,7 +471,7 @@ class SchematicDestructiveEditService:
         try:
             self.transactional_write(mutator)
         except ValueError as exc:
-            return str(exc)
+            raise ToolFailedError(str(exc)) from exc
         lines = [
             self.reload_schematic(),
             f"Moved label '{name}' to ({target_x:.2f}, {target_y:.2f}) mm.",
@@ -536,7 +540,7 @@ class SchematicDestructiveEditService:
         try:
             self.transactional_write(mutator)
         except ValueError as exc:
-            return str(exc)
+            raise ToolFailedError(str(exc)) from exc
 
         justify_desc = resolved_justify or "none (centered)"
         return (

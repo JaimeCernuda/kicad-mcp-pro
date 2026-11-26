@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from ..errors import ToolFailedError
 from ..models.tool_result import MutatingToolResult, TransactionVerification
 
 
@@ -69,7 +70,9 @@ class SchematicDocumentSettingsService:
             if value is not None
         }
         if not updates:
-            return "No schematic title block fields specified. Provide at least one field."
+            raise ToolFailedError(
+                "No schematic title block fields specified. Provide at least one field."
+            )
 
         target = self.resolve_target(sheet=sheet, sheet_file=sheet_file)
         before_text = target.path.read_text(encoding="utf-8")
@@ -113,7 +116,7 @@ class SchematicDocumentSettingsService:
         paper = paper.strip()
         if paper not in self.paper_sizes_mm:
             available = ", ".join(sorted(self.paper_sizes_mm))
-            return f"Unknown paper size '{paper}'. Available sizes: {available}."
+            raise ToolFailedError(f"Unknown paper size '{paper}'. Available sizes: {available}.")
 
         sch_file = self.active_schematic_file()
         new_w, new_h = self.paper_sizes_mm[paper]
@@ -148,7 +151,7 @@ class SchematicDocumentSettingsService:
         except _SheetAlreadySetError:
             return f"Sheet is already '{paper}' ({new_w:.0f} x {new_h:.0f} mm). No change made."
         except Exception as exc:
-            return f"Could not write schematic file: {exc}"
+            raise ToolFailedError(f"Could not write schematic file: {exc}") from exc
 
         result = self.reload_schematic()
         old_w, old_h = self.paper_sizes_mm.get(old_paper, (0.0, 0.0))
@@ -191,7 +194,7 @@ class SchematicDocumentSettingsService:
         )
 
         if chosen is None:
-            return (
+            raise ToolFailedError(
                 f"Symbols span {required_w:.0f} x {required_h:.0f} mm — "
                 "no standard size is large enough.  Consider splitting into "
                 "hierarchical sheets (sch_create_sheet)."

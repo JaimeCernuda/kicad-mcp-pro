@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from ..errors import ToolFailedError
+
 YamlLoader = Callable[[TextIO], Any]
 
 
@@ -92,8 +94,10 @@ class SchematicTemplateCatalogService:
 
         try:
             load_yaml = self.yaml_loader_factory()
-        except ImportError:
-            return "Template tools require PyYAML. Install it to inspect bundled templates."
+        except ImportError as exc:
+            raise ToolFailedError(
+                "Template tools require PyYAML. Install it to inspect bundled templates."
+            ) from exc
 
         lines = ["# Available Subcircuit Templates", ""]
         for yaml_file in sorted(self.templates_dir.glob("*.yaml")):
@@ -122,7 +126,7 @@ class SchematicTemplateCatalogService:
         yaml_file = self.templates_dir / f"{template_name}.yaml"
         if not yaml_file.exists():
             available = [path.stem for path in self.templates_dir.glob("*.yaml")]
-            return (
+            raise ToolFailedError(
                 f"Template '{template_name}' not found. Available: {', '.join(sorted(available))}"
             )
 
@@ -130,10 +134,12 @@ class SchematicTemplateCatalogService:
             load_yaml = self.yaml_loader_factory()
             with yaml_file.open(encoding="utf-8") as stream:
                 data = load_yaml(stream)
-        except ImportError:
-            return "Template tools require PyYAML. Install it to inspect bundled templates."
+        except ImportError as exc:
+            raise ToolFailedError(
+                "Template tools require PyYAML. Install it to inspect bundled templates."
+            ) from exc
         except Exception as exc:
-            return f"Could not parse template '{template_name}': {exc}"
+            raise ToolFailedError(f"Could not parse template '{template_name}': {exc}") from exc
 
         lines = [
             f"# Template: {data.get('name', template_name)}",

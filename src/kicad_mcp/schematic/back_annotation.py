@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from ..errors import ToolFailedError
+
 type ProjectFile = Callable[[], Path | None]
 type SymbolByReference = Callable[[str], Mapping[str, Any]]
 type SplitLibId = Callable[[str], tuple[str, str]]
@@ -100,7 +102,7 @@ class SchematicBackAnnotationService:
         payload = self._swappable_payload(component_ref)
         pins = cast(list[str], payload.get("pins", []))
         if pin_a not in pins or pin_b not in pins:
-            return (
+            raise ToolFailedError(
                 f"Pins '{pin_a}' and/or '{pin_b}' are not swappable candidates "
                 f"for '{component_ref}'."
             )
@@ -122,7 +124,9 @@ class SchematicBackAnnotationService:
         payload = self._swappable_payload(component_ref)
         gates = cast(list[int], payload.get("gates", []))
         if gate_a not in gates or gate_b not in gates:
-            return f"Gates '{gate_a}' and/or '{gate_b}' are not available on '{component_ref}'."
+            raise ToolFailedError(
+                f"Gates '{gate_a}' and/or '{gate_b}' are not available on '{component_ref}'."
+            )
 
         state = self.load_state("gate_swaps.json", {"swaps": []})
         swaps = cast(list[dict[str, object]], state.setdefault("swaps", []))
