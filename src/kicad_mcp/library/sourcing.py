@@ -488,25 +488,10 @@ class LibrarySourcingService:
             client = self.component_search_client(source)
             part = client.get_part(lcsc_code_or_mpn)
         except (RuntimeError, ValueError, OSError) as exc:
-            return VerdictReport.from_text_verdict(
-                text=f"Sourcing policy check failed: {exc}",
-                summary="Sourcing backend was unavailable.",
-                verdict="FAIL",
-                source="lib_check_sourcing_policy",
-                evidence=[{"source": source, "error": str(exc)}],
-                remediation="Configure the sourcing backend and retry.",
-                retryable=True,
-                failure_mode="environment",
-            )
+            raise ToolFailedError(f"Sourcing policy check failed on {source}: {exc}") from exc
         if part is None:
-            return VerdictReport.from_text_verdict(
-                text=f"No component details were found for '{lcsc_code_or_mpn}'.",
-                summary="Requested part was not found.",
-                verdict="FAIL",
-                source="lib_check_sourcing_policy",
-                evidence=[{"source": source, "part": lcsc_code_or_mpn}],
-                remediation="Use a valid LCSC code or MPN from lib_search_components().",
-                failure_mode="configuration",
+            raise ToolFailedError(
+                f"No component details were found for '{lcsc_code_or_mpn}' on {source}."
             )
         checks = _sourcing_policy_checks(
             part,
