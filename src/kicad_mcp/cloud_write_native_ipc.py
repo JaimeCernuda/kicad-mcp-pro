@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from kicad_mcp.cloud_readonly_boundary import OperatorProject
 from kicad_mcp.cloud_write_board_revision import MAX_BOARD_BYTES
 from kicad_mcp.cloud_write_contract import LocalWriteDeniedError
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.pcb.transaction_lifecycle import PcbTransactionLifecycleService
 
 if TYPE_CHECKING:
@@ -132,7 +133,10 @@ class OfflineTrustedPcbIpcAdapter:
         state = self._service.status_payload()
         if state.get("state") != "idle" or state.get("recovery_required") is not False:
             return False
-        response = self._service.begin()
+        try:
+            response = self._service.begin()
+        except ToolFailedError:
+            return False
         self._started = response == _BEGIN
         if self._started and self._service.status_payload().get("state") != "active":
             # A claimed begin without a valid active transaction is ambiguous.
