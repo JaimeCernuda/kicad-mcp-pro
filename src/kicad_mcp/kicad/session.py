@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal, Protocol, TypedDict
 
 from kipy.errors import ApiError
+from kipy.errors import ConnectionError as KipyConnectionError
 from kipy.proto.common import ApiStatusCode
 
 from ..errors import (
@@ -52,13 +53,6 @@ class SessionConfig(Protocol):
 
 
 ConfigFactory = Callable[[], SessionConfig]
-_BUSY_PATTERNS = (
-    "busy",
-    "cannot respond",
-    "modal",
-    "temporarily unavailable",
-    "try again",
-)
 
 
 def _default_config() -> SessionConfig:
@@ -67,48 +61,26 @@ def _default_config() -> SessionConfig:
     return get_config()
 
 
-def _is_busy_error(message: str) -> bool:
-    lowered = message.casefold()
-    return any(pattern in lowered for pattern in _BUSY_PATTERNS)
-
-
 IpcErrorKind = Literal["timeout", "disconnected", "busy", "other"]
-
-_TIMEOUT_PATTERNS = ("timeout", "timed out", "deadline")
-_DISCONNECT_PATTERNS = (
-    "disconnect",
-    "broken pipe",
-    "connection reset",
-    "connection refused",
-    "connection aborted",
-    "not connected",
-    "socket closed",
-    "eof",
-)
 
 
 def _classify_ipc_error(exc: BaseException) -> IpcErrorKind:
-    """Classify an IPC failure by exception *type* first, message only as a fallback.
+    """Classify an IPC failure by its exception type and KiCad status code only.
 
-    Structural exception types (``TimeoutError``, the ``ConnectionError`` family,
-    ``EOFError``) are authoritative and translation-stable. Substring matching on the
-    message is a last resort for the opaque ``RuntimeError``s kipy raises when it
-    cannot surface a typed error — so a localized or reworded message can never flip
-    the classification of a genuinely typed failure.
+    The message is never read: an error that declares neither stays ``other`` and
+    reaches the caller with its own text.
     """
     if isinstance(exc, TimeoutError):
         return "timeout"
-    if isinstance(exc, (ConnectionError, EOFError)):
+    if isinstance(exc, (ConnectionError, EOFError, KipyConnectionError)):
         return "disconnected"
-    if isinstance(exc, ApiError) and exc.code == ApiStatusCode.AS_TOKEN_MISMATCH:
-        return "disconnected"
-    lowered = str(exc).casefold()
-    if any(pattern in lowered for pattern in _TIMEOUT_PATTERNS):
-        return "timeout"
-    if any(pattern in lowered for pattern in _DISCONNECT_PATTERNS):
-        return "disconnected"
-    if _is_busy_error(lowered):
-        return "busy"
+    if isinstance(exc, ApiError):
+        if exc.code == ApiStatusCode.AS_TOKEN_MISMATCH:
+            return "disconnected"
+        if exc.code == ApiStatusCode.AS_TIMEOUT:
+            return "timeout"
+        if exc.code in (ApiStatusCode.AS_BUSY, ApiStatusCode.AS_NOT_READY):
+            return "busy"
     return "other"
 
 
@@ -342,20 +314,13 @@ class KiCadSession:
                 break
 
         kind = _classify_ipc_error(last_error) if last_error is not None else "other"
+        detail = str(last_error).strip() if last_error is not None else ""
+        detail = detail or (type(last_error).__name__ if last_error is not None else "")
         if kind == "disconnected":
             raise IpcDisconnectedError(
-                "The KiCad IPC connection dropped (KiCad may have closed or restarted) "
-                "and did not recover. Reopen the board in KiCad and retry."
+                f"The KiCad IPC connection dropped and did not recover: {detail}"
             ) from last_error
-        if kind == "busy":
-            raise KiCadBoardNotOpenError(
-                "KiCad GUI appears to be busy or modal and cannot respond to IPC requests "
-                "right now. Try again, close any open KiCad dialog, or finish/save the "
-                "current GUI operation before retrying."
-            ) from last_error
-        raise KiCadBoardNotOpenError(
-            "KiCad IPC is reachable, but no PCB is open in the active KiCad session."
-        ) from last_error
+        raise KiCadBoardNotOpenError(f"KiCad get_board() failed: {detail}") from last_error
 
     def probe(self) -> dict[str, object]:
         """Return a small capability probe without leaking secrets."""

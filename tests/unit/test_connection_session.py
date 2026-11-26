@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from kipy.errors import ApiError
+from kipy.proto.common import ApiStatusCode
 
 import kicad_mcp.connection as connection
 from kicad_mcp.config import KiCadMCPConfig
@@ -131,7 +133,7 @@ def test_kicad_session_retries_busy_board_errors(fake_cli: Path) -> None:
             nonlocal attempts
             attempts += 1
             if attempts < 3:
-                raise RuntimeError("KiCad is busy and cannot respond to API requests right now")
+                raise ApiError("KiCad is busy", code=ApiStatusCode.AS_BUSY)
             return "board"
 
     session = KiCadSession(
@@ -144,12 +146,12 @@ def test_kicad_session_retries_busy_board_errors(fake_cli: Path) -> None:
     assert attempts == 3
 
 
-def test_kicad_session_busy_board_error_is_actionable(fake_cli: Path) -> None:
+def test_kicad_session_board_error_carries_kicad_text(fake_cli: Path) -> None:
     cfg = KiCadMCPConfig(kicad_cli=fake_cli, ipc_retries=1)
 
     class FakeClient:
         def get_board(self) -> str:
-            raise RuntimeError("KiCad is busy and cannot respond to API requests right now")
+            raise ApiError("KiCad is busy", code=ApiStatusCode.AS_BUSY)
 
     session = KiCadSession(
         client_factory=lambda **_kwargs: FakeClient(),
@@ -157,7 +159,7 @@ def test_kicad_session_busy_board_error_is_actionable(fake_cli: Path) -> None:
         sleep=lambda _seconds: None,
     )
 
-    with pytest.raises(KiCadBoardNotOpenError, match="busy or modal"):
+    with pytest.raises(KiCadBoardNotOpenError, match=r"get_board\(\) failed: KiCad is busy"):
         session.board()
 
 
@@ -214,7 +216,7 @@ def test_connection_get_board_maps_board_not_open(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(connection, "_session", FakeSession())
 
-    with pytest.raises(connection.KiCadConnectionError, match="no PCB is open"):
+    with pytest.raises(connection.KiCadConnectionError, match="no board"):
         connection.get_board()
 
 

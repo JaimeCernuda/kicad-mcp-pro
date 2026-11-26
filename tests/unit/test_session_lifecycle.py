@@ -326,12 +326,21 @@ def test_classify_ipc_error_prefers_type_over_message() -> None:
     assert _classify_ipc_error(EOFError()) == "disconnected"
 
 
-def test_classify_ipc_error_substring_is_only_a_fallback() -> None:
-    # Opaque RuntimeErrors (what kipy often raises) fall back to message parsing.
-    assert _classify_ipc_error(RuntimeError("Request timed out")) == "timeout"
-    assert _classify_ipc_error(RuntimeError("connection reset by peer")) == "disconnected"
-    assert _classify_ipc_error(RuntimeError("KiCad is busy with a modal dialog")) == "busy"
-    assert _classify_ipc_error(RuntimeError("totally unrelated")) == "other"
+def test_classify_ipc_error_never_reads_the_message() -> None:
+    # A message alone decides nothing; the error reaches the caller with its own text.
+    assert _classify_ipc_error(RuntimeError("Request timed out")) == "other"
+    assert _classify_ipc_error(RuntimeError("connection reset by peer")) == "other"
+    assert _classify_ipc_error(RuntimeError("KiCad is busy with a modal dialog")) == "other"
+
+
+def test_classify_ipc_error_reads_kicad_status_codes() -> None:
+    from kipy.errors import ConnectionError as KipyConnectionError
+
+    assert _classify_ipc_error(ApiError("x", code=ApiStatusCode.AS_BUSY)) == "busy"
+    assert _classify_ipc_error(ApiError("x", code=ApiStatusCode.AS_NOT_READY)) == "busy"
+    assert _classify_ipc_error(ApiError("x", code=ApiStatusCode.AS_TIMEOUT)) == "timeout"
+    assert _classify_ipc_error(ApiError("x", code=ApiStatusCode.AS_BAD_REQUEST)) == "other"
+    assert _classify_ipc_error(KipyConnectionError("x")) == "disconnected"
 
 
 # ---------------------------------------------------------------------------

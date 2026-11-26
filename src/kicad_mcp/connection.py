@@ -144,14 +144,7 @@ def _get_board() -> Board:
         raise
     except KiCadBoardNotOpenError as exc:
         logger.debug("kicad_get_board_failed", error=str(exc))
-        message = str(exc)
-        if "busy" not in message.casefold():
-            message = (
-                "KiCad IPC is reachable, but no PCB is open in the active KiCad session.\n"
-                "Open a .kicad_pcb file in KiCad or call kicad_set_project() to point the "
-                "server at the expected project files."
-            )
-        raise KiCadConnectionError(message) from exc
+        raise KiCadConnectionError(str(exc)) from exc
     except KiCadMcpError as exc:
         raise _connection_error(exc) from exc
 
