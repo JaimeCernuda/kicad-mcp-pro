@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
 import pytest
 
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.validation.policy_state import ValidationPolicyStateService
 
 
@@ -54,7 +56,8 @@ def test_drc_exclusion_lifecycle_and_validation(tmp_path: Path) -> None:
         "created": "2026-07-28T00:00:00+00:00",
         "description": "first",
     }
-    assert service.remove_drc_exclusion("missing") == "No exclusion found with UUID 'missing'."
+    with pytest.raises(ToolFailedError, match=re.escape("No exclusion found with UUID 'missing'.")):
+        service.remove_drc_exclusion("missing")
     assert service.remove_drc_exclusion("v2") == "Removed 1 DRC exclusion (UUID: v2)."
     validation = json.loads(service.validate_drc_exclusions())
     assert validation["total_exclusions"] == 1
@@ -63,7 +66,8 @@ def test_drc_exclusion_lifecycle_and_validation(tmp_path: Path) -> None:
 
 
 def test_drc_exclusion_error_and_empty_paths(tmp_path: Path) -> None:
-    assert _service(tmp_path, None, "offline").add_drc_exclusions() == "Could not run DRC: offline"
+    with pytest.raises(ToolFailedError, match=re.escape("Could not run DRC: offline")):
+        _service(tmp_path, None, "offline").add_drc_exclusions()
     assert _service(tmp_path, {"violations": []}).add_drc_exclusions() == (
         "No DRC violations found — nothing to exclude."
     )
@@ -78,7 +82,8 @@ def test_drc_exclusion_error_and_empty_paths(tmp_path: Path) -> None:
         return None, None, "offline"
 
     object.__setattr__(service, "run_drc_report", fail_validation)
-    assert service.validate_drc_exclusions() == "Could not run DRC: offline"
+    with pytest.raises(ToolFailedError, match=re.escape("Could not run DRC: offline")):
+        service.validate_drc_exclusions()
 
 
 def test_erc_severity_lifecycle(tmp_path: Path) -> None:

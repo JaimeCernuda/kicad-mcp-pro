@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import re
 from pathlib import Path
 from typing import Any
 
+import pytest
 from pydantic import ValidationError
+
+from kicad_mcp.errors import ToolFailedError
 
 
 def _service_type() -> type[Any]:
@@ -155,9 +159,10 @@ def test_export_appends_capability_command_only_when_distinct(tmp_path: Path) ->
 def test_export_preserves_invalid_output_path_message(tmp_path: Path) -> None:
     service, _ensure, cli, _formatter = _service(tmp_path)
 
-    assert service.export(output_subdir="../escape") == (
-        "Invalid output path: path escapes output directory"
-    )
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Invalid output path: path escapes output directory")
+    ):
+        service.export(output_subdir="../escape")
     assert cli.calls == []
 
 
@@ -176,7 +181,9 @@ def test_export_preserves_failure_message_contract(tmp_path: Path) -> None:
     service, _ensure, _cli, _formatter = _service(
         tmp_path, cli_result=(2, "stdout detail", "stderr detail")
     )
-    assert service.export() == "Gerber export failed: stderr detail"
+    with pytest.raises(ToolFailedError, match=re.escape("Gerber export failed: stderr detail")):
+        service.export()
 
     service, _ensure, _cli, _formatter = _service(tmp_path, cli_result=(2, "stdout detail", ""))
-    assert service.export() == "Gerber export failed: unknown error"
+    with pytest.raises(ToolFailedError, match=re.escape("Gerber export failed: unknown error")):
+        service.export()

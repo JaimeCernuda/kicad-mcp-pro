@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TextIO
 
+import pytest
+
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.template_catalog import SchematicTemplateCatalogService
 
 YamlLoader = Callable[[TextIO], object]
@@ -47,9 +51,11 @@ def test_list_templates_preserves_lazy_pyyaml_error(tmp_path: Path) -> None:
     def factory() -> YamlLoader:
         raise ModuleNotFoundError("yaml")
 
-    assert _service(templates, loader_factory=factory).list_templates() == (
-        "Template tools require PyYAML. Install it to inspect bundled templates."
-    )
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("Template tools require PyYAML. Install it to inspect bundled templates."),
+    ):
+        _service(templates, loader_factory=factory).list_templates()
 
 
 def test_list_templates_returns_empty_catalog_message(tmp_path: Path) -> None:
@@ -128,9 +134,10 @@ def test_template_info_reports_missing_name_with_sorted_available_files(tmp_path
     (templates / "zeta.yaml").write_text("ignored", encoding="utf-8")
     (templates / "alpha.yaml").write_text("ignored", encoding="utf-8")
 
-    assert _service(templates).template_info("missing") == (
-        "Template 'missing' not found. Available: alpha, zeta"
-    )
+    with pytest.raises(ToolFailedError) as exc:
+        _service(templates).template_info("missing")
+
+    assert str(exc.value) == "Template 'missing' not found. Available: alpha, zeta"
 
 
 def test_template_info_checks_existence_before_loading_yaml(tmp_path: Path) -> None:
@@ -143,9 +150,10 @@ def test_template_info_checks_existence_before_loading_yaml(tmp_path: Path) -> N
         loaded = True
         raise ModuleNotFoundError("yaml")
 
-    result = _service(templates, loader_factory=factory).template_info("missing")
+    with pytest.raises(ToolFailedError) as exc:
+        _service(templates, loader_factory=factory).template_info("missing")
 
-    assert result == "Template 'missing' not found. Available: "
+    assert str(exc.value) == "Template 'missing' not found. Available: "
     assert loaded is False
 
 
@@ -160,12 +168,15 @@ def test_template_info_preserves_pyyaml_and_parse_errors(tmp_path: Path) -> None
     def bad_load(_stream: TextIO) -> object:
         raise ValueError("invalid mapping")
 
-    assert _service(templates, loader_factory=missing_factory).template_info("demo") == (
-        "Template tools require PyYAML. Install it to inspect bundled templates."
-    )
-    assert _service(templates, loader_factory=lambda: bad_load).template_info("demo") == (
-        "Could not parse template 'demo': invalid mapping"
-    )
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("Template tools require PyYAML. Install it to inspect bundled templates."),
+    ):
+        _service(templates, loader_factory=missing_factory).template_info("demo")
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Could not parse template 'demo': invalid mapping")
+    ):
+        _service(templates, loader_factory=lambda: bad_load).template_info("demo")
 
 
 def test_template_info_renders_all_sections_in_source_order(tmp_path: Path) -> None:

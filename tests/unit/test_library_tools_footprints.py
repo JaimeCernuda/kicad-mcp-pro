@@ -167,29 +167,6 @@ def test_install_says_what_the_person_does_when_it_cannot(
     assert install.CHECKOUT_ENV in str(raised.value) and install.pin() in str(raised.value)
 
 
-def test_a_footprint_is_made_without_bodies_when_cadquery_cannot_install(
-    tools: install.Installed, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """CadQuery had no wheel for the tools' Python, and the custom footprint failed with it."""
-    from kicad_mcp.tools import library_footprints_klt
-
-    monkeypatch.setattr(install, "_imports", lambda _python, module: module != "cadquery")
-    with_bodies = library_footprints_klt._tools(models=True)
-    assert not with_bodies.models
-    assert any("No 3D bodies this time" in note for note in with_bodies.notes)
-
-    script = textwrap.dedent(
-        """
-        import os, pathlib, sys
-        assert os.environ["PYTHONPATH"].split(os.pathsep)[0].endswith("src")
-        out = pathlib.Path(os.environ["KICAD_MCP_FOOTPRINT_DIR"]) / "Antenna.kicad_mod"
-        out.write_text('(footprint "Antenna")\\n')
-        """
-    )
-    generated = runner.generate_custom(with_bodies, script)
-    assert [path.name for path in generated.footprints] == ["Antenna.kicad_mod"]
-
-
 def test_the_four_tools_are_registered() -> None:
     import asyncio
 

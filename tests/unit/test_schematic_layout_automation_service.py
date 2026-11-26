@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.layout_automation import (
     SchematicLayoutAutomationService,
     SchematicLike,
@@ -184,9 +186,12 @@ def test_auto_place_symbols_reports_load_failure(tmp_path: Path) -> None:
         warnings=warnings,
     )
 
-    result = service.auto_place_symbols(["R1"], "grid")
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("Could not load the active schematic for auto-placement: broken"),
+    ):
+        service.auto_place_symbols(["R1"], "grid")
 
-    assert result == "Could not load the active schematic for auto-placement: broken"
     assert warnings == [
         (
             "schematic_auto_place_load_failed",
@@ -232,9 +237,11 @@ def test_auto_place_symbols_reports_save_failure(tmp_path: Path) -> None:
         warnings=warnings,
     )
 
-    result = service.auto_place_symbols(["R1"])
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Could not save auto-placement changes: read-only")
+    ):
+        service.auto_place_symbols(["R1"])
 
-    assert result == "Could not save auto-placement changes: read-only"
     assert warnings[-1] == (
         "schematic_auto_place_save_failed",
         {"schematic_file": str(schematic_file), "error": "read-only"},
@@ -303,9 +310,12 @@ def test_autoplace_fields_reports_no_matching_targets(tmp_path: Path) -> None:
         field_builder=no_targets,
     )
 
-    result = service.autoplace_fields(["R9"])
+    with pytest.raises(ToolFailedError) as exc:
+        service.autoplace_fields(["R9"])
 
-    assert result == "diag:board.kicad_sch:No matching symbols found to auto-place fields for."
+    assert str(exc.value) == (
+        "diag:board.kicad_sch:No matching symbols found to auto-place fields for."
+    )
 
 
 def test_fix_readability_applies_available_fixes_until_pass(tmp_path: Path) -> None:
@@ -398,9 +408,11 @@ def test_auto_place_functional_preserves_anchor_and_reports_missing(tmp_path: Pa
 def test_auto_place_functional_reports_load_failure(tmp_path: Path) -> None:
     service = _service(tmp_path / "board.kicad_sch", loaded=RuntimeError("bad file"))
 
-    assert service.auto_place_functional() == (
-        "Could not load the active schematic for functional placement: bad file"
-    )
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("Could not load the active schematic for functional placement: bad file"),
+    ):
+        service.auto_place_functional()
 
 
 def test_auto_place_functional_reports_overflow(tmp_path: Path) -> None:
@@ -452,7 +464,8 @@ def test_no_matching_auto_place_does_not_save_or_replace_source(tmp_path: Path) 
         loaded=loaded,
         parsed={"symbols": [{"reference": "R1"}], "power_symbols": []},
     )
-    assert "No matching symbols were placed" in service.auto_place_symbols(["NOT_PRESENT"])
+    with pytest.raises(ToolFailedError, match=re.escape("No matching symbols were placed")):
+        service.auto_place_symbols(["NOT_PRESENT"])
     assert file.read_text() == original
     assert file.stat().st_ino == inode
     assert loaded.saved == []

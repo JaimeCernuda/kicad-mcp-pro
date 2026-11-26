@@ -159,7 +159,7 @@ async def test_readonly_studio_context_sync_is_ephemeral_and_does_not_activate_p
 
 
 @pytest.mark.anyio
-async def test_studio_push_context_returns_structured_missing_context_error() -> None:
+async def test_studio_push_context_reports_missing_context_as_tool_error() -> None:
     server = create_server()
 
     result = await call_tool_text(
@@ -172,7 +172,7 @@ async def test_studio_push_context_returns_structured_missing_context_error() ->
         },
     )
 
-    payload = json.loads(result)
-    assert payload["ok"] is False
-    assert payload["code"] == "NO_ACTIVE_PROJECT"
-    assert payload["fallbackAvailable"] is True
+    assert result.startswith(
+        "TOOL_FAILED: No active KiCad project or file was included in the "
+        "studio_push_context request."
+    )

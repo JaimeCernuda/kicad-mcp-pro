@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import re
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
+
+from kicad_mcp.errors import ToolFailedError
 
 
 def _service_type():
@@ -32,8 +37,11 @@ def test_create_refuses_nonempty_directory_without_confirmation(tmp_path: Path) 
         reset_live_edit=lambda: None,
     )
 
-    output = service.create(str(tmp_path), "demo", confirm_overwrite=False)
-    assert "Refusing to create a project over an existing non-empty directory." in output
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("Refusing to create a project over an existing non-empty directory."),
+    ):
+        service.create(str(tmp_path), "demo", confirm_overwrite=False)
     assert (existing / "keep.txt").read_text(encoding="utf-8") == "keep"
 
 

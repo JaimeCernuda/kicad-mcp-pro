@@ -3,12 +3,16 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Protocol
 
 import pytest
+
+from kicad_mcp.errors import ToolFailedError
 
 
 def _service_module() -> ModuleType:
@@ -80,17 +84,26 @@ def _service(tmp_path: Path):  # type: ignore[no-untyped-def]
     return service, calls, output_root
 
 
+def _raiser(error: Exception) -> Callable[[str | None], str]:
+    def export(_variant: str | None) -> str:
+        raise error
+
+    return export
+
+
 async def _run_export(
     service: ManufacturingPackageService,
     *,
     variant: str = "",
     approval_evidence_path: str = "",
     outcomes: list[FakeOutcome] | None = None,
-    ipc_result: str | None = None,
-    odb_result: str | None = None,
+    ipc_error: Exception | None = None,
+    odb_error: Exception | None = None,
+    progress_log: list[tuple[int, int, str]] | None = None,
+    rendered_log: list[tuple[list[FakeOutcome], str]] | None = None,
 ):
-    progress: list[tuple[int, int, str]] = []
-    rendered: list[tuple[list[FakeOutcome], str]] = []
+    progress: list[tuple[int, int, str]] = progress_log if progress_log is not None else []
+    rendered: list[tuple[list[FakeOutcome], str]] = rendered_log if rendered_log is not None else []
     outcomes = outcomes if outcomes is not None else []
 
     def evaluate_project_gate() -> list[FakeOutcome]:
@@ -103,10 +116,10 @@ async def _run_export(
     async def report_progress(current: int, total: int, message: str) -> None:
         progress.append((current, total, message))
 
-    if ipc_result is not None:
-        object.__setattr__(service, "export_ipc2581", lambda _variant: ipc_result)
-    if odb_result is not None:
-        object.__setattr__(service, "export_odb", lambda _variant: odb_result)
+    if ipc_error is not None:
+        object.__setattr__(service, "export_ipc2581", _raiser(ipc_error))
+    if odb_error is not None:
+        object.__setattr__(service, "export_odb", _raiser(odb_error))
 
     result = await service.export(
         variant=variant,
@@ -123,12 +136,15 @@ async def test_package_hard_blocks_failed_gate_before_evidence_or_exports(tmp_pa
     service, calls, _output_root = _service(tmp_path)
     failed = [FakeOutcome("Schematic", "FAIL", "bad", ["ERC violations: 2"])]
 
-    result, progress, rendered = await _run_export(service, outcomes=failed)
+    progress: list[tuple[int, int, str]] = []
+    rendered: list[tuple[list[FakeOutcome], str]] = []
+    with pytest.raises(ToolFailedError) as excinfo:
+        await _run_export(service, outcomes=failed, progress_log=progress, rendered_log=rendered)
 
     summary = (
         "- Manufacturing package export is hard-blocked until the full project quality gate passes."
     )
-    assert result == f"gate::{summary}"
+    assert str(excinfo.value) == f"gate::{summary}"
     assert progress == [(5, 100, "Running full project quality gate...")]
     assert rendered == [(failed, summary)]
     assert calls["resolve"] == []
@@ -141,28 +157,32 @@ async def test_package_requires_and_validates_approval_evidence_after_gate_pass(
 ) -> None:
     service, calls, _output_root = _service(tmp_path)
 
-    missing, _progress, _rendered = await _run_export(service)
-    assert missing == (
+    with pytest.raises(ToolFailedError) as missing:
+        await _run_export(service)
+    assert str(missing.value) == (
         "Manufacturing package export is hard-blocked until "
         "approval_evidence_path is supplied.\n"
         "- Run project_signoff_report() before final release export.\n"
         "- Store reviewer approval in a project-local JSON evidence file."
     )
 
-    unsafe, _progress, _rendered = await _run_export(
-        service,
-        approval_evidence_path="unsafe.json",
-    )
-    assert "Manufacturing evidence path is invalid: unsafe evidence" in unsafe
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("Manufacturing evidence path is invalid: unsafe evidence"),
+    ):
+        await _run_export(service, approval_evidence_path="unsafe.json")
 
     incomplete_path = tmp_path / ".kicad-mcp" / "manufacturing_approval.json"
     incomplete_path.parent.mkdir(parents=True)
     incomplete_path.write_text(json.dumps({"approved_by": "Reviewer"}), encoding="utf-8")
-    incomplete, _progress, _rendered = await _run_export(
-        service,
-        approval_evidence_path=".kicad-mcp/manufacturing_approval.json",
-    )
-    assert "Manufacturing evidence is missing: approved_at_utc, approval_scope" in incomplete
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("Manufacturing evidence is missing: approved_at_utc, approval_scope"),
+    ):
+        await _run_export(
+            service,
+            approval_evidence_path=".kicad-mcp/manufacturing_approval.json",
+        )
     assert all(not calls[name] for name in ("gerber", "drill", "bom", "pick", "ipc", "odb"))
 
 
@@ -225,14 +245,19 @@ async def test_package_preserves_explicit_variant_progress_report_and_artifacts(
 @pytest.mark.anyio
 async def test_package_omits_unsupported_optional_manufacturing_formats(tmp_path: Path) -> None:
     service, _calls, _output_root = _service(tmp_path)
+    module = _service_module()
     evidence_path = tmp_path / "approval.json"
     evidence_path.write_text(json.dumps(_approval_payload()), encoding="utf-8")
 
     result, _progress, _rendered = await _run_export(
         service,
         approval_evidence_path="approval.json",
-        ipc_result="IPC-2581 export is not supported by the detected KiCad CLI.",
-        odb_result="ODB++ export is not supported by the detected KiCad CLI.",
+        ipc_error=module.ExportNotSupportedError(
+            "IPC-2581 export is not supported by the detected KiCad CLI."
+        ),
+        odb_error=module.ExportNotSupportedError(
+            "ODB++ export is not supported by the detected KiCad CLI."
+        ),
     )
 
     assert "IPC-2581 export is not supported" not in result
@@ -264,11 +289,8 @@ async def test_package_revalidates_approved_project_file_digests_at_export_bound
     evidence_path.write_text(json.dumps(approval), encoding="utf-8")
     board.write_text("changed-after-approval\n", encoding="utf-8")
 
-    result, _progress, _rendered = await _run_export(
-        service, approval_evidence_path="approval.json"
-    )
-
-    assert "approved project file digest mismatch" in result
+    with pytest.raises(ToolFailedError, match=re.escape("approved project file digest mismatch")):
+        await _run_export(service, approval_evidence_path="approval.json")
     assert all(not calls[name] for name in ("gerber", "drill", "bom", "pick", "ipc", "odb"))
 
 
@@ -299,11 +321,8 @@ async def test_package_rejects_project_file_added_after_bound_approval(tmp_path:
     evidence_path.write_text(json.dumps(approval), encoding="utf-8")
     (tmp_path / "unreviewed.kicad_dru").write_text("rules\n", encoding="utf-8")
 
-    result, _progress, _rendered = await _run_export(
-        service, approval_evidence_path="approval.json"
-    )
-
-    assert "approved project state digest mismatch" in result
+    with pytest.raises(ToolFailedError, match=re.escape("approved project state digest mismatch")):
+        await _run_export(service, approval_evidence_path="approval.json")
     assert all(not calls[name] for name in ("gerber", "drill", "bom", "pick", "ipc", "odb"))
 
 
@@ -313,11 +332,10 @@ async def test_reference_approval_filename_requires_project_state_bindings(tmp_p
     evidence_path = tmp_path / "reference-manufacturing-approval.json"
     evidence_path.write_text(json.dumps(_approval_payload()), encoding="utf-8")
 
-    result, _progress, _rendered = await _run_export(
-        service, approval_evidence_path="reference-manufacturing-approval.json"
-    )
-
-    assert "reference approval requires bound project state" in result
+    with pytest.raises(
+        ToolFailedError, match=re.escape("reference approval requires bound project state")
+    ):
+        await _run_export(service, approval_evidence_path="reference-manufacturing-approval.json")
     assert all(not calls[name] for name in ("gerber", "drill", "bom", "pick", "ipc", "odb"))
 
 
@@ -348,12 +366,10 @@ async def test_package_rejects_malformed_bound_file_manifests(
         encoding="utf-8",
     )
 
-    result, _progress, _rendered = await _run_export(
-        service, approval_evidence_path="approval.json"
-    )
+    with pytest.raises(ToolFailedError, match=re.escape(expected)) as excinfo:
+        await _run_export(service, approval_evidence_path="approval.json")
 
-    assert expected in result
-    assert result.splitlines() == [
+    assert str(excinfo.value).splitlines() == [
         "Manufacturing evidence approved project files are invalid.",
         "- Manufacturing export stopped before artifact generation.",
         "- Obtain fresh human approval for the current project state.",
@@ -380,11 +396,10 @@ async def test_package_rejects_invalid_bound_state_digest(tmp_path: Path) -> Non
         encoding="utf-8",
     )
 
-    result, _progress, _rendered = await _run_export(
-        service, approval_evidence_path="approval.json"
-    )
-
-    assert "approved project state digest is invalid" in result
+    with pytest.raises(
+        ToolFailedError, match=re.escape("approved project state digest is invalid")
+    ):
+        await _run_export(service, approval_evidence_path="approval.json")
     assert all(not calls[name] for name in ("gerber", "drill", "bom", "pick", "ipc", "odb"))
 
 
@@ -418,9 +433,6 @@ async def test_package_rejects_invalid_project_root_for_bound_manifest(tmp_path:
         ),
     )
 
-    result, _progress, _rendered = await _run_export(
-        service, approval_evidence_path="approval.json"
-    )
-
-    assert "project root is invalid" in result
+    with pytest.raises(ToolFailedError, match=re.escape("project root is invalid")):
+        await _run_export(service, approval_evidence_path="approval.json")
     assert all(not calls[name] for name in ("gerber", "drill", "bom", "pick", "ipc", "odb"))

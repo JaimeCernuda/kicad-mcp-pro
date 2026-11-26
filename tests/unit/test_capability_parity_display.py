@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any
 
 import pytest
 
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.tools import capability_parity
 
 
@@ -106,9 +108,10 @@ def test_capability_reports_unknown_queries_and_domains(monkeypatch: pytest.Monk
     assert capability_parity._render_capability_matches("no-match", matrix) == (
         "No capabilities match 'no-match'."
     )
-    assert capability_parity._render_capability_domain("unknown", matrix) == (
-        "Unknown domain 'unknown'. Available: pcb"
-    )
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Unknown domain 'unknown'. Available: pcb")
+    ):
+        capability_parity._render_capability_domain("unknown", matrix)
 
 
 def test_capability_summary_reports_missing_metadata(

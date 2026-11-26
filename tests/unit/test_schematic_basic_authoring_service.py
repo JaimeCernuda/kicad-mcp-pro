@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.basic_authoring import (
     LabelBatchEntry,
     SchematicBasicAuthoringService,
@@ -207,7 +211,10 @@ def test_add_symbol_preserves_missing_symbol_suggestions_without_write() -> None
         suggestions=["R", "R_Small"],
     )
 
-    assert (
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("Symbol 'Device:RX' was not found. Did you mean: R, R_Small?"),
+    ):
         service.add_symbol(
             "Device",
             "RX",
@@ -222,8 +229,6 @@ def test_add_symbol_preserves_missing_symbol_suggestions_without_write() -> None
             None,
             None,
         )
-        == "Symbol 'Device:RX' was not found. Did you mean: R, R_Small?"
-    )
     assert transaction.calls == []
     assert reload.calls == 0
 
@@ -231,20 +236,26 @@ def test_add_symbol_preserves_missing_symbol_suggestions_without_write() -> None
 def test_add_symbol_preserves_invalid_unit_result_without_write() -> None:
     service, transaction, reload, _calls = _service(available_units={1, 3})
 
-    assert service.add_symbol(
-        "Amplifier_Operational",
-        "LM358",
-        1.0,
-        2.0,
-        "U1",
-        "LM358",
-        "",
-        0,
-        True,
-        2,
-        None,
-        None,
-    ) == ("Symbol 'Amplifier_Operational:LM358' does not support unit 2. Available units: 1, 3.")
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape(
+            "Symbol 'Amplifier_Operational:LM358' does not support unit 2. Available units: 1, 3."
+        ),
+    ):
+        service.add_symbol(
+            "Amplifier_Operational",
+            "LM358",
+            1.0,
+            2.0,
+            "U1",
+            "LM358",
+            "",
+            0,
+            True,
+            2,
+            None,
+            None,
+        )
     assert transaction.calls == []
     assert reload.calls == 0
 
@@ -356,9 +367,11 @@ def test_add_power_symbol_preserves_generated_reference_and_placement_message() 
 def test_add_power_symbol_returns_missing_symbol_result_unchanged() -> None:
     service, transaction, reload, _calls = _service(lib_definition=None)
 
-    result = service.add_power_symbol("NO_SUCH_POWER", 1.0, 2.0, 0, True, None, None)
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Symbol 'power:NO_SUCH_POWER' was not found.")
+    ):
+        service.add_power_symbol("NO_SUCH_POWER", 1.0, 2.0, 0, True, None, None)
 
-    assert result == "Symbol 'power:NO_SUCH_POWER' was not found."
     assert transaction.calls == []
     assert reload.calls == 0
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.routing.time_domain_tuning import (
     RoutingTimeDomainTuningService,
     build_time_domain_rule,
@@ -84,12 +86,14 @@ def test_fallback_tuning_preserves_rule_and_response(tmp_path: Path) -> None:
 def test_wildcard_tuning_is_rejected_before_measurement_or_write(tmp_path: Path) -> None:
     service, track_calls, write_calls = _service(tmp_path)
 
-    result = service.tune("DATA*", 250.0, 15.0)
-
-    assert result == (
-        "Wildcard/group time-domain tuning is not supported because KiCad length "
-        "constraints apply per net. Specify a single concrete net name."
-    )
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape(
+            "Wildcard/group time-domain tuning is not supported because KiCad length "
+            "constraints apply per net. Specify a single concrete net name."
+        ),
+    ):
+        service.tune("DATA*", 250.0, 15.0)
     assert track_calls == []
     assert write_calls == []
 
@@ -105,12 +109,14 @@ def test_question_mark_wildcard_is_rejected_before_measurement_or_write(
 ) -> None:
     service, track_calls, write_calls = _service(tmp_path)
 
-    result = service.tune("DATA?", 250.0, 15.0)
-
-    assert result == (
-        "Wildcard/group time-domain tuning is not supported because KiCad length "
-        "constraints apply per net. Specify a single concrete net name."
-    )
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape(
+            "Wildcard/group time-domain tuning is not supported because KiCad length "
+            "constraints apply per net. Specify a single concrete net name."
+        ),
+    ):
+        service.tune("DATA?", 250.0, 15.0)
     assert track_calls == []
     assert write_calls == []
 
@@ -187,7 +193,10 @@ def test_writer_failure_preserves_message(tmp_path: Path) -> None:
         write_rule=fail,
     )
 
-    assert service.tune("CLK", 100.0) == "Time-domain tuning rule update failed: bad rule"
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Time-domain tuning rule update failed: bad rule")
+    ):
+        service.tune("CLK", 100.0)
 
 
 def test_missing_project_preserves_tuning_profile_state_error() -> None:

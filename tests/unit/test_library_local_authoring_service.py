@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import re
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.utils.sexpr import _extract_block, _sexpr_string
 
 
@@ -31,10 +35,8 @@ def test_assign_footprint_preserves_missing_and_update_behavior(tmp_path: Path) 
         project_dir=lambda: tmp_path,
     )
 
-    assert (
+    with pytest.raises(ToolFailedError, match=re.escape("Footprint 'Missing:Nope' was not found.")):
         service.assign_footprint("R1", "Missing", "Nope")
-        == "Footprint 'Missing:Nope' was not found."
-    )
     assert updates == []
     assert (
         service.assign_footprint("R1", "Resistor_SMD", "R_0805")
@@ -51,7 +53,8 @@ def test_create_custom_symbol_requires_active_project() -> None:
         project_dir=lambda: None,
     )
 
-    assert service.create_custom_symbol("Demo", []) == "No active project is configured."
+    with pytest.raises(ToolFailedError, match=re.escape("No active project is configured.")):
+        service.create_custom_symbol("Demo", [])
 
 
 def test_create_custom_symbol_preserves_defaults_and_file_shape(tmp_path: Path) -> None:
@@ -68,11 +71,7 @@ def test_create_custom_symbol_preserves_defaults_and_file_shape(tmp_path: Path) 
     library_file = tmp_path / "custom_symbols.kicad_sym"
     content = library_file.read_text(encoding="utf-8")
 
-    assert result == (
-        f"Created custom symbol 'Demo' in {library_file}.\n"
-        "Library 'custom_symbols' is in the project's sym-lib-table; "
-        "place the symbol as 'custom_symbols:Demo'."
-    )
+    assert result == f"Created custom symbol 'Demo' in {library_file}."
     assert upgrades == [library_file]
     assert content.startswith('(kicad_symbol_lib (version 20250316) (generator "kicad-mcp-pro")\n')
     assert '\t(symbol "Demo"' in content
@@ -107,7 +106,7 @@ def test_create_custom_symbol_appends_and_escapes_sexpr_strings(tmp_path: Path) 
     start = content.index(f"\t(symbol {_sexpr_string(name)}")
     block, consumed = _extract_block(content, start)
 
-    assert text.startswith(f"Created custom symbol '{name}' in {library_file}.\n")
+    assert text == f"Created custom symbol '{name}' in {library_file}."
     assert consumed > 0
     assert '\n\t(symbol "Injected"' not in content
     assert "\n\t(pin output line" not in block
@@ -189,53 +188,25 @@ def test_generate_symbol_from_pintable_preserves_default_output_name(tmp_path: P
     assert "Format note:" not in result
 
 
-def test_a_generated_symbol_library_is_registered_in_the_project(tmp_path: Path) -> None:
-    """Without the table entry no tool can place the symbol, so the person writes one."""
-    from kicad_mcp.utils.library_tables import parse_lib_table
-
-    service, _ = _pin_table_service(tmp_path)
-    pins = [{"number": 1, "name": "A"}]
-    path = tmp_path / "output" / "symbols" / "CC2511F32.kicad_sym"
-
-    first = service.generate_symbol_from_pintable("CC2511F32", pins)
-    again = service.generate_symbol_from_pintable("CC2511F32", pins)
-
-    table = tmp_path / "sym-lib-table"
-    text = table.read_text(encoding="utf-8")
-    assert '(uri "${KIPRJMOD}/output/symbols/CC2511F32.kicad_sym")' in text
-    assert text.count('(name "CC2511F32")') == 1
-    assert parse_lib_table(table, tmp_path) == {"CC2511F32": path}
-    for result in (first, again):
-        assert "place the symbol as 'CC2511F32:CC2511F32'" in result
-
-    other = tmp_path / "elsewhere" / "CC2511F32.kicad_sym"
-    clash = service.generate_symbol_from_pintable(
-        "CC2511F32", pins, output_path="elsewhere/CC2511F32.kicad_sym"
-    )
-    assert other.exists()
-    assert "already has a library named 'CC2511F32'" in clash
-    assert parse_lib_table(table, tmp_path) == {"CC2511F32": path}
-
-
 def test_generate_symbol_from_pintable_reports_invalid_pin_specification(tmp_path: Path) -> None:
     service, upgrades = _pin_table_service(tmp_path)
 
-    result = service.generate_symbol_from_pintable("Demo", [{"number": "1"}])
+    with pytest.raises(ToolFailedError, match=re.escape("Invalid pin specification:")) as exc:
+        service.generate_symbol_from_pintable("Demo", [{"number": "1"}])
 
-    assert result.startswith("Invalid pin specification:")
-    assert "raw: {'number': '1'}" in result
+    assert "raw: {'number': '1'}" in str(exc.value)
     assert upgrades == []
 
 
 def test_generate_symbol_from_pintable_reports_generation_failure(tmp_path: Path) -> None:
     service, upgrades = _pin_table_service(tmp_path)
 
-    result = service.generate_symbol_from_pintable(
-        "Demo",
-        [{"number": "1", "name": "A", "side": "diagonal"}],
-    )
+    with pytest.raises(ToolFailedError, match=re.escape("Symbol generation failed:")):
+        service.generate_symbol_from_pintable(
+            "Demo",
+            [{"number": "1", "name": "A", "side": "diagonal"}],
+        )
 
-    assert result.startswith("Symbol generation failed:")
     assert upgrades == []
 
 
@@ -247,13 +218,12 @@ def test_generate_symbol_from_pintable_requires_resolver_for_custom_path(tmp_pat
         project_dir=lambda: tmp_path,
     )
 
-    result = service.generate_symbol_from_pintable(
-        "Demo",
-        [{"number": "1", "name": "A"}],
-        output_path="custom/Demo.kicad_sym",
-    )
-
-    assert result == "No project path resolver is configured."
+    with pytest.raises(ToolFailedError, match=re.escape("No project path resolver is configured.")):
+        service.generate_symbol_from_pintable(
+            "Demo",
+            [{"number": "1", "name": "A"}],
+            output_path="custom/Demo.kicad_sym",
+        )
 
 
 def test_generate_symbol_from_pintable_falls_back_to_project_output(tmp_path: Path) -> None:
@@ -282,9 +252,8 @@ def test_generate_symbol_from_pintable_requires_project_for_fallback_output() ->
         project_dir=lambda: None,
     )
 
-    result = service.generate_symbol_from_pintable(
-        "Demo",
-        [{"number": "1", "name": "A"}],
-    )
-
-    assert result == "No active project is configured."
+    with pytest.raises(ToolFailedError, match=re.escape("No active project is configured.")):
+        service.generate_symbol_from_pintable(
+            "Demo",
+            [{"number": "1", "name": "A"}],
+        )

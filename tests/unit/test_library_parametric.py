@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import pytest
 from mcp.server.mcpserver import MCPServer as FastMCP
 
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.library.parametric import (
     JLCSearchCategories,
     ParametricService,
@@ -266,7 +268,8 @@ def test_tools_register_with_their_descriptions() -> None:
         category="capacitors", filters=[{"name": "voltage_rating", "op": ">=", "value": "25V"}]
     )
     assert "GRM21BZ71E106KE15L" in text and "Answered by: jlcsearch." in text
-    assert "failed" in server._tool_manager.get_tool("lib_compare_parts").fn(parts=[])
+    with pytest.raises(ToolFailedError, match=re.escape("Part comparison failed")):
+        server._tool_manager.get_tool("lib_compare_parts").fn(parts=[])
 
 
 def test_failed_sourcing_results_name_the_sources_that_could_be_set_up(monkeypatch) -> None:

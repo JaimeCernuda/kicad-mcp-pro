@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.routing.tuning_profiles import (
     RoutingTuningProfileService,
     load_tuning_profiles,
@@ -63,9 +65,8 @@ def test_missing_profile_preserves_message_and_does_not_create_assignments(
 ) -> None:
     service = _service(tmp_path)
 
-    result = service.apply("DATA*", "slow")
-
-    assert result == "Tuning profile 'slow' was not found."
+    with pytest.raises(ToolFailedError, match=re.escape("Tuning profile 'slow' was not found.")):
+        service.apply("DATA*", "slow")
     assert (tmp_path / ".kicad-mcp" / "tuning_profiles.json").exists()
     assert not (tmp_path / ".kicad-mcp" / "tuning_profile_assignments.json").exists()
 

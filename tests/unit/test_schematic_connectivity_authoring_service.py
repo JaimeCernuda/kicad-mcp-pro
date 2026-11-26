@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from kicad_mcp.errors import SchematicRoutingUnsafeError
+from kicad_mcp.errors import SchematicRoutingUnsafeError, ToolFailedError
 from kicad_mcp.schematic.connectivity_authoring import (
     BoundingBoxLike,
     SchematicConnectivityAuthoringService,
@@ -210,14 +211,15 @@ def test_add_pin_labels_reports_invalid_and_missing_connections_without_write(
 ) -> None:
     harness = _harness(tmp_path, parsed={"uuid": "root", "symbols": [], "power_symbols": []})
 
-    result = harness.service.add_pin_labels(
-        [
-            {"reference": "U1", "pin": "1"},
-            {"reference": "U404", "pin": "1", "net": "SIG"},
-        ]
-    )
+    with pytest.raises(ToolFailedError) as exc:
+        harness.service.add_pin_labels(
+            [
+                {"reference": "U1", "pin": "1"},
+                {"reference": "U404", "pin": "1", "net": "SIG"},
+            ]
+        )
 
-    assert result == (
+    assert str(exc.value) == (
         "No pin labels were added.\n"
         "SKIP {'reference': 'U1', 'pin': '1'}: needs reference, pin, net\n"
         "U404.1: reference not found"
@@ -348,9 +350,10 @@ def test_add_pin_labels_skips_missing_power_library_symbol(tmp_path: Path) -> No
         power_lib=None,
     )
 
-    result = harness.service.add_pin_labels([{"reference": "U1", "pin": "1", "net": "3V3"}])
+    with pytest.raises(ToolFailedError) as exc:
+        harness.service.add_pin_labels([{"reference": "U1", "pin": "1", "net": "3V3"}])
 
-    assert result == "No pin labels were added.\nU1.1: power symbol '3V3' was not found"
+    assert str(exc.value) == "No pin labels were added.\nU1.1: power symbol '3V3' was not found"
     assert harness.writes == []
 
 
@@ -448,20 +451,18 @@ def test_route_wire_between_pins_reports_missing_reference_and_pin(tmp_path: Pat
         tmp_path,
         parsed={"symbols": [_symbol("U1")], "power_symbols": []},
     )
-    assert (
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Reference 'R404' was not found in the schematic.")
+    ):
         missing_ref.service.route_wire_between_pins("U1", "1", "R404", "2")
-        == "Reference 'R404' was not found in the schematic."
-    )
 
     missing_pin = _harness(
         tmp_path,
         parsed={"symbols": [_symbol("U1"), _symbol("R1")], "power_symbols": []},
         pin_positions={("Device", "R"): {}},
     )
-    assert (
+    with pytest.raises(ToolFailedError, match=re.escape("Pin 1 was not found on U1.")):
         missing_pin.service.route_wire_between_pins("U1", "1", "R1", "2")
-        == "Pin 1 was not found on U1."
-    )
 
 
 def test_route_wire_between_pins_reports_overlap_without_write(tmp_path: Path) -> None:
@@ -704,13 +705,14 @@ def test_resolve_pin_point_and_candidate_branches(tmp_path: Path) -> None:
         pin_positions={},
         power_net=lambda name: False,
     )
-    res_lib = harness.service.add_pin_labels([{"reference": "U1", "pin": "1", "net": "SIG"}])
-    assert "symbol type not supported: unresolved lib_id 'malformed_no_colon'" in res_lib
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("symbol type not supported: unresolved lib_id 'malformed_no_colon'"),
+    ):
+        harness.service.add_pin_labels([{"reference": "U1", "pin": "1", "net": "SIG"}])
 
-    res_unit = harness.service.add_pin_labels(
-        [{"reference": "U1", "pin": "1", "net": "SIG", "unit": 99}]
-    )
-    assert "unit 99 not found" in res_unit
+    with pytest.raises(ToolFailedError, match=re.escape("unit 99 not found")):
+        harness.service.add_pin_labels([{"reference": "U1", "pin": "1", "net": "SIG", "unit": 99}])
 
     pt, _pp, err = harness.service._resolve_pin_point(
         point=None,

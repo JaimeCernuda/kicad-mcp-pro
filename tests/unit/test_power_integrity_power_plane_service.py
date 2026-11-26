@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
+import pytest
+
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.models.power_integrity import PowerPlaneInput
 from kicad_mcp.power_integrity.power_plane import PowerIntegrityPowerPlaneService
 
@@ -48,24 +52,32 @@ def _payload(layer: str = "F_Cu") -> PowerPlaneInput:
 def test_service_rejects_unsupported_layer_before_board_queries() -> None:
     backend = FakeBackend(layer_value=7, supported=False)
 
-    result = PowerIntegrityPowerPlaneService().generate(_payload("In1_Cu"), backend)
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("Power plane generation currently supports only F_Cu and B_Cu."),
+    ):
+        PowerIntegrityPowerPlaneService().generate(_payload("In1_Cu"), backend)
 
-    assert result == "Power plane generation currently supports only F_Cu and B_Cu."
     assert backend.calls == [("resolve", "In1_Cu"), ("supported", 7)]
 
 
 def test_service_preserves_existing_zone_and_missing_bounds_messages() -> None:
     existing = FakeBackend(layer_value=1, exists=True)
-    assert PowerIntegrityPowerPlaneService().generate(_payload(), existing) == (
-        "A copper zone for '3V3' already exists on F_Cu."
-    )
+    with pytest.raises(
+        ToolFailedError, match=re.escape("A copper zone for '3V3' already exists on F_Cu.")
+    ):
+        PowerIntegrityPowerPlaneService().generate(_payload(), existing)
     assert ("bounds",) not in existing.calls
 
     missing = FakeBackend(layer_value=1, bounds_value=None)
-    assert PowerIntegrityPowerPlaneService().generate(_payload(), missing) == (
-        "Could not determine board bounds. Add an Edge.Cuts outline or at least one "
-        "footprint before generating a power plane."
-    )
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape(
+            "Could not determine board bounds. Add an Edge.Cuts outline or at least one "
+            "footprint before generating a power plane."
+        ),
+    ):
+        PowerIntegrityPowerPlaneService().generate(_payload(), missing)
     assert not any(call[0] == "create" for call in missing.calls)
 
 

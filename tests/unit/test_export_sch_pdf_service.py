@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import re
 from pathlib import Path
 from typing import Any
+
+import pytest
+
+from kicad_mcp.errors import ToolFailedError
 
 
 def _service_type() -> type[Any]:
@@ -75,10 +80,15 @@ def test_export_sch_pdf_preserves_failure_message_precedence(tmp_path: Path) -> 
             run_cli_variants=FakeCli(result),
         )
 
-    assert service_for((2, "stdout detail", "stderr detail")).export() == (
-        "Schematic PDF export failed: stderr detail"
-    )
-    assert service_for((2, "stdout detail", "")).export() == (
-        "Schematic PDF export failed: stdout detail"
-    )
-    assert service_for((2, "", "")).export() == "Schematic PDF export failed: unknown error"
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Schematic PDF export failed: stderr detail")
+    ):
+        service_for((2, "stdout detail", "stderr detail")).export()
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Schematic PDF export failed: stdout detail")
+    ):
+        service_for((2, "stdout detail", "")).export()
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Schematic PDF export failed: unknown error")
+    ):
+        service_for((2, "", "")).export()
