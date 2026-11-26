@@ -226,8 +226,7 @@ def sym_upgrade(
     if dry_run:
         return (
             f"Dry run: Would upgrade symbol library '{in_path}' "
-            f"and save to '{out_path}' (force={force}). "
-            "Nothing was written; call again with dry_run=False to write it."
+            f"and save to '{out_path}' (force={force})."
         )
 
     cmd = ["sym", "upgrade"]
