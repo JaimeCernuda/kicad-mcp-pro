@@ -108,46 +108,10 @@ def resolve_footprint_file(
     )
 
 
-def register_symbol_library(project_dir: Path, library: str, path: Path) -> str:
-    """Add ``path`` to the project's ``sym-lib-table`` as ``library``, once.
-
-    Returns an empty string when the library is registered (now or already), or why it
-    was left out: a library of that name already points at another file.
-    """
-    table = project_dir / "sym-lib-table"
-    target = path.resolve()
-    text = (
-        table.read_text(encoding="utf-8", errors="ignore")
-        if table.exists()
-        else "(sym_lib_table\n\t(version 7)\n)\n"
-    )
-    if re.search(rf'\(name\s+"?{re.escape(library)}"?\)', text):
-        current = parse_lib_table(table, project_dir).get(library)
-        if current is not None and current.resolve() == target:
-            return ""
-        return (
-            f"The project's sym-lib-table already has a library named '{library}' for "
-            "another file, so this one was not added; save it under another name."
-        )
-    try:
-        uri = "${KIPRJMOD}/" + target.relative_to(project_dir.resolve()).as_posix()
-    except ValueError:
-        uri = target.as_posix()
-    quoted = library.replace("\\", "\\\\").replace('"', '\\"')
-    row = (
-        f'\t(lib (name "{quoted}")(type "KiCad")(uri "{uri}")(options "")'
-        '(descr "Symbols generated for this project"))\n'
-    )
-    end = text.rstrip().rfind(")")
-    table.write_text(text[:end].rstrip("\n") + "\n" + row + ")\n", encoding="utf-8")
-    return ""
-
-
 __all__ = [
     "footprint_library_dirs",
     "lib_table_paths",
     "parse_lib_table",
-    "register_symbol_library",
     "resolve_footprint_file",
     "resolve_kicad_env",
 ]
