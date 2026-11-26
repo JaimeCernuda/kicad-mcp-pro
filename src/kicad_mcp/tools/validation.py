@@ -645,6 +645,13 @@ def _drc_report_payload(
     )
 
 
+def _produced(payload: VerdictReport) -> VerdictReport:
+    """The check's report, or its failure when kicad-cli produced no readable report."""
+    if payload.metadata.get("available") is False:
+        raise ToolFailedError(payload.text)
+    return payload
+
+
 def _erc_report_payload(
     path: Path,
     report: dict[str, object] | None,
@@ -4446,7 +4453,7 @@ def _register_schematic_gate_tools(mcp: FastMCP) -> None:
     def run_erc(save_report: bool = False) -> VerdictReport:
         """Run schematic electrical rule checks."""
         path, report, error = _run_erc_report("erc_report.json")
-        return _erc_report_payload(path, report, error, save_report=save_report)
+        return _produced(_erc_report_payload(path, report, error, save_report=save_report))
 
     @mcp.tool()
     @headless_compatible
@@ -4479,7 +4486,7 @@ def _register_pcb_gate_tools(mcp: FastMCP) -> None:
     def run_drc(save_report: bool = False) -> VerdictReport:
         """Return full DRC report with PCB violations, unconnected items, and courtyard issues."""
         path, report, error = _run_drc_report("drc_report.json")
-        return _drc_report_payload(path, report, error, save_report=save_report)
+        return _produced(_drc_report_payload(path, report, error, save_report=save_report))
 
     @mcp.tool()
     @headless_compatible
