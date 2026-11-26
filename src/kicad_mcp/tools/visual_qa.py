@@ -12,6 +12,7 @@ from collections.abc import Callable
 
 from mcp.server.mcpserver import MCPServer as FastMCP
 
+from ..errors import ToolFailedError
 from ..models import visual_qa
 from .metadata import headless_compatible
 
@@ -52,7 +53,7 @@ def _sheet_score(sheet: dict[str, object]) -> float:
 def _execute_sch_visual_qa() -> str:
     sheets = _collect_sheet_reports(visual_qa.run_visual_qa)
     if not sheets:
-        return json.dumps({"error": "No schematic files found for the active project."})
+        raise ToolFailedError("No schematic files found for the active project.")
     overall = _compute_overall_status(sheets)
     return json.dumps({"status": overall, "sheets": sheets}, indent=2)
 
@@ -60,7 +61,7 @@ def _execute_sch_visual_qa() -> str:
 def _execute_sch_cosmetic_score() -> str:
     sheets = _collect_sheet_reports(visual_qa.run_cosmetic_qa)
     if not sheets:
-        return json.dumps({"error": "No schematic files found for the active project."})
+        raise ToolFailedError("No schematic files found for the active project.")
     overall_score = min(_sheet_score(sheet) for sheet in sheets)
     overall_status = _compute_overall_status(sheets)
     return json.dumps(

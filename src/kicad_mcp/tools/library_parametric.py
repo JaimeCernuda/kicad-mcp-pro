@@ -8,6 +8,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer as FastMCP
 
+from ..errors import ToolFailedError
 from ..library.parametric import ParametricService, SourcingAnswer
 from ..utils.component_search import ComponentRecord, stock_text
 from ..utils.part_specs import PartSpec
@@ -141,7 +142,7 @@ def register(mcp: FastMCP, deps: LibraryParametricDependencies) -> None:
                 limit=limit,
             )
         except ValueError as exc:
-            return f"Parametric search failed: {exc}"
+            raise ToolFailedError(f"Parametric search failed: {exc}") from exc
         return format_search(category, answer)
 
     @mcp.tool()
@@ -163,7 +164,7 @@ def register(mcp: FastMCP, deps: LibraryParametricDependencies) -> None:
                 part, sources=sources, category=category
             )
         except ValueError as exc:
-            return f"Spec lookup failed: {exc}"
+            raise ToolFailedError(f"Spec lookup failed: {exc}") from exc
         return format_spec_sheet(part, specs, answer)
 
     @mcp.tool()
@@ -180,11 +181,11 @@ def register(mcp: FastMCP, deps: LibraryParametricDependencies) -> None:
         lists the values with their sources.
         """
         if not parts:
-            return "Part comparison failed: give at least one part."
+            raise ToolFailedError("Part comparison failed: give at least one part.")
         try:
             names, rows, answer = deps.service.compare(
                 parts, attributes or [], sources=sources, category=category
             )
         except ValueError as exc:
-            return f"Part comparison failed: {exc}"
+            raise ToolFailedError(f"Part comparison failed: {exc}") from exc
         return format_compare(names, rows, answer)

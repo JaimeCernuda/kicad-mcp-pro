@@ -8,13 +8,13 @@ process (``library_tools.install``); this module never imports it.
 
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
 
 from ..config import get_config
+from ..errors import ToolFailedError
 from ..library_resolution import footprint_file
 from ..library_tools import install, runner
 from .metadata import headless_compatible
@@ -32,15 +32,7 @@ def _project() -> tuple[Path, str]:
 
 
 def _tools(*, models: bool) -> install.Installed:
-    """Library Tools, with 3D models when they install; a footprint never waits on a body."""
-    try:
-        return install.ensure(models=models)
-    except install.LibraryToolsInstallError as exc:
-        if not models:
-            raise
-        tools = install.ensure(models=False)
-        note = f"No 3D bodies this time: {exc.reason} The footprints are made without them."
-        return replace(tools, notes=(*tools.notes, note))
+    return install.ensure(models=models)
 
 
 def _notes(tools: install.Installed) -> list[str]:
@@ -120,8 +112,8 @@ def _footprint_path(path: str) -> Path:
     return get_config().resolve_within_project(path)
 
 
-def _failure(exc: Exception) -> str:
-    return f"Not done: {exc}"
+def _failure(exc: Exception) -> ToolFailedError:
+    return ToolFailedError(f"Not done: {exc}")
 
 
 def register(mcp: FastMCP) -> None:
@@ -141,7 +133,7 @@ def register(mcp: FastMCP) -> None:
         try:
             tools = _tools(models=False)
         except install.LibraryToolsInstallError as exc:
-            return _failure(exc)
+            raise _failure(exc) from exc
         if family:
             example = runner.family_example(tools, family)
             if not example:
@@ -193,7 +185,7 @@ def register(mcp: FastMCP) -> None:
         """
         try:
             tools = _tools(models=models)
-            generated = runner.generate(tools, family, entry, models=tools.models)
+            generated = runner.generate(tools, family, entry, models=models)
             return _filed(
                 generated,
                 library=output_library,
@@ -203,7 +195,7 @@ def register(mcp: FastMCP) -> None:
                 tools=tools,
             )
         except (install.LibraryToolsInstallError, runner.LibraryToolsError, OSError) as exc:
-            return _failure(exc)
+            raise _failure(exc) from exc
 
     @mcp.tool()
     @headless_compatible
@@ -231,7 +223,7 @@ def register(mcp: FastMCP) -> None:
                 tools=tools,
             )
         except (install.LibraryToolsInstallError, runner.LibraryToolsError, OSError) as exc:
-            return _failure(exc)
+            raise _failure(exc) from exc
 
     @mcp.tool()
     @headless_compatible
@@ -256,7 +248,7 @@ def register(mcp: FastMCP) -> None:
             tools = _tools(models=False)
             target = _footprint_path(path)
             if not target.is_file():
-                return f"Not done: {path} does not exist."
+                raise ToolFailedError(f"Not done: {path} does not exist.")
             pads = _pads(land_pattern or [])
             result = runner.check(tools, target, pads, tolerance_mm)
         except (
@@ -265,7 +257,7 @@ def register(mcp: FastMCP) -> None:
             OSError,
             ValueError,
         ) as exc:
-            return _failure(exc)
+            raise _failure(exc) from exc
         project_dir, _ = _project()
         runner.update_record(
             project_dir,

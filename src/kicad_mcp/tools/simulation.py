@@ -11,6 +11,7 @@ from mcp.server.mcpserver import Context
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
+from ..errors import ToolFailedError
 from ..models.simulation import (
     ACAnalysisInput,
     DCSweepInput,
@@ -223,11 +224,11 @@ def _format_stability(result: SimulationResult, output_net: str, feedback_net: s
         lines.append(
             f"Could not find both AC traces for '{output_net}' and '{feedback_net}' in the result."
         )
-        return "\n".join(lines)
+        raise ToolFailedError("\n".join(lines))
 
     if not output_trace.phase_values or not feedback_trace.phase_values:
         lines.append("Phase data was unavailable, so phase margin could not be estimated.")
-        return "\n".join(lines)
+        raise ToolFailedError("\n".join(lines))
 
     gain_db, phase_deg = _loop_gain_and_phase(
         output_trace.values,
@@ -457,7 +458,7 @@ def sim_assign_spice_model(
         result = update_symbol_property(payload.reference, field, value)
         results.append(result)
     if not results:
-        return (
+        raise ToolFailedError(
             f"No fields were provided for {payload.reference}. "
             "Pass at least one of model_name, library, model_type, pins, or params."
         )
@@ -533,7 +534,7 @@ def sim_add_spice_library(name: str, uri: str) -> str:
 
     for existing in libraries:
         if existing.get("name") == payload.name:
-            return (
+            raise ToolFailedError(
                 f"A library named '{payload.name}' already exists. "
                 f"Remove it first with sim_remove_spice_library() if you want to replace it."
             )
@@ -549,13 +550,13 @@ def sim_remove_spice_library(name: str) -> str:
     project = _read_project_json()
     libraries: list[dict[str, Any]] = project.get("libraries", [])
     if not isinstance(libraries, list):
-        return "No SPICE libraries are configured in the active project."
+        raise ToolFailedError("No SPICE libraries are configured in the active project.")
 
     before = len(libraries)
     project["libraries"] = [lib for lib in libraries if lib.get("name") != name]
     after = len(project["libraries"])
     if before == after:
-        return f"No SPICE library named '{name}' was found."
+        raise ToolFailedError(f"No SPICE library named '{name}' was found.")
 
     _write_project_json(project)
     return f"Removed SPICE library '{name}'."

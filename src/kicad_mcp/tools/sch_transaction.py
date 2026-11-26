@@ -25,6 +25,7 @@ from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
 from ..discovery import find_kicad_version
+from ..errors import ToolFailedError
 from ..models import sch_transaction as txn
 from .metadata import headless_compatible
 
@@ -85,11 +86,11 @@ def sch_plan_from_spec(spec_json: str) -> str:
     try:
         spec = json.loads(spec_json)
     except json.JSONDecodeError as exc:
-        return json.dumps({"error": f"spec_json is not valid JSON: {exc}"})
+        raise ToolFailedError(f"spec_json is not valid JSON: {exc}") from exc
     try:
         plan = txn.plan_from_spec(spec)
     except txn.PlanValidationError as exc:
-        return json.dumps({"error": str(exc)})
+        raise ToolFailedError(str(exc)) from exc
     stored = txn.StoredPlan(plan=plan)
     _save_stored(stored)
     return json.dumps(
@@ -108,7 +109,7 @@ def sch_preview_plan(plan_id: str) -> str:
     """Return the object changes a plan would make, without writing anything."""
     stored = _load_stored(plan_id)
     if stored is None:
-        return json.dumps({"error": f"No plan found with id '{plan_id}'."})
+        raise ToolFailedError(f"No plan found with id '{plan_id}'.")
     return json.dumps(
         {
             "plan_id": plan_id,
@@ -131,7 +132,7 @@ def sch_apply_plan(plan_id: str) -> str:
 
     stored = _load_stored(plan_id)
     if stored is None:
-        return json.dumps({"error": f"No plan found with id '{plan_id}'."})
+        raise ToolFailedError(f"No plan found with id '{plan_id}'.")
     if stored.status == "applied":
         return json.dumps(
             {"plan_id": plan_id, "status": "applied", "note": "Plan was already applied."}
@@ -215,7 +216,7 @@ def sch_verify_plan(plan_id: str) -> str:
     """
     stored = _load_stored(plan_id)
     if stored is None:
-        return json.dumps({"error": f"No plan found with id '{plan_id}'."})
+        raise ToolFailedError(f"No plan found with id '{plan_id}'.")
     if stored.status != "applied":
         return json.dumps(
             {"plan_id": plan_id, "status": stored.status, "note": "Plan is not applied yet."}
@@ -302,7 +303,7 @@ def sch_rollback_plan(plan_id: str) -> str:
     """Restore the schematic from a plan's checkpoint, undoing the apply."""
     stored = _load_stored(plan_id)
     if stored is None:
-        return json.dumps({"error": f"No plan found with id '{plan_id}'."})
+        raise ToolFailedError(f"No plan found with id '{plan_id}'.")
     if stored.status != "applied" or not stored.checkpoint_dir:
         return json.dumps(
             {"plan_id": plan_id, "status": stored.status, "note": "Nothing to roll back."}
@@ -311,7 +312,7 @@ def sch_rollback_plan(plan_id: str) -> str:
     checkpoint_dir = Path(stored.checkpoint_dir)
     cfg = get_config()
     if cfg.project_dir is None:
-        return json.dumps({"error": "No active project is configured."})
+        raise ToolFailedError("No active project is configured.")
     restored: list[str] = []
     for name in stored.applied_files:
         source = checkpoint_dir / name

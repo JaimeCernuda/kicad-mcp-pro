@@ -11,6 +11,7 @@ from typing import Any, cast
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
+from ..errors import ToolFailedError
 from ..path_safety import resolve_under
 from .metadata import headless_compatible
 from .schematic import native_population_flags, parse_schematic_file
@@ -477,7 +478,9 @@ def variant_export_schematic(variant: str, output_name: str | None = None) -> st
         ]
     )
     if code != 0:
-        return f"Schematic variant export failed: {stderr or 'unknown error'}"
+        raise ToolFailedError(
+            f"Schematic variant export failed: {stderr or 'unknown error'}", exit_code=code
+        )
     return (
         f"Variant schematic '{variant}' exported to {out_file} ({out_file.stat().st_size} bytes)."
     )
@@ -605,6 +608,8 @@ def variant_export_manufacturing_package(
         for err in errors:
             lines.append(f"  ! {err}")
     lines.append(f"Manifest: {manifest_path}")
+    if errors:
+        raise ToolFailedError("\n".join(lines))
     return "\n".join(lines)
 
 

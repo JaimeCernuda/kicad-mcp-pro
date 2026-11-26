@@ -12,6 +12,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
+from ..errors import ToolFailedError
 from .export_support import _ensure_output_dir, _run_cli, _run_cli_variants
 from .metadata import headless_compatible
 
@@ -32,7 +33,9 @@ def jobset_list_templates() -> str:
         ]
     )
     if code != 0:
-        return f"Failed to list jobset templates: {stderr or 'unknown error'}"
+        raise ToolFailedError(
+            f"Failed to list jobset templates: {stderr or 'unknown error'}", exit_code=code
+        )
 
     try:
         templates: Any = _json.loads(stdout)
@@ -72,7 +75,7 @@ def jobset_export(output_name: str = "") -> str:
     """
     cfg = get_config()
     if cfg.pcb_file is None:
-        return "No PCB file configured. Call kicad_set_project() first."
+        raise ToolFailedError("No PCB file configured. Call kicad_set_project() first.")
 
     out_dir = _ensure_output_dir("jobset")
     board_stem = cfg.pcb_file.stem
@@ -99,7 +102,7 @@ def jobset_export(output_name: str = "") -> str:
         ]
     )
     if code != 0:
-        return f"Jobset export failed: {stderr or 'unknown error'}"
+        raise ToolFailedError(f"Jobset export failed: {stderr or 'unknown error'}", exit_code=code)
 
     existing = sorted(p for p in out_dir.iterdir() if p.is_file())
     lines = [f"Jobset export completed in {out_dir}:", ""]
@@ -146,11 +149,13 @@ def jobset_run(
     """
     cfg = get_config()
     if not jobset_file:
-        return "Error: jobset_file parameter is required."
+        raise ToolFailedError("Error: jobset_file parameter is required.")
 
     proj_path = Path(project_file) if project_file else cfg.project_file
     if proj_path is None or not proj_path.exists():
-        return "No KiCad project file configured or found. Call kicad_set_project() first."
+        raise ToolFailedError(
+            "No KiCad project file configured or found. Call kicad_set_project() first."
+        )
 
     try:
         from ..path_safety import resolve_under
@@ -163,7 +168,7 @@ def jobset_run(
         raise ValueError(f"Unsafe jobset path: {exc}") from exc
 
     if not jobset_path.exists():
-        return f"Jobset file not found: {jobset_file}"
+        raise ToolFailedError(f"Jobset file not found: {jobset_file}")
 
     out_args = _resolve_jobset_output_args(output, cfg.project_dir)
 
@@ -176,7 +181,9 @@ def jobset_run(
 
     code, stdout, stderr = _run_cli(*cmd)
     if code != 0:
-        return f"Jobset run failed: {stderr or stdout or 'unknown error'}"
+        raise ToolFailedError(
+            f"Jobset run failed: {stderr or stdout or 'unknown error'}", exit_code=code
+        )
     return f"Jobset executed successfully:\n{stdout or 'No output returned'}"
 
 
@@ -191,7 +198,7 @@ def jobset_validate(jobset_file: str = "") -> str:
     """
     cfg = get_config()
     if not jobset_file:
-        return "Error: jobset_file parameter is required."
+        raise ToolFailedError("Error: jobset_file parameter is required.")
 
     try:
         from ..path_safety import resolve_under
@@ -204,20 +211,20 @@ def jobset_validate(jobset_file: str = "") -> str:
         raise ValueError(f"Unsafe jobset path: {exc}") from exc
 
     if not jobset_path.exists():
-        return f"Jobset file not found: {jobset_file}"
+        raise ToolFailedError(f"Jobset file not found: {jobset_file}")
 
     try:
         with open(jobset_path, encoding="utf-8") as f:
             content = _json.load(f)
     except Exception as exc:
-        return f"Validation failed: Invalid JSON format: {exc}"
+        raise ToolFailedError(f"Validation failed: Invalid JSON format: {exc}") from exc
 
     if "jobs" not in content:
-        return "Validation failed: Missing required 'jobs' array key."
+        raise ToolFailedError("Validation failed: Missing required 'jobs' array key.")
 
     jobs = content["jobs"]
     if not isinstance(jobs, list):
-        return "Validation failed: 'jobs' must be a list."
+        raise ToolFailedError("Validation failed: 'jobs' must be a list.")
 
     return f"Jobset file is valid. Found {len(jobs)} jobs defined."
 

@@ -15,6 +15,7 @@ from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
 from ..connection import KiCadConnectionError, get_board
+from ..errors import ToolFailedError
 from ..pcb.board_access import (
     BoardAccessError,
     board_footprints,
@@ -226,11 +227,11 @@ def pcb_optimize_test_point_placement() -> str:
                 }
             )
     except (KiCadConnectionError, BoardAccessError, AttributeError, OSError) as exc:
-        return (
+        raise ToolFailedError(
             f"Could not optimize via live board ({exc}). "
             "Ensure KiCad is running with the PCB open, or use "
             "pcb_add_test_point with manual coordinates."
-        )
+        ) from exc
 
     return json.dumps({"suggestions": suggestions}, indent=2)
 
