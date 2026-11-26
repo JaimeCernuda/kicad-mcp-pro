@@ -169,6 +169,13 @@ class ToolFailedError(KiCadMcpError):
         super().__init__(f"{message}{suffix}")
 
 
+class NoActiveProjectError(ToolFailedError):
+    """No KiCad project or file is active for a request that needs one."""
+
+    code = "NO_ACTIVE_PROJECT"
+    hint = "Open a KiCad project or file, or call kicad_set_project(), then retry."
+
+
 class ExternalToolUnavailableError(KiCadMcpError):
     """Raised when a required external executable is unavailable."""
 

@@ -67,15 +67,15 @@ def test_changed_render_reports_drift(tmp_path: Path) -> None:
 
 @pytest.mark.anyio
 @pytest.mark.mcp_mode("write")
-async def test_compare_reports_no_baseline(sample_project: Path) -> None:
+async def test_compare_without_a_baseline_fails(sample_project: Path) -> None:
     from kicad_mcp.server import build_server
-    from tests.conftest import call_tool_text
+    from tests.conftest import call_tool_text, tool_text
 
     server = build_server("schematic")
     await call_tool_text(server, "kicad_set_project", {"project_dir": str(sample_project)})
-    raw = await call_tool_text(server, "sch_visual_baseline_compare", {})
-    payload = json.loads(raw)
-    assert payload["status"] == "no_baseline"
+    result = await server.call_tool("sch_visual_baseline_compare", {})
+    assert result.is_error is True
+    assert "No visual baseline for" in tool_text(result)
 
 
 @pytest.mark.anyio

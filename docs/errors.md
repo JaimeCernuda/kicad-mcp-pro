@@ -33,6 +33,8 @@ for where errors are defined.
 | `KICAD_PROJECT_NOT_FOUND` | no | none | — | The configured project cannot be found. Set `KICAD_MCP_PROJECT_DIR` or call `kicad_set_project()`. |
 | `UNSAFE_PATH` | no | none | — | A requested path escapes the workspace. Use a relative path inside `KICAD_MCP_WORKSPACE_ROOT` or the project. |
 | `TOOL_VALIDATION_ERROR` | no | none | — | The request was invalid before touching external state. Correct the tool arguments and retry. |
+| `TOOL_FAILED` | no | none | ? | A tool could not do what it was asked. The message is the tool's own text, with the failing command's output and exit code when there is one. |
+| `NO_ACTIVE_PROJECT` | no | none | ? | A request that needs a KiCad project or file had none. Open one or call `kicad_set_project()`, then retry. |
 | `EXTERNAL_TOOL_UNAVAILABLE` | no | none | — | A required external executable is unavailable. Install it or configure its path explicitly. |
 | `SERVER_INITIALIZING` | yes | timeout | 2000 | Tool registration is still in progress (deferred startup). Retry in a moment. |
 | `SCHEMATIC_WRITE_UNSAFE` | no | none | — | A schematic write would have dropped structure (e.g. a global label); the original was restored and the write refused rather than silently corrupting the file. |

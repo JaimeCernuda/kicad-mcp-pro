@@ -162,12 +162,8 @@ def _compare_visual_baseline(
     stem = target.path.stem
     baseline_png = _baseline_png(stem)
     if not baseline_png.is_file():
-        return json.dumps(
-            {
-                "status": "no_baseline",
-                "sheet": stem,
-                "message": (f"No visual baseline for '{stem}'. Run sch_visual_baseline_set first."),
-            }
+        raise ToolFailedError(
+            f"No visual baseline for '{stem}' at {baseline_png}. Run sch_visual_baseline_set first."
         )
 
     baseline_meta = _read_visual_baseline_metadata(stem)
@@ -232,7 +228,7 @@ def register(mcp: FastMCP) -> None:
         Renders the sheet, diffs it pixel-wise against the baseline, and reports the
         drift percentage, the changed bounding box, and a highlighted diff image.
         Status is ``PASS`` when drift is within ``threshold_pct``, else ``DRIFT``.
-        Reports ``no_baseline`` if the sheet was never captured.
+        Fails, naming the expected baseline path, if the sheet was never captured.
         """
         return _compare_visual_baseline(sheet, sheet_file, dpi, include_title_block, threshold_pct)
 

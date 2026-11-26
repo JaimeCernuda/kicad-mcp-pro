@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
 from ..discovery import auto_set_project_from_file
-from ..errors import ToolFailedError
+from ..errors import NoActiveProjectError
 from ..operating_modes import OperatingMode, active_operating_mode
 from ..tools.metadata import headless_compatible
 
@@ -59,7 +59,7 @@ def register(mcp: FastMCP) -> None:
         project_file = _snapshot_string(snapshot, "projectFile")
         project_root = _snapshot_string(snapshot, "projectRoot")
         if not active_file and not project_file and not project_root:
-            raise ToolFailedError(
+            raise NoActiveProjectError(
                 "No active KiCad project or file was included in the studio_push_context request."
             )
 

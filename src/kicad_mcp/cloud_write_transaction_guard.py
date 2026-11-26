@@ -226,6 +226,8 @@ def run_offline_guarded_native_write(
         # acknowledgement was lost. Never guess whether a rollback is safe.
         try:
             began = native.begin()
+        except LocalWriteDeniedError:
+            raise
         except Exception as exc:
             raise NativeWriteRecoveryError(_RECOVERY) from exc
         if began is False:

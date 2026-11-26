@@ -95,10 +95,8 @@ def test_compare_baseline_pass_and_failure_modes(
     monkeypatch.setattr(visual_baseline, "_baseline_png", lambda _stem: baseline)
     with pytest.raises(ToolFailedError, match=re.escape("dpi must be between 72 and 600.")):
         visual_baseline._compare_visual_baseline(None, None, 999, True, 2.0)
-    assert (
-        json.loads(visual_baseline._compare_visual_baseline(None, None, 200, True, 2.0))["status"]
-        == "no_baseline"
-    )
+    with pytest.raises(ToolFailedError, match="No visual baseline for 'sample'"):
+        visual_baseline._compare_visual_baseline(None, None, 200, True, 2.0)
     baseline.touch()
     monkeypatch.setattr(
         visual_baseline, "_read_visual_baseline_metadata", lambda _stem: {"dpi": 180}

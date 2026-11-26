@@ -135,8 +135,9 @@ class OfflineTrustedPcbIpcAdapter:
             return False
         try:
             response = self._service.begin()
-        except ToolFailedError:
-            return False
+        except ToolFailedError as exc:
+            # KiCad refused before starting a transaction; deny, keeping why.
+            raise LocalWriteDeniedError(_DENIED) from exc
         self._started = response == _BEGIN
         if self._started and self._service.status_payload().get("state") != "active":
             # A claimed begin without a valid active transaction is ambiguous.
