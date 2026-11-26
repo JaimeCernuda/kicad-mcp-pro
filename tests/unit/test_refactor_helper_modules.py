@@ -126,6 +126,31 @@ def test_export_support_reports_missing_files_and_variant_timeouts(
     )
 
 
+def test_cli_variants_that_all_fail_keep_every_attempts_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    results = iter(
+        [
+            (3, "", "Failed to load board: Unknown token 'this'"),
+            (1, "Usage: kicad-cli pcb export gerber", ""),
+        ]
+    )
+    monkeypatch.setattr(export_support, "_run_cli", lambda *_args: next(results))
+
+    code, stdout, stderr = export_support._run_cli_variants(
+        [["pcb", "export", "gerbers", "b.kicad_pcb"], ["pcb", "export", "gerber", "b.kicad_pcb"]]
+    )
+
+    assert code == 3
+    assert stdout == ""
+    assert stderr.splitlines() == [
+        "kicad-cli pcb export gerbers b.kicad_pcb -> exit code 3: "
+        "Failed to load board: Unknown token 'this'",
+        "kicad-cli pcb export gerber b.kicad_pcb -> exit code 1: "
+        "Usage: kicad-cli pcb export gerber",
+    ]
+
+
 def test_gate_history_records_trends_and_regressions(tmp_path: Path) -> None:
     history = GateHistory(tmp_path / "gate_history.db")
     history._init()
