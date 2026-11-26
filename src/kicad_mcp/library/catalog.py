@@ -10,8 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import get_config
+from ..errors import ToolFailedError
 from ..library_resolution import active_project_dir
-from ..utils.library_tables import lib_table_paths, parse_lib_table
+from ..utils.library_tables import lib_table_paths, parse_lib_table, resolve_kicad_env
 from ..utils.sexpr import _extract_block
 
 _symbol_index: dict[str, dict[str, str]] | None = None
@@ -41,6 +42,55 @@ def symbol_library_files() -> dict[str, Path]:
         for nickname, sym_path in parse_lib_table(table, project_dir).items():
             files.setdefault(nickname, sym_path)
     return files
+
+
+def symbol_sources() -> list[str]:
+    """Where symbol libraries are looked for, and what each place holds right now."""
+    cfg = get_config()
+    folder = cfg.symbol_library_dir
+    if folder is None:
+        lines = ["KiCad's symbol folder: none is configured."]
+    elif not folder.is_dir():
+        lines = [f"KiCad's symbol folder {folder}: does not exist."]
+    else:
+        lines = [
+            f"KiCad's symbol folder {folder}: {len(list(folder.glob('*.kicad_sym')))} libraries."
+        ]
+    project_dir = active_project_dir()
+    project_table = project_dir / "sym-lib-table" if project_dir is not None else None
+    if project_table is None:
+        lines.append("Project sym-lib-table: no project is active.")
+    elif not project_table.exists():
+        lines.append(f"Project sym-lib-table {project_table}: does not exist.")
+    tables = lib_table_paths("sym-lib-table", project_dir)
+    for table in tables:
+        kind = "Project" if table == project_table else "Global"
+        lines.append(f"{kind} sym-lib-table {table}: {_table_state(table, project_dir)}")
+    if all(table == project_table for table in tables):
+        lines.append("Global sym-lib-table: none was found.")
+    return lines
+
+
+def _table_state(table: Path, project_dir: Path | None) -> str:
+    try:
+        content = table.read_text(encoding="utf-8", errors="ignore")
+    except OSError as exc:
+        return f"cannot be read ({exc})."
+    entries = 0
+    missing: list[str] = []
+    for chunk in re.split(r"\(lib\b", content)[1:]:
+        name = re.search(r'\(name\s+"?([^")\s]+)"?\)', chunk)
+        uri = re.search(r'\(uri\s+"([^"]+)"\)', chunk)
+        if not (name and uri):
+            continue
+        entries += 1
+        target = resolve_kicad_env(uri.group(1), project_dir)
+        if not Path(target).exists():
+            missing.append(f"{name.group(1)} -> {target}")
+    state = f"{entries} libraries"
+    if missing:
+        state += f", {len(missing)} pointing at no file ({'; '.join(missing[:3])})"
+    return state + "."
 
 
 def _sources(files: dict[str, Path]) -> tuple[tuple[str, str], ...]:
@@ -192,9 +242,9 @@ class LibraryCatalogService:
         page_size: int = 50,
     ) -> str:
         if page < 1:
-            return "page must be >= 1."
+            raise ToolFailedError("page must be >= 1.")
         if page_size < 1:
-            return "page_size must be >= 1."
+            raise ToolFailedError("page_size must be >= 1.")
         page_size = min(page_size, 500)
         results = _matching_symbols(self.get_symbol_index(), query, library_filter)
         total = len(results)
@@ -202,7 +252,7 @@ class LibraryCatalogService:
             return f"No symbols matched '{query}'."
         total_pages = max(1, (total + page_size - 1) // page_size)
         if page > total_pages:
-            return f"Page {page} exceeds total pages ({total_pages})."
+            raise ToolFailedError(f"Page {page} exceeds total pages ({total_pages}).")
         start = (page - 1) * page_size
         end = start + page_size
         page_results = results[start:end]
@@ -219,7 +269,8 @@ class LibraryCatalogService:
         known = sorted({item["library"] for item in self.get_symbol_index().values()})
         lines = [
             f"Symbol library '{library}' was not found among the {len(known)} symbol "
-            "libraries in KiCad's symbol folder and the global and project sym-lib-table."
+            "libraries found in:",
+            *(f"- {line}" for line in symbol_sources()),
         ]
         close = difflib.get_close_matches(library, known, n=5, cutoff=0.5)
         close += [name for name in known if library.lower() in name.lower() and name not in close]
@@ -231,10 +282,10 @@ class LibraryCatalogService:
     def get_symbol_info(self, library: str, symbol_name: str) -> str:
         content = self.read_symbol_file(library)
         if content is None:
-            return self._library_not_found(library, symbol_name)
+            raise ToolFailedError(self._library_not_found(library, symbol_name))
         start = content.find(f'(symbol "{symbol_name}"')
         if start == -1:
-            return (
+            raise ToolFailedError(
                 f"Symbol '{library}:{symbol_name}' was not found. "
                 f"Call lib_search_symbols('{symbol_name}', library_filter='{library}') "
                 "to list close names."
@@ -270,7 +321,7 @@ class LibraryCatalogService:
     def get_datasheet_url(self, library: str, symbol_name: str) -> str:
         content = self.read_symbol_file(library)
         if content is None:
-            return self._library_not_found(library, symbol_name)
+            raise ToolFailedError(self._library_not_found(library, symbol_name))
         match = re.search(
             rf'\(symbol\s+"{re.escape(symbol_name)}".*?\(property\s+"Datasheet"\s+"([^"]*)"',
             content,
@@ -288,9 +339,9 @@ class LibraryCatalogService:
         page_size: int = 50,
     ) -> str:
         if page < 1:
-            return "page must be >= 1."
+            raise ToolFailedError("page must be >= 1.")
         if page_size < 1:
-            return "page_size must be >= 1."
+            raise ToolFailedError("page_size must be >= 1.")
         page_size = min(page_size, 500)
         results: list[str] = []
         for nickname, library_dir in self.footprint_library_dirs().items():
@@ -304,7 +355,7 @@ class LibraryCatalogService:
             return f"No footprints matched '{query}'."
         total_pages = max(1, (total + page_size - 1) // page_size)
         if page > total_pages:
-            return f"Page {page} exceeds total pages ({total_pages})."
+            raise ToolFailedError(f"Page {page} exceeds total pages ({total_pages}).")
         start = (page - 1) * page_size
         end = start + page_size
         page_results = results[start:end]
@@ -320,7 +371,7 @@ class LibraryCatalogService:
     def list_footprints(self, library: str) -> str:
         library_dir = self.footprint_library_dirs().get(library)
         if library_dir is None or not library_dir.exists():
-            return f"Footprint library '{library}' was not found."
+            raise ToolFailedError(f"Footprint library '{library}' was not found.")
         footprints = sorted(path.stem for path in library_dir.glob("*.kicad_mod"))
         lines = [f"Footprints in {library} ({len(footprints)} total):"]
         lines.extend(f"- {name}" for name in footprints[: self.max_items_per_response()])
@@ -332,7 +383,7 @@ class LibraryCatalogService:
     def get_footprint_info(self, library: str, footprint: str) -> str:
         path = self.footprint_file(library, footprint)
         if not path.exists():
-            return f"Footprint '{library}:{footprint}' was not found."
+            raise ToolFailedError(f"Footprint '{library}:{footprint}' was not found.")
         content = path.read_text(encoding="utf-8", errors="ignore")
         model_match = re.search(r'\(model\s+"([^"]+)"', content)
         return "\n".join(
@@ -346,7 +397,7 @@ class LibraryCatalogService:
     def get_footprint_3d_model(self, library: str, footprint: str) -> str:
         path = self.footprint_file(library, footprint)
         if not path.exists():
-            return f"Footprint '{library}:{footprint}' was not found."
+            raise ToolFailedError(f"Footprint '{library}:{footprint}' was not found.")
         content = path.read_text(encoding="utf-8", errors="ignore")
         model_match = re.search(r'\(model\s+"([^"]+)"', content)
         if model_match is None:

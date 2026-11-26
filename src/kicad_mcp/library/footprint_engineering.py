@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ..errors import ToolFailedError
 from ..utils.footprint_gen import generate_footprint
 from ..utils.footprint_validate import (
     FootprintCheck,
@@ -51,7 +52,7 @@ class LibraryFootprintEngineeringService:
     ) -> str:
         """Generate and save an IPC-7351B footprint."""
         if density not in ("A", "B", "C"):
-            return f"Invalid density '{density}'. Must be A, B, or C."
+            raise ToolFailedError(f"Invalid density '{density}'. Must be A, B, or C.")
 
         try:
             sexpr = generate_footprint(
@@ -66,7 +67,7 @@ class LibraryFootprintEngineeringService:
                 ball_diameter_mm=ball_diameter_mm,
             )
         except ValueError as exc:
-            return f"Footprint generation failed: {exc}"
+            raise ToolFailedError(f"Footprint generation failed: {exc}") from exc
 
         if output_path:
             out_file = self.resolve_within_project(output_path)
@@ -103,13 +104,13 @@ class LibraryFootprintEngineeringService:
     ) -> str:
         """Validate a two-terminal chip footprint against IPC-7351B."""
         if density not in ("A", "B", "C"):
-            return f"Invalid density '{density}'. Must be A, B, or C."
+            raise ToolFailedError(f"Invalid density '{density}'. Must be A, B, or C.")
         try:
             path = self.resolve_within_project(footprint_path)
         except Exception as exc:  # noqa: BLE001 - surface any path-safety rejection
             raise ValueError(f"Invalid footprint path: {exc}") from exc
         if not path.exists():
-            return f"Footprint file not found: {path}"
+            raise ToolFailedError(f"Footprint file not found: {path}")
         text = path.read_text(encoding="utf-8", errors="ignore")
         pads = parse_smd_pads(text)
         if not pads:
@@ -129,7 +130,7 @@ class LibraryFootprintEngineeringService:
                 tol_mm=tolerance_mm,
             )
         except ValueError as exc:
-            return f"Validation failed: {exc}"
+            raise ToolFailedError(f"Validation failed: {exc}") from exc
         lines = [f"Footprint IPC-7351B validation: {result.verdict}", f"- {result.summary}"]
         lines.extend(f"  - {finding}" for finding in result.findings)
         return "\n".join(lines)
@@ -141,7 +142,7 @@ class LibraryFootprintEngineeringService:
         except Exception as exc:  # noqa: BLE001 - surface any path-safety rejection
             raise ValueError(f"Invalid footprint path: {exc}") from exc
         if not path.exists():
-            return f"Footprint file not found: {path}"
+            raise ToolFailedError(f"Footprint file not found: {path}")
         text = path.read_text(encoding="utf-8", errors="ignore")
         name_match = re.search(r'\(footprint\s+"([^"]+)"', text)
         footprint_name = name_match.group(1) if name_match else path.stem
