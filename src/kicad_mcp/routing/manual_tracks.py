@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
+from ..errors import ToolFailedError
 from ..models.common import _PadLike
 from ..models.pcb import AddTrackInput
 from ..pcb.geometry import point_xy_mm
@@ -99,7 +100,7 @@ class RoutingManualTrackService:
         start_pad = _find_pad(self.list_pads(), ref1, pad1)
         end_pad = _find_pad(self.list_pads(), ref2, pad2)
         if start_pad is None or end_pad is None:
-            return "One or both pads were not found on the active board."
+            raise ToolFailedError("One or both pads were not found on the active board.")
 
         start_x, start_y = point_xy_mm(start_pad.position)
         end_x, end_y = point_xy_mm(end_pad.position)

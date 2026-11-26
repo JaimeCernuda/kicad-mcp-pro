@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
+from ..errors import ToolFailedError
 from ..file_formats import GENERATED_SEXPR_DIALECT_VERSION
 
 
@@ -100,7 +101,7 @@ class ProjectCreationService:
             (project_dir.is_dir() and any(project_dir.iterdir()))
             or any(output_file.exists() for output_file in output_files)
         ):
-            return (
+            raise ToolFailedError(
                 "Refusing to create a project over an existing non-empty directory.\n"
                 f"- Directory: {project_dir}\n"
                 "Choose a new name/path or rerun with confirm_overwrite=true."

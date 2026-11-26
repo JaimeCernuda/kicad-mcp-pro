@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from types import SimpleNamespace
 
 import pytest
 
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.pcb.transaction_lifecycle import PcbTransactionLifecycleService
 
 
@@ -94,7 +96,8 @@ def test_transaction_operations_use_the_existing_queue_names() -> None:
 def test_unsupported_operations_preserve_legacy_messages(method: str, expected: str) -> None:
     service = _service(SimpleNamespace(), [])
 
-    assert getattr(service, method)() == expected
+    with pytest.raises(ToolFailedError, match=re.escape(expected)):
+        getattr(service, method)()
 
 
 @pytest.mark.parametrize(
@@ -116,7 +119,8 @@ def test_connection_errors_preserve_legacy_messages(method: str, expected: str) 
         connection_errors=(FakeConnectionError, OSError),
     )
 
-    assert getattr(service, method)() == expected
+    with pytest.raises(ToolFailedError, match=re.escape(expected)):
+        getattr(service, method)()
 
 
 def test_unexpected_errors_are_not_hidden() -> None:

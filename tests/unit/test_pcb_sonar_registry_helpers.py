@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from types import SimpleNamespace
 
 import pytest
 from kipy.geometry import Vector2
 
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.models.pcb import AddTeardropsInput, SyncPcbFromSchematicInput
 from kicad_mcp.tools import pcb
 
@@ -231,8 +233,13 @@ def test_file_backed_ratsnest_preserves_fail_closed_diagnostics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     reason = OSError("KiCad unavailable")
-    monkeypatch.setattr(pcb, "_load_file_backed_board", lambda exc: "No board file")
-    assert "No board file" == pcb._file_backed_ratsnest_report(reason)
+
+    def no_board_file(exc: Exception) -> tuple[object, str, list[str]]:
+        raise ToolFailedError("No board file") from exc
+
+    monkeypatch.setattr(pcb, "_load_file_backed_board", no_board_file)
+    with pytest.raises(ToolFailedError, match=re.escape("No board file")):
+        pcb._file_backed_ratsnest_report(reason)
     monkeypatch.setattr(
         pcb, "_load_file_backed_board", lambda exc: (object(), "(kicad_pcb)", ["file-backed"])
     )

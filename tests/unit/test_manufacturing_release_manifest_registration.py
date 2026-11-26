@@ -4,8 +4,10 @@ import importlib
 import importlib.util
 from types import ModuleType, SimpleNamespace
 
+import pytest
 from mcp.server.mcpserver import MCPServer as FastMCP
 
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.tools.metadata import get_tool_metadata
 
 
@@ -87,4 +89,5 @@ def test_registration_formats_prerequisite_errors_without_changing_public_behavi
     )
 
     tool = server._tool_manager.list_tools()[0]
-    assert tool.fn() == "missing release inputs"
+    with pytest.raises(ToolFailedError, match="missing release inputs"):
+        tool.fn()

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import re
+
+import pytest
+
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.models.signal_integrity import ViaStubInput
 from kicad_mcp.signal_integrity.via_stub import (
     SignalIntegrityViaStubService,
@@ -10,14 +15,16 @@ from kicad_mcp.signal_integrity.via_stub import (
 def test_via_stub_service_reports_no_matching_vias() -> None:
     payload = ViaStubInput(via_positions=[], frequency_ghz=5.0, er=4.0)
 
-    result = SignalIntegrityViaStubService().analyze(
-        payload=payload,
-        board_thickness_mm=0.0,
-        observations=[],
-        critical_frequencies_mhz=[],
-    )
-
-    assert result == "No vias matched the supplied positions on the active board."
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("No vias matched the supplied positions on the active board."),
+    ):
+        SignalIntegrityViaStubService().analyze(
+            payload=payload,
+            board_thickness_mm=0.0,
+            observations=[],
+            critical_frequencies_mhz=[],
+        )
 
 
 def test_via_stub_service_warns_when_response_limit_omits_vias() -> None:

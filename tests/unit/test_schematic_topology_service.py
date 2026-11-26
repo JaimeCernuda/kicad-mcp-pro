@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.topology import SchematicTopologyService
 
 
@@ -76,7 +80,10 @@ def test_list_sheets_preserves_diagnostics_and_warning_on_load_failure() -> None
     service = _service(loaded=RuntimeError("broken hierarchy"), warnings=warnings)
     path = Path("demo.kicad_sch")
 
-    assert service.list_sheets(path) == (
+    with pytest.raises(ToolFailedError) as exc:
+        service.list_sheets(path)
+
+    assert str(exc.value) == (
         "Could not inspect sheet hierarchy: broken hierarchy\nDiagnostics: demo.kicad_sch"
     )
     assert warnings == [
@@ -117,15 +124,15 @@ def test_sheet_info_formats_existing_sheet() -> None:
 
 def test_sheet_info_preserves_missing_and_failure_results() -> None:
     service = _service()
-    assert service.sheet_info(Path("demo.kicad_sch"), "Missing") == (
-        "Sheet 'Missing' was not found."
-    )
+    with pytest.raises(ToolFailedError, match=re.escape("Sheet 'Missing' was not found.")):
+        service.sheet_info(Path("demo.kicad_sch"), "Missing")
 
     warnings: list[tuple[str, dict[str, object]]] = []
     failing = _service(loaded=RuntimeError("bad sheet"), warnings=warnings)
-    assert failing.sheet_info(Path("demo.kicad_sch"), "Power") == (
-        "Could not inspect sheet 'Power': bad sheet"
-    )
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Could not inspect sheet 'Power': bad sheet")
+    ):
+        failing.sheet_info(Path("demo.kicad_sch"), "Power")
     assert warnings[0][0] == "schematic_get_sheet_info_failed"
     assert warnings[0][1]["sheet_name"] == "Power"
 
@@ -197,6 +204,8 @@ def test_trace_net_preserves_not_found_result(tmp_path: Path) -> None:
     missing_child = tmp_path / "missing.kicad_sch"
     service = _service(child_paths=[("Missing", missing_child)])
 
-    assert service.trace_net(Path("demo.kicad_sch"), "NOPE") == (
-        "Net 'NOPE' was not found in the active schematic or child sheets."
-    )
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("Net 'NOPE' was not found in the active schematic or child sheets."),
+    ):
+        service.trace_net(Path("demo.kicad_sch"), "NOPE")

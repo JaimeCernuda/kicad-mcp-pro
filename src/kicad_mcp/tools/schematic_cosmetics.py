@@ -36,6 +36,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer as FastMCP
 
+from ..errors import ToolFailedError
 from ..models import visual_qa
 from ..utils.sexpr import _extract_block
 from .metadata import headless_compatible
@@ -118,7 +119,9 @@ def _run_cosmetic_fix(
     try:
         after, changes = mutator(before)
     except CosmeticFixError as exc:
-        return json.dumps({"fix": fix_name, "status": "error", "message": str(exc)}, indent=2)
+        raise ToolFailedError(
+            json.dumps({"fix": fix_name, "status": "error", "message": str(exc)}, indent=2)
+        ) from exc
 
     report: dict[str, Any] = {
         "fix": fix_name,
@@ -150,7 +153,7 @@ def _run_cosmetic_fix(
         report["message"] = (
             "Refused to apply: the mutation would change net connectivity. Nothing was written."
         )
-        return json.dumps(report, indent=2)
+        raise ToolFailedError(json.dumps(report, indent=2))
 
     def _committing_mutator(current: str) -> str:
         mutated, _ = mutator(current)
@@ -161,7 +164,7 @@ def _run_cosmetic_fix(
     except ValueError as exc:
         report["status"] = "error"
         report["message"] = str(exc)
-        return json.dumps(report, indent=2)
+        raise ToolFailedError(json.dumps(report, indent=2)) from exc
 
     report["status"] = "applied"
     report["message"] = f"Applied {len(changes)} change(s). {_reload_schematic_note(reload_note)}"

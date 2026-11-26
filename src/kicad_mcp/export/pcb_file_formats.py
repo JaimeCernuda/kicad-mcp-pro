@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ..errors import ToolFailedError
+
 type GetPcbFile = Callable[[], Path]
 type IsSupported = Callable[[str], bool]
 type ActiveVariantArgs = Callable[[str | None], list[str]]
@@ -167,15 +169,20 @@ class ExportPcbFileFormatsService:
         spec = FORMAT_SPECS[format_name]
         pcb_file = self.get_pcb_file()
         if not self.is_supported(format_name):
-            return f"{spec.label} export is not supported by the detected KiCad CLI."
+            raise ToolFailedError(
+                f"{spec.label} export is not supported by the detected KiCad CLI."
+            )
 
         try:
             out_file = self.resolve_output_file("3d", output_path, default_name=spec.default_name)
         except ValueError as exc:
-            return f"Invalid output path: {exc}"
+            raise ToolFailedError(f"Invalid output path: {exc}") from exc
 
         cmd = _build_export_command(spec, opts, out_file, pcb_file, self.active_variant_args)
         code, stdout, stderr = self.run_cli(*cmd)
         if code != 0:
-            return f"{spec.label} export failed: {stderr or stdout or 'unknown error'}"
+            raise ToolFailedError(
+                f"{spec.label} export failed: {stderr or stdout or 'unknown error'}",
+                exit_code=code,
+            )
         return f"{spec.label} model exported to {out_file}"

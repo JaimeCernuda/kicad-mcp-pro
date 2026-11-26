@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from ..errors import ToolFailedError
 from .sheet_pins import edge_for_rotation, parse_sheet_blocks
 
 
@@ -62,10 +63,12 @@ class SchematicTopologyService:
                 schematic_file=str(schematic_file),
                 error=str(exc),
             )
-            return self.with_diagnostics(
-                f"Could not inspect sheet hierarchy: {exc}",
-                schematic_file,
-            )
+            raise ToolFailedError(
+                self.with_diagnostics(
+                    f"Could not inspect sheet hierarchy: {exc}",
+                    schematic_file,
+                )
+            ) from exc
 
         children = hierarchy.get("root", {}).get("children", [])
         if not children:
@@ -97,10 +100,10 @@ class SchematicTopologyService:
                 sheet_name=sheet_name,
                 error=str(exc),
             )
-            return f"Could not inspect sheet '{sheet_name}': {exc}"
+            raise ToolFailedError(f"Could not inspect sheet '{sheet_name}': {exc}") from exc
 
         if info is None:
-            return f"Sheet '{sheet_name}' was not found."
+            raise ToolFailedError(f"Sheet '{sheet_name}' was not found.")
 
         pins = info.get("pins", [])
         position = info.get("position", {})
@@ -172,7 +175,9 @@ class SchematicTopologyService:
                 )
 
         if not local_matches and not child_matches:
-            return f"Net '{net_name}' was not found in the active schematic or child sheets."
+            raise ToolFailedError(
+                f"Net '{net_name}' was not found in the active schematic or child sheets."
+            )
 
         lines = [f"Trace for net '{net_name}':"]
         for index, group in enumerate(local_matches, start=1):
@@ -196,14 +201,14 @@ class SchematicTopologyService:
                 sheet_name=sheet_name,
                 error=str(exc),
             )
-            return f"Could not read '{schematic_file.name}': {exc}"
+            raise ToolFailedError(f"Could not read '{schematic_file.name}': {exc}") from exc
 
         block = next(
             (candidate for candidate in parse_sheet_blocks(text) if candidate.name == sheet_name),
             None,
         )
         if block is None:
-            return f"Sheet '{sheet_name}' was not found."
+            raise ToolFailedError(f"Sheet '{sheet_name}' was not found.")
         if not block.pins:
             return (
                 f"Sheet '{sheet_name}' has no sheet pins. "

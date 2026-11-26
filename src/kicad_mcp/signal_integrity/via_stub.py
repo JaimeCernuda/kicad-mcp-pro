@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..errors import ToolFailedError
 from ..models.signal_integrity import ViaStubInput
 from ..utils.impedance import via_stub_resonance_ghz, via_stub_risk_level
 
@@ -34,7 +35,7 @@ class SignalIntegrityViaStubService:
         omitted_observations: int = 0,
     ) -> str:
         if not observations:
-            return "No vias matched the supplied positions on the active board."
+            raise ToolFailedError("No vias matched the supplied positions on the active board.")
 
         lines = [
             f"Via stub analysis at {payload.frequency_ghz:.3f} GHz:",

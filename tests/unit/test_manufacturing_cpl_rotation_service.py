@@ -4,11 +4,14 @@ import csv
 import importlib
 import importlib.util
 import json
+import re
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
+
+from kicad_mcp.errors import ToolFailedError
 
 if TYPE_CHECKING:
     from kicad_mcp.manufacturing.cpl_rotation import ManufacturingCplRotationService
@@ -71,9 +74,10 @@ def test_write_confirmation_and_overwrite_policy_are_preserved(
     cpl = tmp_path / "output" / "demo_cpl.csv"
     _write_cpl(cpl)
 
-    refused = service.correct("output/demo_cpl.csv", dry_run=False)
+    with pytest.raises(ToolFailedError) as refused:
+        service.correct("output/demo_cpl.csv", dry_run=False)
     out_path = tmp_path / "output" / "demo_cpl_jlcpcb_corrected.csv"
-    assert refused == (
+    assert str(refused.value) == (
         "CPL rotation correction writes a new CSV and requires explicit confirmation.\n"
         f"- Intended output: {out_path}\n"
         "Rerun with dry_run=false and confirm=true."
@@ -88,8 +92,9 @@ def test_write_confirmation_and_overwrite_policy_are_preserved(
     assert rows[0]["Rot"] == "180.00"
     assert rows[1]["Rot"] == "0"
 
-    overwrite = service.correct("output/demo_cpl.csv", dry_run=False, confirm=True)
-    assert overwrite == (
+    with pytest.raises(ToolFailedError) as overwrite:
+        service.correct("output/demo_cpl.csv", dry_run=False, confirm=True)
+    assert str(overwrite.value) == (
         "Refusing to overwrite an existing corrected CPL CSV.\n"
         f"- Existing file: {out_path}\n"
         "Choose a different output_path."
@@ -100,14 +105,19 @@ def test_custom_output_and_validation_errors_are_preserved(
     service: ManufacturingCplRotationService,
     tmp_path: Path,
 ) -> None:
-    missing = service.correct("output/missing.csv")
-    assert missing == f"CPL file not found: {(tmp_path / 'output' / 'missing.csv').resolve()}"
+    with pytest.raises(ToolFailedError) as missing:
+        service.correct("output/missing.csv")
+    assert str(missing.value) == (
+        f"CPL file not found: {(tmp_path / 'output' / 'missing.csv').resolve()}"
+    )
 
     cpl = tmp_path / "output" / "bad.csv"
     cpl.parent.mkdir(parents=True, exist_ok=True)
     cpl.write_text("Ref,Package\nD1,SOT-23-3\n", encoding="utf-8")
-    bad = service.correct("output/bad.csv")
-    assert "Rotation column ('Rot') not found in CSV." in bad
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Rotation column ('Rot') not found in CSV.")
+    ):
+        service.correct("output/bad.csv")
 
     good = tmp_path / "output" / "demo_cpl.csv"
     _write_cpl(good)

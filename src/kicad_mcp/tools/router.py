@@ -6,6 +6,7 @@ from typing import TypedDict
 
 from mcp.server.mcpserver import MCPServer as FastMCP
 
+from ..errors import ToolFailedError
 from .metadata import get_tool_metadata
 
 
@@ -494,7 +495,6 @@ TOOL_CATEGORIES: dict[str, ToolCategory] = {
             "fp_export",
             "fp_export_svg",
             "fp_upgrade",
-            "fp_get_info",
             "sym_export",
             "sym_export_svg",
             "sym_upgrade",
@@ -990,7 +990,9 @@ def _render_tools_in_category(mcp: FastMCP, category: str, maturity: str = "") -
         available = ", ".join(
             sorted(name for name in TOOL_CATEGORIES if _visible_tools_for_mcp(mcp, name))
         )
-        return f"Unknown or unavailable category '{category}'. Available categories: {available}"
+        raise ToolFailedError(
+            f"Unknown or unavailable category '{category}'. Available categories: {available}"
+        )
 
     from ..operating_modes import active_operating_mode
 

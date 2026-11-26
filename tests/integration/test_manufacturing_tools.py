@@ -254,9 +254,6 @@ async def test_manufacturing_import_support_and_import_cli(
     fp_upgrade_result = await call_tool_text(server, "fp_upgrade", {"dry_run": False})
     assert isinstance(fp_upgrade_result, str)
 
-    fp_get_info_result = await call_tool_text(server, "fp_get_info", {})
-    assert isinstance(fp_get_info_result, str)
-
     sym_export_result = await call_tool_text(server, "sym_export", {})
     assert isinstance(sym_export_result, str)
 

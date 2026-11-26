@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from ..errors import ToolFailedError
+
 NetClassRuleWriter = Callable[[str, float, float, float | None], str]
 
 _NET_CLASS_TEMPLATES: dict[str, dict[str, object]] = {
@@ -131,4 +133,5 @@ class SignalIntegrityNetClassBindingService:
             lines.append(f"\n**Errors** ({len(errors)}):")
             for error in errors:
                 lines.append(f"  - {error}")
+            raise ToolFailedError("\n".join(lines))
         return "\n".join(lines)

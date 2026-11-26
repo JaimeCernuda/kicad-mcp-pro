@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.export.netlist import ExportNetlistService
 
 
@@ -86,6 +88,7 @@ def test_export_netlist_preserves_validation_and_failure_message(tmp_path: Path)
         run_cli_variants=FakeCli((2, "", "bad netlist")),
     )
 
-    assert service.export("spice") == "Netlist export failed: bad netlist"
+    with pytest.raises(ToolFailedError, match=re.escape("Netlist export failed: bad netlist")):
+        service.export("spice")
     with pytest.raises(ValidationError):
         service.export("unsupported")

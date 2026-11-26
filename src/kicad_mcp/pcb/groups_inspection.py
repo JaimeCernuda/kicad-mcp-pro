@@ -6,6 +6,8 @@ from collections.abc import Callable, Iterable, Sized
 from dataclasses import dataclass
 from typing import cast
 
+from ..errors import ToolFailedError
+
 type GetBoard = Callable[[], object]
 type ConnectionErrors = tuple[type[Exception], ...]
 
@@ -23,7 +25,7 @@ class PcbGroupsInspectionService:
             board = self.get_board()
             get_groups = getattr(board, "get_groups", None)
             if not callable(get_groups):
-                return (
+                raise ToolFailedError(
                     "Group support requires KiCad 10.0.0 or later. "
                     "The current KiCad version does not support board groups."
                 )
@@ -39,4 +41,4 @@ class PcbGroupsInspectionService:
                 lines.append(f"{index}. {name} ({item_count} items)")
             return "\n".join(lines)
         except self.connection_errors as exc:
-            return f"Failed to get groups: {exc}"
+            raise ToolFailedError(f"Failed to get groups: {exc}") from exc

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.tools import visual_baseline
 
 
@@ -52,19 +54,15 @@ def test_capture_baseline_failures_do_not_write_metadata(
 ) -> None:
     meta = tmp_path / "sample.json"
     monkeypatch.setattr(visual_baseline, "_baseline_meta", lambda _stem: meta)
-    assert (
-        json.loads(visual_baseline._capture_visual_baseline(None, None, 1000, True))["status"]
-        == "error"
-    )
+    with pytest.raises(ToolFailedError, match=re.escape("dpi must be between 72 and 600.")):
+        visual_baseline._capture_visual_baseline(None, None, 1000, True)
 
     def resolve_error(**_kwargs: object):
         raise ValueError("unknown sheet")
 
     monkeypatch.setattr(visual_baseline, "_resolve_schematic_target", resolve_error)
-    assert (
-        json.loads(visual_baseline._capture_visual_baseline(None, None, 200, True))["message"]
-        == "unknown sheet"
-    )
+    with pytest.raises(ToolFailedError, match="unknown sheet"):
+        visual_baseline._capture_visual_baseline(None, None, 200, True)
 
     monkeypatch.setattr(
         visual_baseline,
@@ -77,9 +75,10 @@ def test_capture_baseline_failures_do_not_write_metadata(
         raise RuntimeError("render unavailable")
 
     monkeypatch.setattr(visual_baseline, "_render_schematic_png_artifact", render_error)
-    result = json.loads(visual_baseline._capture_visual_baseline(None, None, 200, True))
-    assert result["status"] == "error"
-    assert result["message"] == "Baseline render failed: render unavailable"
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Baseline render failed: render unavailable")
+    ):
+        visual_baseline._capture_visual_baseline(None, None, 200, True)
     assert meta.exists() is False
 
 
@@ -94,10 +93,8 @@ def test_compare_baseline_pass_and_failure_modes(
         visual_baseline, "_resolve_schematic_target", lambda **_kw: SimpleNamespace(path=source)
     )
     monkeypatch.setattr(visual_baseline, "_baseline_png", lambda _stem: baseline)
-    assert (
-        json.loads(visual_baseline._compare_visual_baseline(None, None, 999, True, 2.0))["status"]
-        == "error"
-    )
+    with pytest.raises(ToolFailedError, match=re.escape("dpi must be between 72 and 600.")):
+        visual_baseline._compare_visual_baseline(None, None, 999, True, 2.0)
     assert (
         json.loads(visual_baseline._compare_visual_baseline(None, None, 200, True, 2.0))["status"]
         == "no_baseline"
@@ -127,5 +124,7 @@ def test_compare_baseline_pass_and_failure_modes(
         raise RuntimeError("diff unavailable")
 
     monkeypatch.setattr(visual_baseline, "_render_visual_baseline_comparison", compare_error)
-    failed = json.loads(visual_baseline._compare_visual_baseline(None, None, 200, True, 2.0))
-    assert failed["message"] == "Baseline compare failed: diff unavailable"
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Baseline compare failed: diff unavailable")
+    ):
+        visual_baseline._compare_visual_baseline(None, None, 200, True, 2.0)

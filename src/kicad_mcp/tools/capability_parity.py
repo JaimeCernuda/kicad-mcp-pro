@@ -11,6 +11,7 @@ from typing import Any, cast
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..capabilities import metadata_coverage
+from ..errors import ToolFailedError
 from ..parity import coverage_summary, find_capabilities, get_matrix, opportunities
 
 _NO_TOOL_LABEL = "(no tool)"
@@ -41,7 +42,7 @@ def _render_capability_domain(domain: str, matrix: dict[str, Any]) -> str:
     info = domains.get(domain)
     if info is None:
         available = ", ".join(sorted(domains))
-        return f"Unknown domain '{domain}'. Available: {available}"
+        raise ToolFailedError(f"Unknown domain '{domain}'. Available: {available}")
     stats = coverage_summary(matrix)["domains"][domain]
     lines = [
         f"# Capability parity — `{domain}`",

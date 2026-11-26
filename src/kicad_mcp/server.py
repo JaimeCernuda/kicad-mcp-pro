@@ -91,6 +91,7 @@ from .diagnostics import (
 )
 from .discovery import ensure_studio_project_watcher, find_kicad_version
 from .errors import (
+    KiCadMcpError,
     KiCadNotRunningError,
     ToolRegistrationTimeoutError,
 )
@@ -182,7 +183,6 @@ _CliWatch = Annotated[
     bool, typer.Option("--watch", help=option_help("Watch source files and hot-reload on changes"))
 ]
 _HTTP_RESPONSE_START = "http.response.start"
-_NOT_FOUND_LITERAL = "not found"
 _TOOL_ERROR_EVENT_NAME = "mcp.tool_error"
 
 logger = structlog.get_logger(__name__)
@@ -324,31 +324,6 @@ HEAVY_TOOL_NAMES: frozenset[str] = frozenset(
         "route_tune_time_domain",
     }
 )
-CLI_FAILURE_TOOL_NAMES: frozenset[str] = frozenset(
-    {
-        "run_drc",
-        "run_erc",
-        "export_gerber",
-        "export_drill",
-        "export_bom",
-        "export_netlist",
-        "export_spice_netlist",
-        "export_pcb_pdf",
-        "export_sch_pdf",
-        "export_3d_step",
-        "export_step",
-        "export_stepz",
-        "export_xao",
-        "pcb_export_3d_pdf",
-        "export_3d_render",
-        "export_pick_and_place",
-        "export_ipc2581",
-        "export_odb",
-        "export_svg",
-        "export_dxf",
-        "get_board_stats",
-    }
-)
 _TOOL_LIMITERS: dict[str, anyio.CapacityLimiter] = {}
 _TOOL_LIMITERS_LOCK = threading.Lock()
 IPC_CAPABILITY_CACHE_TTL_SEC = 1.0
@@ -409,194 +384,30 @@ def _clean_tool_error(exc: BaseException) -> str:
     return message
 
 
-def _classify_system_error_code(lowered: str, tool_name: str) -> str | None:
-    if "operating mode" in lowered and "requires" in lowered:
-        return "MODE_FORBIDDEN"
-    if "timed out" in lowered or "timeout" in lowered:
-        return "CLI_TIMEOUT"
-    if "kicad-cli" in lowered and (
-        "install" in lowered or "found" in lowered or "missing" in lowered
-    ):
-        return "CLI_UNAVAILABLE"
-    if "manufacturing export blocked" in lowered or "quality gate" in lowered:
-        return "VALIDATION_FAILED"
-    if (
-        "no pcb file" in lowered
-        or "no schematic file" in lowered
-        or "invalid output path" in lowered
-    ):
-        return "CONFIGURATION_ERROR"
-    if tool_name in CLI_FAILURE_TOOL_NAMES:
-        return "CLI_COMMAND_FAILED"
-    return None
-
-
-def _is_ipc_connection_error(lowered: str) -> bool:
-    return "connection" in lowered and ("refused" in lowered or "reset" in lowered)
-
-
-def _is_board_not_open_error(lowered: str) -> bool:
-    return any(p in lowered for p in ("no board", "no pcb", "board not open"))
-
-
-def _is_permission_error(lowered: str) -> bool:
-    return any(p in lowered for p in ("permission", "denied", "not allowed"))
-
-
-def _classify_not_found_code(lowered: str) -> str | None:
-    missing_or_not_found = _NOT_FOUND_LITERAL in lowered or "missing" in lowered
-    if _NOT_FOUND_LITERAL in lowered:
-        return "NOT_FOUND"
-    if "symbol" in lowered and missing_or_not_found:
-        return "SYMBOL_NOT_FOUND"
-    if "footprint" in lowered and missing_or_not_found:
-        return "FOOTPRINT_NOT_FOUND"
-    if "net" in lowered and missing_or_not_found:
-        return "NET_NOT_FOUND"
-    return None
-
-
-def _classify_domain_error_code(lowered: str) -> str | None:
-    if _is_ipc_connection_error(lowered):
-        return "IPC_CONNECTION_LOST"
-    if "not running" in lowered or "kicad not" in lowered:
-        return "KICAD_NOT_RUNNING"
-    if _is_board_not_open_error(lowered):
-        return "BOARD_NOT_OPEN"
-    if "validation" in lowered or "invalid" in lowered:
-        return "TOOL_VALIDATION_ERROR"
-    if _is_permission_error(lowered):
-        return "PERMISSION_DENIED"
-    return _classify_not_found_code(lowered)
-
-
-def _tool_error_code(message: str, *, tool_name: str = "") -> str:
-    lowered = message.casefold()
-    code = _classify_system_error_code(lowered, tool_name)
-    if code is not None:
-        return code
-    code = _classify_domain_error_code(lowered)
-    if code is not None:
-        return code
-    return "TOOL_EXECUTION_FAILED"
-
-
-def _classify_system_error_hint(lowered: str) -> str | None:
-    if "operating mode" in lowered and "requires" in lowered:
-        return (
-            "Start kicad-mcp-pro with --mode write, --mode manufacturing, "
-            "or --mode experimental as appropriate. "
-            "Example: kicad-mcp-pro --mode write"
-        )
-    if "no pcb file" in lowered or "no schematic file" in lowered:
-        return (
-            "Call kicad_set_project() or set the relevant KICAD_MCP_*_FILE variable. "
-            "Example: kicad-mcp-pro setup claude-code --write"
-        )
-    if "kicad-cli" in lowered:
-        return (
-            "Install KiCad (≥ 8.0) from https://www.kicad.org/download/ or "
-            "set KICAD_MCP_KICAD_CLI to the kicad-cli executable path."
-        )
-    if "quality gate" in lowered or "hard-blocked" in lowered:
-        return (
-            "Run kicad-mcp-pro doctor to see gate results, then fix "
-            "blocking issues and rerun the tool."
-        )
-    if "unknown tool" in lowered:
-        return (
-            "Run kicad-mcp-pro tools list to see available tools, or "
-            "check kicad_list_tool_categories() and kicad_get_tools_in_category()."
-        )
-    return None
-
-
-def _classify_not_found_hint(lowered: str) -> str | None:
-    missing_or_not_found = _NOT_FOUND_LITERAL in lowered or "missing" in lowered
-    if "symbol" in lowered and missing_or_not_found:
-        return (
-            "Symbol not found. Check the library name and symbol name,\n"
-            "or run 'kicad-mcp-pro tools list'."
-        )
-    if "footprint" in lowered and missing_or_not_found:
-        return (
-            "Footprint not found. Check the library name and footprint name,\n"
-            "or run 'kicad-mcp-pro tools list'."
-        )
-    if "net" in lowered and missing_or_not_found:
-        return (
-            "Net not found. Verify the net name exists in the schematic, or check kicad_get_nets()."
-        )
-    if _NOT_FOUND_LITERAL in lowered or ("symbol" in lowered and "missing" in lowered):
-        return "The requested resource was not found. Verify the name, identifier, or library path."
-    return None
-
-
-def _classify_domain_error_hint(lowered: str) -> str | None:
-    if _is_ipc_connection_error(lowered):
-        return (
-            "Start KiCad and enable the IPC API server:\n"
-            "  1. Open KiCad\n"
-            "  2. Preferences → IPC\n"
-            "  3. Enable 'Start IPC server on port 12345'\n"
-            "  4. Restart KiCad"
-        )
-    if "not running" in lowered or "kicad not" in lowered:
-        return (
-            "Ensure KiCad is running with the IPC API enabled.\n"
-            "Run 'kicad-mcp-pro status' to check KiCad availability."
-        )
-    if _is_board_not_open_error(lowered):
-        return (
-            "Open a PCB file in KiCad or set the project first:\n"
-            "  kicad-mcp-pro --project-dir /path/to/project\n"
-            "Or call kicad_set_project() from the client."
-        )
-    if "validation" in lowered or "invalid" in lowered:
-        return (
-            "Correct the tool arguments and retry.\n"
-            "Check the input schema with 'kicad-mcp-pro tools list'."
-        )
-    if _is_permission_error(lowered):
-        return (
-            "The current operating mode does not permit this tool.\n"
-            "Use --mode=write, --mode=manufacturing,\n"
-            "or --mode=experimental with appropriate access."
-        )
-    return _classify_not_found_hint(lowered)
-
-
-def _tool_error_hint(message: str) -> str:
-    lowered = message.casefold()
-    hint = _classify_system_error_hint(lowered)
-    if hint is not None:
-        return hint
-    hint = _classify_domain_error_hint(lowered)
-    if hint is not None:
-        return hint
-    return (
-        "Inspect the structured error and retry after correcting the request or project state. "
-        "Run 'kicad-mcp-pro doctor' for a full diagnostic."
-    )
+def _error_identity(exc: BaseException) -> tuple[str, str]:
+    """The code and hint the raised error declares; nothing is guessed from its text."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, KiCadMcpError):
+            return current.code, current.hint
+        current = current.__cause__
+    return "TOOL_EXECUTION_FAILED", ""
 
 
 def _structured_tool_error_from_message(
     message: str,
     *,
-    tool_name: str = "",
+    code: str,
+    hint: str = "",
     cause: str = "",
 ) -> mcp_types.CallToolResult:
-    code = _tool_error_code(message, tool_name=tool_name)
-    hint = _tool_error_hint(message)
     because = f"\nCause: {cause}" if cause else ""
+    advice = f"\nHint: {hint}" if hint else ""
     return mcp_types.CallToolResult(
         isError=True,
-        content=[
-            mcp_types.TextContent(
-                type="text",
-                text=f"{code}: {message}{because}\nHint: {hint}",
-            )
-        ],
+        content=[mcp_types.TextContent(type="text", text=f"{code}: {message}{because}{advice}")],
     )
 
 
@@ -632,10 +443,11 @@ def _error_causes(exc: BaseException, message: str) -> str:
     return " <- ".join(parts)
 
 
-def _structured_tool_error(exc: BaseException, *, tool_name: str = "") -> mcp_types.CallToolResult:
+def _structured_tool_error(exc: BaseException) -> mcp_types.CallToolResult:
     message = _clean_tool_error(exc)
+    code, hint = _error_identity(exc)
     return _structured_tool_error_from_message(
-        message, tool_name=tool_name, cause=_error_causes(exc, message)
+        message, code=code, hint=hint, cause=_error_causes(exc, message)
     )
 
 
@@ -653,55 +465,19 @@ def _result_text(result: object) -> str:
     return str(result)
 
 
-_FIRST_LINE_FAILURE_PREFIXES = (
-    "invalid output path:",
-    "could not ",
-    "failed to ",
-    "template tools require ",
-    "kikit panelization timed out",
-    "manufacturing evidence",
-    "manufacturing reference approval",
-)
-
-
-def _is_manufacturing_block_message(tool_name: str, lowered: str) -> bool:
-    if tool_name != "export_manufacturing_package":
-        return False
-    return (
-        lowered.startswith("manufacturing export blocked")
-        or "hard-blocked" in lowered
-        or "project quality gate: fail" in lowered
-    )
-
-
-def _is_cli_failure_message(tool_name: str, lowered: str) -> bool:
-    if tool_name not in CLI_FAILURE_TOOL_NAMES:
-        return False
-    return any(p in lowered for p in (" failed:", " failed.", " is unavailable:"))
-
-
-def _is_generic_first_line_failure(first_line: str) -> bool:
-    if not first_line:
-        return False
-    return (
-        " failed:" in first_line
-        or first_line.endswith(" failed.")
-        or " is unavailable:" in first_line
-        or first_line.startswith(_FIRST_LINE_FAILURE_PREFIXES)
-    )
-
-
-def _tool_failure_message(tool_name: str, result: object) -> str | None:
-    text = _result_text(result).strip()
-    lowered = text.casefold()
-    first_line = lowered.splitlines()[0] if lowered else ""
-    if (
-        _is_manufacturing_block_message(tool_name, lowered)
-        or _is_cli_failure_message(tool_name, lowered)
-        or _is_generic_first_line_failure(first_line)
-    ):
-        return text
-    return None
+def _reject_unknown_arguments(tool: object, arguments: Mapping[str, object]) -> None:
+    """Refuse arguments the tool does not take; validation would otherwise drop them."""
+    schema = getattr(tool, "parameters", None)
+    if not isinstance(schema, Mapping):
+        return
+    properties = cast(Mapping[str, object], schema).get("properties")
+    if not isinstance(properties, Mapping):
+        properties = {}
+    accepted = set(cast(Mapping[str, object], properties))
+    unknown = sorted(set(arguments) - accepted)
+    if unknown:
+        takes = ", ".join(sorted(accepted)) or "no arguments"
+        raise ToolError(f"Unknown argument(s) {', '.join(unknown)}. This tool takes: {takes}.")
 
 
 def _status_from_result(result: object) -> tuple[str, str | None]:
@@ -709,8 +485,8 @@ def _status_from_result(result: object) -> tuple[str, str | None]:
         if result.is_error:
             structured = result.structured_content or {}
             return "error", str(structured.get("error_code", "TOOL_ERROR"))
-        # ToolResult-returning tools embed ok=False inside structuredContent.result
-        # rather than setting isError; surface those as errors for metrics/audit.
+        # ToolResult-returning tools report ok=False inside structuredContent.result;
+        # call_tool marks those isError so the client sees the failure.
         structured = result.structured_content or {}
         inner = structured.get("result")
         if isinstance(inner, dict) and not inner.get("ok", True):
@@ -1377,7 +1153,7 @@ class KiCadFastMCP(FastMCP):
             if not reserve_tool_execution():
                 return _structured_tool_error_from_message(
                     "The application is preparing a desktop update. Try again after the update.",
-                    tool_name=name,
+                    code="TOOL_EXECUTION_FAILED",
                 )
             try:
                 await self._ensure_registered_async()
@@ -1385,7 +1161,7 @@ class KiCadFastMCP(FastMCP):
                 if execution_tool_names is not None and name not in execution_tool_names:
                     result = _structured_tool_error_from_message(
                         f"Tool '{name}' is not available in this server execution surface.",
-                        tool_name=name,
+                        code="TOOL_EXECUTION_FAILED",
                     )
                     status, error_code = _status_from_result(result)
                     logger.warning("tool_denied_by_execution_surface", tool=name)
@@ -1394,30 +1170,24 @@ class KiCadFastMCP(FastMCP):
                 if not is_tool_allowed_in_mode(name, mode):
                     result = _structured_tool_error_from_message(
                         denial_message(name, mode),
-                        tool_name=name,
+                        code="MODE_FORBIDDEN",
                     )
                     status, error_code = _status_from_result(result)
                     logger.warning("tool_denied_by_mode", tool=name, mode=mode.value)
                     return result
+                _reject_unknown_arguments(self._tool_manager.get_tool(name), arguments)
                 if limiter is None:
                     result = await super().call_tool(name, arguments, context)
                 else:
                     async with limiter:
                         result = await super().call_tool(name, arguments, context)
-                failure_message = _tool_failure_message(name, result)
-                if failure_message is not None:
-                    result = _structured_tool_error_from_message(failure_message, tool_name=name)
-                    logger.warning(
-                        "tool_result_failure",
-                        tool=name,
-                        failure=failure_message[:200],
-                        error_code=_tool_error_code(failure_message, tool_name=name),
-                    )
                 status, error_code = _status_from_result(result)
+                if status == "error" and isinstance(result, mcp_types.CallToolResult):
+                    result = result.model_copy(update={"is_error": True})
                 return result
             except ToolError as exc:
                 exc_message = str(exc)
-                result = _structured_tool_error(exc, tool_name=name)
+                result = _structured_tool_error(exc)
                 status, error_code = _status_from_result(result)
                 _error_detail["error_code"] = error_code or type(exc).__name__
                 _error_detail["message"] = exc_message[:300]
@@ -1455,7 +1225,7 @@ class KiCadFastMCP(FastMCP):
                         **self._telemetry_context_attributes(),
                     },
                 )
-                return _structured_tool_error(exc, tool_name=name)
+                return _structured_tool_error(exc)
             except Exception as exc:
                 status = "error"
                 error_code = type(exc).__name__

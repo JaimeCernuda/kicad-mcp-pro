@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..errors import ToolFailedError
+
 type GetPcbFile = Callable[[], Path]
 type Supports3dPdf = Callable[[], bool]
 type ResolveOutputFile = Callable[[str], Path]
@@ -27,12 +29,12 @@ class ExportPcb3dPdfService:
         """Export a 3D PDF while preserving the legacy capability and CLI contract."""
         pcb_file = self.get_pcb_file()
         if not self.supports_3d_pdf():
-            return "3D PDF export is not supported by the detected KiCad CLI."
+            raise ToolFailedError("3D PDF export is not supported by the detected KiCad CLI.")
 
         try:
             out_file = self.resolve_output_file(output_path)
         except ValueError as exc:
-            return f"Invalid output path: {exc}"
+            raise ToolFailedError(f"Invalid output path: {exc}") from exc
 
         variant_args = self.active_variant_args()
         code, _stdout, stderr = self.run_cli_variants(
@@ -59,5 +61,7 @@ class ExportPcb3dPdfService:
             ]
         )
         if code != 0:
-            return f"3D PDF export failed: {stderr or 'unknown error'}"
+            raise ToolFailedError(
+                f"3D PDF export failed: {stderr or 'unknown error'}", exit_code=code
+            )
         return f"3D PDF exported to {out_file}"

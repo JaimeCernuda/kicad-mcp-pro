@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ..errors import ToolFailedError
 from ..path_safety import resolve_under
 
 
@@ -43,7 +44,7 @@ class ProjectContextService:
         """Set the active project directory and resolved KiCad file paths."""
         project_path = Path(project_dir).expanduser().resolve()
         if not project_path.exists() or not project_path.is_dir():
-            return "Project directory does not exist or is not a directory."
+            raise ToolFailedError("Project directory does not exist or is not a directory.")
 
         scan = self.scan_project_dir(project_path)
         # File overrides are relative to the selected KiCad project, not the
@@ -52,7 +53,7 @@ class ProjectContextService:
         selected_sch = resolve_under(project_path, sch_file) if sch_file else scan.get("schematic")
         selected_project = scan.get("project")
         if selected_project is not None and selected_pcb is None and selected_sch is None:
-            return (
+            raise ToolFailedError(
                 "E_PROJECT_SCAN_INCOMPLETE: Found a .kicad_pro file but no matching "
                 ".kicad_pcb or .kicad_sch file in the selected directory. "
                 "Add at least one board or schematic file before activating this project."

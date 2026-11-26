@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
 import pytest
+
+from kicad_mcp.errors import ToolFailedError
 
 
 def _module() -> ModuleType:
@@ -76,9 +79,11 @@ def test_generate_footprint_preserves_default_output_location(tmp_path: Path) ->
 def test_generate_footprint_rejects_invalid_density_before_writing(tmp_path: Path) -> None:
     service, upgrades = _service(tmp_path)
 
-    result = service.generate_footprint_ipc7351("0805", density="Z")
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Invalid density 'Z'. Must be A, B, or C.")
+    ):
+        service.generate_footprint_ipc7351("0805", density="Z")
 
-    assert result == "Invalid density 'Z'. Must be A, B, or C."
     assert upgrades == []
     assert not (tmp_path / "output").exists()
 
@@ -93,9 +98,11 @@ def test_validate_footprint_raises_on_path_safety_error(tmp_path: Path) -> None:
 def test_validate_footprint_reports_missing_file(tmp_path: Path) -> None:
     service, _ = _service(tmp_path)
 
-    result = service.validate_footprint_ipc7351("missing.kicad_mod", "0805")
-
-    assert result == f"Footprint file not found: {tmp_path / 'missing.kicad_mod'}"
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape(f"Footprint file not found: {tmp_path / 'missing.kicad_mod'}"),
+    ):
+        service.validate_footprint_ipc7351("missing.kicad_mod", "0805")
 
 
 def test_generate_validate_and_certify_round_trip(tmp_path: Path) -> None:
@@ -115,18 +122,19 @@ def test_generate_validate_and_certify_round_trip(tmp_path: Path) -> None:
 def test_generate_footprint_reports_generator_failure(tmp_path: Path) -> None:
     service, upgrades = _service(tmp_path)
 
-    result = service.generate_footprint_ipc7351("NOT-A-PACKAGE")
+    with pytest.raises(ToolFailedError, match=re.escape("Footprint generation failed:")):
+        service.generate_footprint_ipc7351("NOT-A-PACKAGE")
 
-    assert result.startswith("Footprint generation failed:")
     assert upgrades == []
 
 
 def test_validate_footprint_rejects_invalid_density_before_reading(tmp_path: Path) -> None:
     service, _ = _service(tmp_path)
 
-    result = service.validate_footprint_ipc7351("missing.kicad_mod", "0805", density="Z")
-
-    assert result == "Invalid density 'Z'. Must be A, B, or C."
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Invalid density 'Z'. Must be A, B, or C.")
+    ):
+        service.validate_footprint_ipc7351("missing.kicad_mod", "0805", density="Z")
 
 
 def test_validate_footprint_reports_invalid_size_code(tmp_path: Path) -> None:
@@ -134,9 +142,8 @@ def test_validate_footprint_reports_invalid_size_code(tmp_path: Path) -> None:
     relative = "generated/0805.kicad_mod"
     service.generate_footprint_ipc7351("0805", output_path=relative)
 
-    result = service.validate_footprint_ipc7351(relative, "NOT-A-SIZE")
-
-    assert result.startswith("Validation failed:")
+    with pytest.raises(ToolFailedError, match=re.escape("Validation failed:")):
+        service.validate_footprint_ipc7351(relative, "NOT-A-SIZE")
 
 
 def test_certify_footprint_raises_on_path_safety_error(tmp_path: Path) -> None:
@@ -147,9 +154,11 @@ def test_certify_footprint_raises_on_path_safety_error(tmp_path: Path) -> None:
 
 def test_certify_footprint_preserves_missing_file_error(tmp_path: Path) -> None:
     service, _ = _service(tmp_path)
-    assert service.certify_footprint("missing.kicad_mod") == (
-        f"Footprint file not found: {tmp_path / 'missing.kicad_mod'}"
-    )
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape(f"Footprint file not found: {tmp_path / 'missing.kicad_mod'}"),
+    ):
+        service.certify_footprint("missing.kicad_mod")
 
 
 def test_generate_named_package_with_pin_count_is_certifiable(tmp_path: Path) -> None:

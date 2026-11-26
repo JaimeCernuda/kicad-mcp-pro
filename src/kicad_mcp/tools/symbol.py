@@ -11,6 +11,7 @@ from pathlib import Path
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
+from ..errors import ToolFailedError
 from .export_support import _ensure_output_dir, _run_cli, _run_cli_variants
 from .metadata import headless_compatible
 
@@ -18,11 +19,11 @@ from .metadata import headless_compatible
 def _resolve_sym_upgrade_paths(
     input_file: str,
     output_file: str,
-) -> tuple[Path, str] | str:
+) -> tuple[Path, str]:
     cfg = get_config()
     if not input_file:
         if cfg.sch_file is None:
-            return (
+            raise ToolFailedError(
                 "No input file provided and no schematic configured. "
                 "Provide an input_file path or call kicad_set_project() first."
             )
@@ -76,7 +77,7 @@ def sym_export(output_path: str = "", format: str = "svg") -> str:
     cfg = get_config()
     project_file = cfg.sch_file or cfg.pcb_file
     if project_file is None:
-        return "No project file configured. Call kicad_set_project() first."
+        raise ToolFailedError("No project file configured. Call kicad_set_project() first.")
 
     out_dir = _ensure_output_dir("symbols")
     out_name = Path(output_path.strip() or f"{project_file.stem}.{format}").name
@@ -97,7 +98,7 @@ def sym_export(output_path: str = "", format: str = "svg") -> str:
         ]
     )
     if code != 0:
-        return f"Symbol export failed: {stderr or 'unknown error'}"
+        raise ToolFailedError(f"Symbol export failed: {stderr or 'unknown error'}", exit_code=code)
     return f"Symbol exported to {out_file}"
 
 
@@ -156,7 +157,7 @@ def sym_export_svg(
     """
     cfg = get_config()
     if not input_file:
-        return "Error: input_file parameter is required."
+        raise ToolFailedError("Error: input_file parameter is required.")
 
     try:
         from ..path_safety import resolve_under
@@ -169,7 +170,7 @@ def sym_export_svg(
         raise ValueError(f"Unsafe input file path: {exc}") from exc
 
     if not in_path.exists():
-        return f"Input symbol library file not found: {input_file}"
+        raise ToolFailedError(f"Input symbol library file not found: {input_file}")
 
     out_dir = _ensure_output_dir("symbols")
     if output_dir:
@@ -193,7 +194,9 @@ def sym_export_svg(
 
     code, stdout, stderr = _run_cli(*cmd)
     if code != 0:
-        return f"Symbol SVG export failed: {stderr or stdout or 'unknown error'}"
+        raise ToolFailedError(
+            f"Symbol SVG export failed: {stderr or stdout or 'unknown error'}", exit_code=code
+        )
     return f"Symbol SVG exported successfully to {out_dir}"
 
 
@@ -218,10 +221,7 @@ def sym_upgrade(
     dry_run : bool
         Only report commands and files that would be affected.
     """
-    resolved = _resolve_sym_upgrade_paths(input_file, output_file)
-    if isinstance(resolved, str):
-        return resolved
-    in_path, out_path = resolved
+    in_path, out_path = _resolve_sym_upgrade_paths(input_file, output_file)
 
     if dry_run:
         return (
@@ -237,7 +237,9 @@ def sym_upgrade(
 
     code, stdout, stderr = _run_cli(*cmd)
     if code != 0:
-        return f"Symbol upgrade failed: {stderr or stdout or 'unknown error'}"
+        raise ToolFailedError(
+            f"Symbol upgrade failed: {stderr or stdout or 'unknown error'}", exit_code=code
+        )
     return f"Symbol library upgraded and saved to {out_path}"
 
 

@@ -17,8 +17,8 @@ from starlette.testclient import TestClient
 from kicad_mcp.compatibility import MCP_LEGACY_PROTOCOL_VERSION
 from kicad_mcp.config import KiCadMCPConfig, get_config, reset_config
 from kicad_mcp.discovery import CliCapabilities
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.server import (
-    CLI_FAILURE_TOOL_NAMES,
     HEAVY_TOOL_NAMES,
     _clean_tool_error,
     _is_origin_allowed,
@@ -207,25 +207,6 @@ def test_release_heavy_tools_are_rate_limited() -> None:
     assert expected.issubset(HEAVY_TOOL_NAMES)
 
 
-def test_cli_failure_tools_are_structured_error_candidates() -> None:
-    expected = {
-        "run_drc",
-        "run_erc",
-        "export_gerber",
-        "export_stepz",
-        "export_xao",
-        "get_board_stats",
-        "pcb_export_3d_pdf",
-    }
-
-    assert expected.issubset(CLI_FAILURE_TOOL_NAMES)
-    # route_* tools return ToolResult directly; failures are encoded in ok=False,
-    # not intercepted by the string-match layer.
-    assert "route_export_dsn" not in CLI_FAILURE_TOOL_NAMES
-    assert "route_autoroute_freerouting" not in CLI_FAILURE_TOOL_NAMES
-    assert "route_import_ses" not in CLI_FAILURE_TOOL_NAMES
-
-
 def test_clean_tool_error_preserves_actionable_sdk_v2_message() -> None:
     wrapped = RuntimeError("Error executing tool pcb_route: route failed")
     assert _clean_tool_error(wrapped) == "route failed"
@@ -253,10 +234,11 @@ def test_a_wrapped_failure_keeps_its_cause_in_the_answer() -> None:
         except RuntimeError as exc:
             raise RuntimeError("Error executing tool sch_get_symbols") from exc
     except RuntimeError as wrapped:
-        text = _structured_tool_error(wrapped, tool_name="sch_get_symbols").content[0].text
+        text = _structured_tool_error(wrapped).content[0].text
     assert "Could not load schematic 'a.kicad_sch'." in text
     assert "Cause: ModuleNotFoundError: No module named 'kicad_sch_api'" in text
-    assert text.index("Cause:") < text.index("Hint:")
+    # An error that declares no hint gets none; nothing is guessed from its text.
+    assert "Hint:" not in text
 
 
 def test_an_unwrapped_failure_has_no_cause_line() -> None:
@@ -470,9 +452,9 @@ async def test_tool_exception_returns_structured_error() -> None:
     assert result.structured_content is None
     assert len(result.content) == 1
     text = result.content[0].text
-    assert "CONFIGURATION_ERROR" in text
+    assert "TOOL_FAILED: " in text
     assert "No PCB file" in text
-    assert "Hint:" in text
+    assert f"Hint: {ToolFailedError.hint}" in text
 
 
 @pytest.mark.anyio
@@ -506,112 +488,13 @@ async def test_cli_nonzero_result_returns_structured_error(
     assert result.structured_content is None
     assert len(result.content) == 1
     text = result.content[0].text
-    assert "CLI_COMMAND_FAILED" in text
-    assert "Gerber export failed" in text
-
-
-def test_tool_failure_message_detects_could_not_and_failed_to_prefixes() -> None:
-    """The generic fallback used to miss two common failure phrasings.
-
-    Dozens of tool implementations report a failed operation as "Could not
-    <verb> ...: <reason>" or "Failed to <verb> ...: <reason>" (as opposed to
-    the "<subject> failed: <reason>" shape the heuristic already recognized).
-    Neither prefix matched, so those results were returned as ordinary
-    (non-error) CallToolResults.
-    """
-    from kicad_mcp.server import _tool_failure_message
-
-    assert (
-        _tool_failure_message("sch_instantiate_template", "Could not parse template 'x': bad")
-        == "Could not parse template 'x': bad"
-    )
-    assert (
-        _tool_failure_message("pcb_get_origin", "Failed to get origin: connection refused")
-        == "Failed to get origin: connection refused"
-    )
-    # Case-insensitive, and only the first line needs to match.
-    assert _tool_failure_message("t", "could not read the file: oops") is not None
-    assert _tool_failure_message("t", "Could not write the file: oops\nDetails: ...") is not None
-
-
-def test_tool_failure_message_does_not_flag_intentional_non_error_text() -> None:
-    """Messages that report a successful (or intentionally no-op) outcome
-    using similar vocabulary must not be reclassified as failures."""
-    from kicad_mcp.server import _tool_failure_message
-
-    assert (
-        _tool_failure_message("t", "Sheet is already 'A3' (420 x 297 mm). No change made.") is None
-    )
-    assert (
-        _tool_failure_message(
-            "t",
-            "Zone refill skipped — KiCad is not running. "
-            "Open the PCB in KiCad and run Edit > Fill All Zones (B) manually.",
-        )
-        is None
-    )
-    assert (
-        _tool_failure_message(
-            "t", "The schematic was updated. Reload it manually in KiCad if needed."
-        )
-        is None
-    )
-    assert _tool_failure_message("t", "No subcircuit templates are available.") is None
-    assert (
-        _tool_failure_message(
-            "t",
-            "auto-placement completed but live postcondition verification could not complete.",
-        )
-        is None
-    )
-
-
-def test_tool_failure_message_detects_missing_dependency_and_manufacturing_evidence() -> None:
-    """A handful of genuine top-level tool failures used other unrecognized shapes:
-
-    a missing-dependency message with no "failed"/"could not" wording, a
-    subprocess-timeout message, and the ``export_manufacturing_package``
-    approval-evidence rejections (``_load_approval_evidence`` /
-    ``_verify_approved_project_files`` / ``_current_approved_project_files``).
-    None of these matched any existing prefix, so they reached the caller as
-    an ordinary (non-error) result.
-    """
-    from kicad_mcp.server import _tool_failure_message
-
-    assert (
-        _tool_failure_message(
-            "sch_list_subcircuit_templates",
-            "Template tools require PyYAML. Install it to inspect bundled templates.",
-        )
-        is not None
-    )
-    assert (
-        _tool_failure_message("pcb_panelize", "KiKit panelization timed out after 120 seconds.")
-        is not None
-    )
-    assert (
-        _tool_failure_message(
-            "export_manufacturing_package",
-            "Manufacturing evidence path is invalid: outside project\n"
-            "- Run project_signoff_report() before final release export.",
-        )
-        is not None
-    )
-    assert (
-        _tool_failure_message(
-            "export_manufacturing_package",
-            "Manufacturing reference approval requires bound project state evidence.",
-        )
-        is not None
-    )
+    assert "TOOL_FAILED" in text
+    assert "Gerber export failed: fatal export failed (exit code 2)" in text
 
 
 @pytest.mark.anyio
 async def test_template_parse_failure_is_reported_as_tool_error(monkeypatch) -> None:
-    """sch_instantiate_template's ``except Exception`` branch returns
-    "Could not parse template ...: ..." without raising. Before widening the
-    server's generic failure heuristic, this reached the caller as an
-    ordinary (non-error) result."""
+    """A template that fails to parse comes back as an isError result."""
     import yaml
 
     def _raise_safe_load(_stream: object) -> object:
@@ -628,8 +511,8 @@ async def test_template_parse_failure_is_reported_as_tool_error(monkeypatch) -> 
     assert isinstance(result, CallToolResult)
     assert result.is_error is True
     text = result.content[0].text
+    assert "TOOL_FAILED: " in text
     assert "Could not parse template 'CAN_transceiver'" in text
-    assert "Hint:" in text
 
 
 @pytest.mark.anyio
@@ -701,7 +584,8 @@ async def test_manufacturing_gate_block_returns_structured_validation_error(
     assert result.structured_content is None
     assert len(result.content) == 1
     text = result.content[0].text
-    assert "VALIDATION_FAILED" in text
+    assert "TOOL_FAILED: " in text
+    assert "hard-blocked" in text
 
 
 def test_run_cli_retries_transient_timeout(fake_cli: Path, monkeypatch) -> None:
@@ -1258,16 +1142,31 @@ async def test_export_manufacturing_package_accepts_explicit_variant(
     assert '"active_variant": "default"' in active
 
 
-def test_structured_error_code_unavailable() -> None:
-    from kicad_mcp.server import _structured_tool_error_from_message
+def test_structured_error_code_and_hint_come_from_the_raised_error() -> None:
+    from mcp.types import TextContent
 
-    result = _structured_tool_error_from_message("kicad-cli is missing")
-    assert result.is_error is True
-    assert result.structured_content is None
-    assert len(result.content) == 1
-    text = result.content[0].text
-    assert "CLI_UNAVAILABLE" in text
-    assert "kicad-cli" in text.casefold()
+    from kicad_mcp.errors import ExternalToolUnavailableError
+    from kicad_mcp.server import _structured_tool_error as structured
+
+    try:
+        try:
+            raise ExternalToolUnavailableError("kicad-cli is missing")
+        except ExternalToolUnavailableError as exc:
+            raise RuntimeError("Error executing tool export_gerber") from exc
+    except RuntimeError as wrapped:
+        declared = structured(wrapped)
+    # A message that only mentions kicad-cli is not classified by its words.
+    guessed = structured(ValueError("kicad-cli pcb drc -> exit code 3"))
+
+    assert declared.is_error is True
+    assert declared.structured_content is None
+    first, second = declared.content[0], guessed.content[0]
+    assert isinstance(first, TextContent)
+    assert isinstance(second, TextContent)
+    assert first.text.startswith("EXTERNAL_TOOL_UNAVAILABLE: kicad-cli is missing")
+    assert f"Hint: {ExternalToolUnavailableError.hint}" in first.text
+    assert second.text.startswith("TOOL_EXECUTION_FAILED: ")
+    assert "Hint:" not in second.text
 
 
 def test_health_doctor_schema_and_secret_masking(

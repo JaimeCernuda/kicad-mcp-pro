@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import re
 from pathlib import Path
 from typing import Any
+
+import pytest
+
+from kicad_mcp.errors import ToolFailedError
 
 
 def _service_type() -> type[Any]:
@@ -57,7 +62,11 @@ def _service(
 def test_export_preserves_capability_gate_without_resolving_output(tmp_path: Path) -> None:
     service, resolver, cli = _service(tmp_path, supported=False)
 
-    assert service.export() == "3D PDF export is not supported by the detected KiCad CLI."
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape("3D PDF export is not supported by the detected KiCad CLI."),
+    ):
+        service.export()
     assert resolver.calls == []
     assert cli.calls == []
 
@@ -110,13 +119,18 @@ def test_export_preserves_explicit_output_path(tmp_path: Path) -> None:
 def test_export_preserves_invalid_output_path_message(tmp_path: Path) -> None:
     service, _resolver, cli = _service(tmp_path)
 
-    assert service.export("../escape.pdf") == "Invalid output path: path escapes output directory"
+    with pytest.raises(
+        ToolFailedError, match=re.escape("Invalid output path: path escapes output directory")
+    ):
+        service.export("../escape.pdf")
     assert cli.calls == []
 
 
 def test_export_preserves_failure_message_contract(tmp_path: Path) -> None:
     service, _resolver, _cli = _service(tmp_path, result=(2, "stdout detail", "stderr detail"))
-    assert service.export() == "3D PDF export failed: stderr detail"
+    with pytest.raises(ToolFailedError, match=re.escape("3D PDF export failed: stderr detail")):
+        service.export()
 
     service, _resolver, _cli = _service(tmp_path, result=(2, "stdout detail", ""))
-    assert service.export() == "3D PDF export failed: unknown error"
+    with pytest.raises(ToolFailedError, match=re.escape("3D PDF export failed: unknown error")):
+        service.export()

@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..errors import ToolFailedError
 from ..models import contract_verifier as cv
 from ..models.component_contracts import find_component_contract
 
@@ -71,12 +72,12 @@ class LibraryComponentContractService:
     def verify(self, reference: str) -> str:
         reference = reference.strip()
         if not reference:
-            return json.dumps({"error": "reference must not be empty."})
+            raise ToolFailedError(json.dumps({"error": "reference must not be empty."}))
 
         resolved_symbol = _resolve_symbol(self.project_schematic_files(), reference)
         if resolved_symbol is None:
-            return json.dumps(
-                {"error": f"No placed symbol with reference '{reference}' was found."}
+            raise ToolFailedError(
+                json.dumps({"error": f"No placed symbol with reference '{reference}' was found."})
             )
 
         (lib_id, footprint_id), symbol_block = resolved_symbol

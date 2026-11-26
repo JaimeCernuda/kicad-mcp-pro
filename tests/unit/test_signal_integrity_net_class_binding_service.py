@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
+from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.signal_integrity.net_class_binding import (
     SignalIntegrityNetClassBindingService,
 )
@@ -48,14 +51,16 @@ def test_bind_apply_preserves_writer_calls_and_error_reporting() -> None:
             raise RuntimeError("fixture failure")
         return "project.kicad_dru"
 
-    result = SignalIntegrityNetClassBindingService().bind(
-        interfaces=[
-            {"kind": "usb2", "differential": True},
-            {"kind": "pcie_g4", "differential": True},
-        ],
-        dry_run=False,
-        rule_writer=writer,
-    )
+    with pytest.raises(ToolFailedError) as excinfo:
+        SignalIntegrityNetClassBindingService().bind(
+            interfaces=[
+                {"kind": "usb2", "differential": True},
+                {"kind": "pcie_g4", "differential": True},
+            ],
+            dry_run=False,
+            rule_writer=writer,
+        )
+    result = str(excinfo.value)
 
     assert calls == [
         ("USB2", 0.15, 0.2, 0.2),

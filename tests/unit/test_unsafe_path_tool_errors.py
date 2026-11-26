@@ -1,10 +1,9 @@
 """Path-safety rejections must raise, not return success-shaped text.
 
-Several CLI wrapper tools catch ``resolve_under`` failures and returned a plain
-``"Unsafe ... path: ..."`` string. That string never matches the server's failure
-heuristics (``server._tool_failure_message``), so a rejected path traversal attempt
-was reported to the caller as an ordinary (non-error) tool result. These tools must
-instead raise, so the MCP protocol layer marks the response ``isError``.
+Several CLI wrapper tools caught ``resolve_under`` failures and returned a plain
+``"Unsafe ... path: ..."`` string, so a rejected path traversal attempt was reported
+to the caller as an ordinary (non-error) tool result. These tools must instead raise,
+so the MCP protocol layer marks the response ``isError``.
 """
 
 from __future__ import annotations
