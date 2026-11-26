@@ -653,55 +653,19 @@ def _result_text(result: object) -> str:
     return str(result)
 
 
-_FIRST_LINE_FAILURE_PREFIXES = (
-    "invalid output path:",
-    "could not ",
-    "failed to ",
-    "template tools require ",
-    "kikit panelization timed out",
-    "manufacturing evidence",
-    "manufacturing reference approval",
-)
-
-
-def _is_manufacturing_block_message(tool_name: str, lowered: str) -> bool:
-    if tool_name != "export_manufacturing_package":
-        return False
-    return (
-        lowered.startswith("manufacturing export blocked")
-        or "hard-blocked" in lowered
-        or "project quality gate: fail" in lowered
-    )
-
-
-def _is_cli_failure_message(tool_name: str, lowered: str) -> bool:
-    if tool_name not in CLI_FAILURE_TOOL_NAMES:
-        return False
-    return any(p in lowered for p in (" failed:", " failed.", " is unavailable:"))
-
-
-def _is_generic_first_line_failure(first_line: str) -> bool:
-    if not first_line:
-        return False
-    return (
-        " failed:" in first_line
-        or first_line.endswith(" failed.")
-        or " is unavailable:" in first_line
-        or first_line.startswith(_FIRST_LINE_FAILURE_PREFIXES)
-    )
-
-
-def _tool_failure_message(tool_name: str, result: object) -> str | None:
-    text = _result_text(result).strip()
-    lowered = text.casefold()
-    first_line = lowered.splitlines()[0] if lowered else ""
-    if (
-        _is_manufacturing_block_message(tool_name, lowered)
-        or _is_cli_failure_message(tool_name, lowered)
-        or _is_generic_first_line_failure(first_line)
-    ):
-        return text
-    return None
+def _reject_unknown_arguments(tool: object, arguments: Mapping[str, object]) -> None:
+    """Refuse arguments the tool does not take; validation would otherwise drop them."""
+    schema = getattr(tool, "parameters", None)
+    if not isinstance(schema, Mapping):
+        return
+    properties = cast(Mapping[str, object], schema).get("properties")
+    if not isinstance(properties, Mapping):
+        properties = {}
+    accepted = set(cast(Mapping[str, object], properties))
+    unknown = sorted(set(arguments) - accepted)
+    if unknown:
+        takes = ", ".join(sorted(accepted)) or "no arguments"
+        raise ToolError(f"Unknown argument(s) {', '.join(unknown)}. This tool takes: {takes}.")
 
 
 def _status_from_result(result: object) -> tuple[str, str | None]:
@@ -709,8 +673,8 @@ def _status_from_result(result: object) -> tuple[str, str | None]:
         if result.is_error:
             structured = result.structured_content or {}
             return "error", str(structured.get("error_code", "TOOL_ERROR"))
-        # ToolResult-returning tools embed ok=False inside structuredContent.result
-        # rather than setting isError; surface those as errors for metrics/audit.
+        # ToolResult-returning tools report ok=False inside structuredContent.result;
+        # call_tool marks those isError so the client sees the failure.
         structured = result.structured_content or {}
         inner = structured.get("result")
         if isinstance(inner, dict) and not inner.get("ok", True):
@@ -1399,21 +1363,15 @@ class KiCadFastMCP(FastMCP):
                     status, error_code = _status_from_result(result)
                     logger.warning("tool_denied_by_mode", tool=name, mode=mode.value)
                     return result
+                _reject_unknown_arguments(self._tool_manager.get_tool(name), arguments)
                 if limiter is None:
                     result = await super().call_tool(name, arguments, context)
                 else:
                     async with limiter:
                         result = await super().call_tool(name, arguments, context)
-                failure_message = _tool_failure_message(name, result)
-                if failure_message is not None:
-                    result = _structured_tool_error_from_message(failure_message, tool_name=name)
-                    logger.warning(
-                        "tool_result_failure",
-                        tool=name,
-                        failure=failure_message[:200],
-                        error_code=_tool_error_code(failure_message, tool_name=name),
-                    )
                 status, error_code = _status_from_result(result)
+                if status == "error" and isinstance(result, mcp_types.CallToolResult):
+                    result = result.model_copy(update={"is_error": True})
                 return result
             except ToolError as exc:
                 exc_message = str(exc)
