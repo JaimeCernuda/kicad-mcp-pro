@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import json
-import re
 from types import SimpleNamespace
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.pcb.origin_management import PcbOriginService
 
 
@@ -74,8 +72,7 @@ def test_unsupported_origin_operations_preserve_legacy_messages(
 ) -> None:
     service = _service(SimpleNamespace(), [])
 
-    with pytest.raises(ToolFailedError, match=re.escape(expected)):
-        getattr(service, method)(*args)
+    assert getattr(service, method)(*args) == expected
 
 
 @pytest.mark.parametrize(
@@ -103,8 +100,7 @@ def test_connection_errors_preserve_legacy_messages(
         connection_errors=(FakeConnectionError, OSError),
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape(expected)):
-        getattr(service, method)(*args)
+    assert getattr(service, method)(*args) == expected
 
 
 def test_unexpected_origin_errors_are_not_hidden() -> None:

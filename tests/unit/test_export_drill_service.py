@@ -2,13 +2,8 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from pathlib import Path
 from typing import Any
-
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _service_type() -> type[Any]:
@@ -95,8 +90,7 @@ def test_export_drill_preserves_invalid_output_and_cli_failure_messages(tmp_path
         run_cli_variants=FakeCli(),
         format_file_list=lambda _files, _heading: "unused",
     )
-    with pytest.raises(ToolFailedError, match=re.escape("Invalid output path: outside project")):
-        invalid_service.export("../../bad")
+    assert invalid_service.export("../../bad") == "Invalid output path: outside project"
 
     failed_service = service_type(
         get_pcb_file=lambda: pcb,
@@ -106,8 +100,7 @@ def test_export_drill_preserves_invalid_output_and_cli_failure_messages(tmp_path
         run_cli_variants=FakeCli((2, "", "cli failed")),
         format_file_list=lambda _files, _heading: "unused",
     )
-    with pytest.raises(ToolFailedError, match=re.escape("Drill export failed: cli failed")):
-        failed_service.export()
+    assert failed_service.export() == "Drill export failed: cli failed"
 
     unknown_service = service_type(
         get_pcb_file=lambda: pcb,
@@ -117,5 +110,4 @@ def test_export_drill_preserves_invalid_output_and_cli_failure_messages(tmp_path
         run_cli_variants=FakeCli((2, "", "")),
         format_file_list=lambda _files, _heading: "unused",
     )
-    with pytest.raises(ToolFailedError, match=re.escape("Drill export failed: unknown error")):
-        unknown_service.export()
+    assert unknown_service.export() == "Drill export failed: unknown error"

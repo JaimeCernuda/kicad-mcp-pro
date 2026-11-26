@@ -5,8 +5,6 @@ from typing import Any
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
-
 
 class FakeInferenceError(Exception):
     pass
@@ -78,21 +76,16 @@ def test_assess_explicit_json_bypasses_saved_baseline() -> None:
 def test_invalid_baseline_messages_match_existing_contract() -> None:
     service = _service()
 
-    with pytest.raises(ToolFailedError, match=r"^Invalid baseline_spec_json:"):
-        service.assess("{")
-    with pytest.raises(
-        ToolFailedError,
-        match=r"^baseline_spec_json must be a JSON object \(a design spec\)\.$",
-    ):
-        service.assess("[]")
+    invalid = service.assess("{")
+    non_object = service.assess("[]")
+
+    assert invalid.startswith("Invalid baseline_spec_json:")
+    assert non_object == "baseline_spec_json must be a JSON object (a design spec)."
 
 
 def test_configured_inference_error_is_rendered_but_other_errors_propagate() -> None:
     blocked = _service(inference_error=FakeInferenceError("offline"))
-    with pytest.raises(
-        ToolFailedError, match=r"^Could not infer the current board intent: offline$"
-    ):
-        blocked.assess()
+    assert blocked.assess() == "Could not infer the current board intent: offline"
 
     exploding = _service(inference_error=RuntimeError("unexpected"))
     with pytest.raises(RuntimeError, match="unexpected"):

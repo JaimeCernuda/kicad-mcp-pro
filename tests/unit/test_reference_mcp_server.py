@@ -6,8 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
-
 
 def _reset_reference_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from kicad_mcp.config import reset_config
@@ -267,7 +265,7 @@ def test_reference_snapshot_rejects_export_failure_even_with_partial_files(
             root = reference_server._reference_snapshot_root("generation-1") / output_subdir
             root.mkdir(parents=True, exist_ok=True)
             (root / "board-F_Cu.gtl").write_text("partial\n", encoding="utf-8")
-            raise ToolFailedError("Gerber export failed: synthetic failure")
+            return "Gerber export failed: synthetic failure"
 
     class Drill:
         def export(self, output_subdir: str = "Gerbers") -> str:
@@ -287,7 +285,7 @@ def test_reference_snapshot_rejects_export_failure_even_with_partial_files(
         lambda _root: SimpleNamespace(gerber=Gerber(), drill=Drill(), bom=Bom()),
     )
 
-    with pytest.raises(ToolFailedError, match="Gerber export failed"):
+    with pytest.raises(ValueError, match="Gerber export failed"):
         reference_server.generate_reference_manufacturing_snapshot("generation-1")
 
 

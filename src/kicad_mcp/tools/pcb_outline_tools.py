@@ -12,7 +12,6 @@ from kipy.proto.common.types.base_types_pb2 import LockedState
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
-from ..errors import ToolFailedError
 from ..pcb.dxf_outline import (
     DxfOutline,
     OutlineArc,
@@ -59,7 +58,7 @@ def _edge_items(outline: DxfOutline) -> list[BoardItem]:
 def _draw(board: Board, outline: DxfOutline, replace: bool) -> str:
     existing = [shape for shape in board.get_shapes() if shape.layer == BoardLayer.BL_Edge_Cuts]
     if existing and not replace:
-        raise ToolFailedError(
+        return (
             f"Board outline unchanged: Edge.Cuts already has {len(existing)} shapes. "
             "Call again with replace=true to remove them and draw the new outline."
         )
@@ -107,7 +106,7 @@ def register(mcp: FastMCP) -> None:
                 fp for fp in board.get_footprints() if fp.reference_field.text.value == reference
             ]
             if not matches:
-                raise ToolFailedError(f"Footprint '{reference}' was not found on the active board.")
+                return f"Footprint '{reference}' was not found on the active board."
             footprint = matches[0]
             footprint._proto.locked = LockedState.LS_LOCKED if locked else LockedState.LS_UNLOCKED
             board.update_items([cast(BoardItem, footprint)])
@@ -116,9 +115,7 @@ def register(mcp: FastMCP) -> None:
             ]
             state = again[0]._proto.locked == LockedState.LS_LOCKED if again else None
             if state is not locked:
-                raise ToolFailedError(
-                    f"Footprint '{reference}' lock could not be verified after the update."
-                )
+                return f"Footprint '{reference}' lock could not be verified after the update."
             return f"Footprint '{reference}' is now {'locked' if locked else 'unlocked'}."
 
         return execute_live_board_mutation("pcb_set_footprint_locked", apply, verifier=None)
@@ -136,7 +133,7 @@ def register(mcp: FastMCP) -> None:
         try:
             outline = _outline_from_points(points)
         except (KeyError, TypeError, ValueError) as exc:
-            raise ToolFailedError(f"Board outline failed: {exc}") from exc
+            return f"Board outline failed: {exc}"
         return execute_live_board_mutation(
             "pcb_set_board_outline_shape",
             lambda board: _draw(board, outline, replace),
@@ -163,13 +160,11 @@ def register(mcp: FastMCP) -> None:
             source = get_config().resolve_within_project(path)
             outline = read_dxf_outline(source)
         except (OSError, ValueError) as exc:
-            raise ToolFailedError(f"DXF import failed: {exc}") from exc
+            return f"DXF import failed: {exc}"
         if not outline.edges:
-            raise ToolFailedError(
-                "DXF import failed: the file has no lines, arcs or polylines for an outline."
-            )
+            return "DXF import failed: the file has no lines, arcs or polylines for an outline."
         if holes not in ("edge_cuts", "none"):
-            raise ToolFailedError("DXF import failed: holes must be edge_cuts or none.")
+            return "DXF import failed: holes must be edge_cuts or none."
         outline = placed(outline, (x_mm, y_mm))
         listed = [
             f"({h.center[0]:.2f}, {h.center[1]:.2f}) d={h.diameter:.2f}" for h in outline.holes

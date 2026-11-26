@@ -35,7 +35,7 @@ from pydantic import Field
 
 from ..config import get_config
 from ..connection import KiCadConnectionError, get_board
-from ..errors import ToolFailedError
+from ..errors import KiCadNotRunningError
 from ..file_formats import GENERATED_SEXPR_DIALECT_VERSION, upgrade_generated_file
 from ..library_resolution import footprint_file as _footprint_file
 from ..models.common import _FootprintLike, _PadLike
@@ -57,7 +57,6 @@ from ..models.pcb import (
     GroupFootprintsInput,
     ImpedanceForTraceInput,
     KeepoutZoneInput,
-    LayerName,
     LayerViaInput,
     PlaceDecouplingCapsInput,
     SetBoardOutlineInput,
@@ -1119,7 +1118,7 @@ def run_auto_refill_zones() -> str:
             "Open the PCB in KiCad and run Edit > Fill All Zones (B) manually."
         )
     except Exception as exc:
-        raise ToolFailedError(f"Zone refill failed: {exc}") from exc
+        return f"Zone refill failed: {exc}"
 
 
 def _transactional_board_write(mutator: Callable[[str], str]) -> str:
@@ -1257,34 +1256,29 @@ def _with_pcb_diagnostics(message: str) -> str:
     )
 
 
-def _load_file_backed_board(ipc_error: BaseException) -> tuple[Path, str, list[str]]:
+def _load_file_backed_board(ipc_error: BaseException) -> tuple[Path, str, list[str]] | str:
     board_file = _configured_board_file()
     if board_file is None:
-        raise ToolFailedError(
-            "\n".join(
-                [
-                    "Live PCB context is unavailable and no configured .kicad_pcb file was found.",
-                    *_format_file_backed_diagnostics(
-                        ipc_error,
-                        board_file=None,
-                        fallback_status="unavailable: no configured board file",
-                    ),
-                ]
-            )
+        return "\n".join(
+            [
+                "Live PCB context is unavailable and no configured .kicad_pcb file was found.",
+                *_format_file_backed_diagnostics(
+                    ipc_error,
+                    board_file=None,
+                    fallback_status="unavailable: no configured board file",
+                ),
+            ]
         )
     if not board_file.exists():
-        raise ToolFailedError(
-            "\n".join(
-                [
-                    "Live PCB context is unavailable and the configured .kicad_pcb file "
-                    "is missing.",
-                    *_format_file_backed_diagnostics(
-                        ipc_error,
-                        board_file=board_file,
-                        fallback_status="unavailable: board file does not exist",
-                    ),
-                ]
-            )
+        return "\n".join(
+            [
+                "Live PCB context is unavailable and the configured .kicad_pcb file is missing.",
+                *_format_file_backed_diagnostics(
+                    ipc_error,
+                    board_file=board_file,
+                    fallback_status="unavailable: board file does not exist",
+                ),
+            ]
         )
     content = _normalize_board_content(board_file.read_text(encoding="utf-8", errors="ignore"))
     diagnostics = _format_file_backed_diagnostics(
@@ -1487,29 +1481,68 @@ def _board_summary_report(
     findings: list[Finding] | None = None,
 ) -> VerdictReport:
     resolved_findings = findings or []
+    unavailable = any(finding.severity == "error" for finding in resolved_findings)
     return VerdictReport(
         text=text,
-        summary=f"Board summary from {source}: {footprints} footprint(s), {nets} net(s).",
+        summary=(
+            "Board summary unavailable: neither live IPC nor a valid board file can be read."
+            if unavailable
+            else f"Board summary from {source}: {footprints} footprint(s), {nets} net(s)."
+        ),
         verdict=VerdictReport.verdict_for([finding.severity for finding in resolved_findings]),
         failure_mode=resolved_findings[0].failure_mode if resolved_findings else "none",
         retryable=any(finding.retryable for finding in resolved_findings),
         findings=resolved_findings,
-        next_action="Use pcb_get_tracks(), pcb_get_footprints(), or run_drc() for details.",
+        next_action=(
+            "Repair KiCad IPC connectivity or configure a valid .kicad_pcb project."
+            if unavailable
+            else "Use pcb_get_tracks(), pcb_get_footprints(), or run_drc() for details."
+        ),
         metadata={
             "source": source,
-            "available": True,
-            "tracks": tracks,
-            "vias": vias,
-            "footprints": footprints,
-            "zones": zones,
-            "nets": nets,
-            "shapes": shapes,
+            "available": not unavailable,
+            **(
+                {}
+                if unavailable
+                else {
+                    "tracks": tracks,
+                    "vias": vias,
+                    "footprints": footprints,
+                    "zones": zones,
+                    "nets": nets,
+                    "shapes": shapes,
+                }
+            ),
         },
     )
 
 
 def _file_backed_board_summary(ipc_error: BaseException) -> VerdictReport:
-    board_file, content, diagnostics = _load_file_backed_board(ipc_error)
+    loaded = _load_file_backed_board(ipc_error)
+    if isinstance(loaded, str):
+        # An unreachable IPC session is an environment failure, not evidence
+        # that the PCB is invalid. A missing configured board without an IPC
+        # disconnect instead needs configuration repair, not blind retries.
+        disconnected = isinstance(ipc_error, KiCadNotRunningError)
+        return _board_summary_report(
+            text=loaded,
+            source="file-backed",
+            findings=[
+                Finding(
+                    id=stable_finding_id("board_summary", "unavailable", loaded),
+                    severity="error",
+                    location=str(_configured_board_file() or ""),
+                    description=loaded.splitlines()[0],
+                    failure_mode="environment" if disconnected else "configuration",
+                    retryable=disconnected,
+                    remediation=(
+                        "Reconnect the configured KiCad IPC endpoint or select an existing "
+                        ".kicad_pcb project with kicad_set_project(project_dir=...)."
+                    ),
+                )
+            ],
+        )
+    board_file, content, diagnostics = loaded
     footprints = _parse_board_footprint_blocks(content)
     tracks = _board_file_segments(content)
     vias = list(_iter_blocks(content, "via"))
@@ -1561,7 +1594,10 @@ def _file_backed_tracks(
     filter_layer: str,
     filter_net: str,
 ) -> str:
-    _, content, diagnostics = _load_file_backed_board(ipc_error)
+    loaded = _load_file_backed_board(ipc_error)
+    if isinstance(loaded, str):
+        return loaded
+    _, content, diagnostics = loaded
     all_tracks = [
         track
         for track in _board_file_segments(content)
@@ -1577,14 +1613,12 @@ def _file_backed_tracks(
         )
         return "\n".join([message, *diagnostics])
     if not tracks:
-        raise ToolFailedError(
-            "\n".join(
-                [
-                    f"Track page {page} is out of range for file-backed fallback. "
-                    f"Available pages: 1-{page_count}.",
-                    *diagnostics,
-                ]
-            )
+        return "\n".join(
+            [
+                f"Track page {page} is out of range for file-backed fallback. "
+                f"Available pages: 1-{page_count}.",
+                *diagnostics,
+            ]
         )
 
     lines = [
@@ -1614,7 +1648,10 @@ def _file_backed_footprints(
     page_size: int,
     filter_layer: str,
 ) -> str:
-    _, content, diagnostics = _load_file_backed_board(ipc_error)
+    loaded = _load_file_backed_board(ipc_error)
+    if isinstance(loaded, str):
+        return loaded
+    _, content, diagnostics = loaded
     all_footprints = [
         (reference, entry)
         for reference, entry in sorted(_parse_board_footprint_blocks(content).items())
@@ -1629,14 +1666,12 @@ def _file_backed_footprints(
         )
         return "\n".join([message, *diagnostics])
     if not footprints:
-        raise ToolFailedError(
-            "\n".join(
-                [
-                    f"Footprint page {page} is out of range for file-backed fallback. "
-                    f"Available pages: 1-{page_count}.",
-                    *diagnostics,
-                ]
-            )
+        return "\n".join(
+            [
+                f"Footprint page {page} is out of range for file-backed fallback. "
+                f"Available pages: 1-{page_count}.",
+                *diagnostics,
+            ]
         )
 
     lines = [
@@ -1660,7 +1695,10 @@ def _file_backed_footprints(
 
 
 def _file_backed_vias(ipc_error: BaseException) -> str:
-    _, content, diagnostics = _load_file_backed_board(ipc_error)
+    loaded = _load_file_backed_board(ipc_error)
+    if isinstance(loaded, str):
+        return loaded
+    _, content, diagnostics = loaded
     vias, total = _limit(_board_file_vias(content))
     if total == 0:
         return "\n".join(["No vias are present in the file-backed fallback.", *diagnostics])
@@ -1686,7 +1724,10 @@ def _file_backed_vias(ipc_error: BaseException) -> str:
 
 
 def _file_backed_nets(ipc_error: BaseException) -> str:
-    _, content, diagnostics = _load_file_backed_board(ipc_error)
+    loaded = _load_file_backed_board(ipc_error)
+    if isinstance(loaded, str):
+        return loaded
+    _, content, diagnostics = loaded
     nets = sorted(set(_board_file_nets(content).values()))
     if not nets:
         return "\n".join(["No nets are present in the file-backed fallback.", *diagnostics])
@@ -1697,7 +1738,10 @@ def _file_backed_nets(ipc_error: BaseException) -> str:
 
 
 def _file_backed_zones(ipc_error: BaseException) -> str:
-    _, content, diagnostics = _load_file_backed_board(ipc_error)
+    loaded = _load_file_backed_board(ipc_error)
+    if isinstance(loaded, str):
+        return loaded
+    _, content, diagnostics = loaded
     zones, total = _limit(_board_file_zones(content))
     if total == 0:
         return "\n".join(["No zones are present in the file-backed fallback.", *diagnostics])
@@ -1714,7 +1758,10 @@ def _file_backed_zones(ipc_error: BaseException) -> str:
 
 
 def _file_backed_layers(ipc_error: BaseException) -> str:
-    _, content, diagnostics = _load_file_backed_board(ipc_error)
+    loaded = _load_file_backed_board(ipc_error)
+    if isinstance(loaded, str):
+        return loaded
+    _, content, diagnostics = loaded
     has_explicit = re.search(r"(?m)^\s*\(layers\b", content) is not None
     if not has_explicit:
         diagnostics = [
@@ -1874,13 +1921,14 @@ def _collect_occupied_boxes(
     ]
 
 
-def _guard_file_based_board_edit(operation: str, allow_open_board: bool) -> None:
+def _guard_file_based_board_edit(operation: str, allow_open_board: bool) -> str | None:
     if _board_is_open() and not allow_open_board:
-        raise ToolFailedError(
+        return (
             f"Refusing file-based {operation} while a board is open in KiCad. "
             "Close the board first, or rerun with allow_open_board=True if you want "
             "KiCad to reload the updated file from disk."
         )
+    return None
 
 
 def _finalize_file_based_board_edit(allow_open_board: bool) -> str:
@@ -2957,14 +3005,14 @@ def _register_impedance_and_creepage_tools(mcp: FastMCP) -> None:
             material_group=material_group,
         )
         if not _board_is_open():
-            raise ToolFailedError(
+            return (
                 "Creepage review requires an active PCB opened through KiCad IPC. "
                 "Open the board in KiCad and rerun this tool."
             )
 
         pads = cast(list[_PadLike], list(board_pads(get_board())))
         if len(pads) < 2:
-            raise ToolFailedError("At least two pads are required to evaluate creepage clearance.")
+            return "At least two pads are required to evaluate creepage clearance."
 
         required_mm = _required_creepage_mm(
             payload.voltage_v,
@@ -2993,7 +3041,10 @@ def _register_impedance_and_creepage_tools(mcp: FastMCP) -> None:
 
 
 def _file_backed_ratsnest_report(exc: Exception) -> str:
-    _, content, diagnostics = _load_file_backed_board(exc)
+    loaded = _load_file_backed_board(exc)
+    if isinstance(loaded, str):
+        return loaded
+    _, content, diagnostics = loaded
     file_nets = _board_file_nets(content)
     if not file_nets:
         return "\n".join(
@@ -3036,16 +3087,14 @@ def _register_board_rules_inspection_tools(mcp: FastMCP) -> None:
         """Read the active board design rules file when available."""
         cfg = get_config()
         if cfg.project_dir is None:
-            raise ToolFailedError(
-                "\n".join(
-                    [
-                        "No active project is configured.",
-                        *_format_board_file_diagnostics(
-                            board_file=_configured_board_file(),
-                            status="unavailable: no active project",
-                        ),
-                    ]
-                )
+            return "\n".join(
+                [
+                    "No active project is configured.",
+                    *_format_board_file_diagnostics(
+                        board_file=_configured_board_file(),
+                        status="unavailable: no active project",
+                    ),
+                ]
             )
 
         matches = sorted(cfg.project_dir.glob("*.kicad_dru"))
@@ -3151,7 +3200,7 @@ def _register_board_rules_mutation_tools(mcp: FastMCP) -> None:
                 content = _upsert_rule(content, rule_name, rule_body)
             path = _write_rules_content(path, content)
         except (OSError, ValueError) as exc:
-            raise ToolFailedError(f"Board design rule update failed: {exc}") from exc
+            return f"Board design rule update failed: {exc}"
 
         return (
             f"Board design rules written to {path}.\n"
@@ -3486,7 +3535,7 @@ def _apply_board_outline_if_safe(board: Board, rectangle: BoardRectangle) -> str
             and existing_edges[0].bottom_right == rectangle.bottom_right
         ):
             return "Board outline already matches requested rectangle; no change."
-        raise ToolFailedError(
+        return (
             "Board outline unchanged: existing Edge.Cuts geometry must be "
             "reviewed or removed explicitly before setting another outline."
         )
@@ -3641,9 +3690,7 @@ def _register_board_graphics_tools(mcp: FastMCP) -> None:
         """Add a production barcode marker to the board file using KiCad's native barcode format."""
         normalized_type = barcode_type.casefold()
         if normalized_type not in {"qr", "datamatrix", "code128", "code39"}:
-            raise ToolFailedError(
-                "barcode_type must be one of 'qr', 'datamatrix', 'code128', or 'code39'."
-            )
+            return "barcode_type must be one of 'qr', 'datamatrix', 'code128', or 'code39'."
         text_h = text_height_mm if text_height_mm is not None else size_mm / 4
         board_block = (
             f"(barcode (at {x_mm:.4f} {y_mm:.4f} 0) "
@@ -3690,13 +3737,13 @@ def _register_board_graphics_tools(mcp: FastMCP) -> None:
                 max_rects=max_rects,
             )
             if not blocks:
-                raise ToolFailedError(
+                return (
                     "No active bitmap pixels were found for board-art import. "
                     "Adjust threshold or invert and retry."
                 )
             _transactional_board_write(lambda current: _append_board_blocks(current, blocks))
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
-            raise ToolFailedError(str(exc)) from exc
+            return str(exc)
         return (
             f"Bitmap board art imported from '{image_path.name}' as {len(blocks)} shape(s) "
             f"on {canonical_layer}. Source raster: {width_px}x{height_px} px; "
@@ -3714,7 +3761,7 @@ def _register_board_deletion_tools(mcp: FastMCP) -> None:
         from kipy.proto.common.types import KIID
 
         if not item_ids:
-            raise ToolFailedError("No item IDs were supplied.")
+            return "No item IDs were supplied."
         kiids = []
         for item_id in item_ids:
             kiid = KIID()
@@ -3727,7 +3774,7 @@ def _register_board_deletion_tools(mcp: FastMCP) -> None:
                 verifier=_verify_deleted_items,
             )
         except Exception as exc:
-            raise ToolFailedError(f"Failed to delete items: {exc}") from exc
+            return f"Failed to delete items: {exc}"
         if _native_live_transaction_active():
             return _staged_message(f"Deletion of {len(kiids)} item(s)")
         return f"Deleted {len(kiids)} item(s)."
@@ -3766,9 +3813,7 @@ def _register_board_state_tools(mcp: FastMCP) -> None:
     def pcb_highlight_net(net_name: str) -> str:
         """Attempt to highlight a net in the GUI when supported."""
         if active_operating_mode(get_config()) is not OperatingMode.EXPERIMENTAL:
-            raise ToolFailedError(
-                "Net highlighting is experimental. Enable experimental tools to try it."
-            )
+            return "Net highlighting is experimental. Enable experimental tools to try it."
         return (
             "Net highlighting is not exposed as a stable KiCad 10.x IPC operation. "
             "Use `pcb_get_nets()` to confirm "
@@ -3779,9 +3824,7 @@ def _register_board_state_tools(mcp: FastMCP) -> None:
     def pcb_set_net_class(net_name: str, class_name: str) -> str:
         """Assign a net class when the runtime supports it."""
         if active_operating_mode(get_config()) is not OperatingMode.EXPERIMENTAL:
-            raise ToolFailedError(
-                "Net class assignment is experimental. Enable experimental tools to try it."
-            )
+            return "Net class assignment is experimental. Enable experimental tools to try it."
         return (
             "Direct net class assignment is not exposed as a stable KiCad 10.x IPC operation. "
             f"Update the project rules for net '{net_name}' to use class '{class_name}'."
@@ -3829,7 +3872,7 @@ def _register_footprint_placement_tools(mcp: FastMCP) -> None:
         """Move a footprint, preserving its angle unless rotation_deg is explicitly provided."""
         footprint = _find_footprint_by_reference(reference)
         if footprint is None:
-            raise ToolFailedError(f"Footprint '{reference}' was not found on the active board.")
+            return f"Footprint '{reference}' was not found on the active board."
 
         footprint.position = Vector2.from_xy_mm(x_mm, y_mm)
         if rotation_deg is None:
@@ -3886,7 +3929,7 @@ def _register_footprint_layer_tools(mcp: FastMCP) -> None:
         """Set the footprint copper side."""
         footprint = _find_footprint_by_reference(reference)
         if footprint is None:
-            raise ToolFailedError(f"Footprint '{reference}' was not found on the active board.")
+            return f"Footprint '{reference}' was not found on the active board."
         expected_layer = resolve_layer(layer)
         footprint.layer = expected_layer
         execute_live_board_mutation(
@@ -3923,21 +3966,19 @@ def _register_inner_layer_graphic_tools(mcp: FastMCP) -> None:
         """Inject an inner-layer graphic primitive into a footprint block."""
         canonical_layer = resolve_layer_name(layer)
         if not canonical_layer.startswith("In") or not canonical_layer.endswith("_Cu"):
-            raise ToolFailedError(
-                "Inner-layer footprint graphics must target In1_Cu through In30_Cu."
-            )
+            return "Inner-layer footprint graphics must target In1_Cu through In30_Cu."
         try:
             stackup_specs = _current_stackup_specs(prefer_project_state=True)
         except ValueError as exc:
-            raise ToolFailedError(str(exc)) from exc
+            return str(exc)
         copper_layers = [entry for entry in stackup_specs if _is_copper_stackup_layer(entry)]
         if len(copper_layers) < 4:
-            raise ToolFailedError(
+            return (
                 "Inner-layer footprint graphics require a board stackup with at least "
                 "four copper layers."
             )
         if canonical_layer not in {layer.name.replace(".", "_") for layer in copper_layers}:
-            raise ToolFailedError(
+            return (
                 f"Layer '{canonical_layer}' is not present in the current stackup. "
                 "Update the board stackup before writing inner-layer graphics."
             )
@@ -3948,7 +3989,7 @@ def _register_inner_layer_graphic_tools(mcp: FastMCP) -> None:
         footprints = _parse_board_footprint_blocks(board_content)
         entry = footprints.get(reference)
         if entry is None:
-            raise ToolFailedError(f"Footprint '{reference}' was not found in the board file.")
+            return f"Footprint '{reference}' was not found in the board file."
 
         graphic = _inner_layer_graphic_block(
             shape_type=shape_type.casefold(),
@@ -3982,21 +4023,23 @@ def _register_board_mutation_tools(mcp: FastMCP) -> None:
 
 def _validate_pcb_sync_preconditions(
     payload: SyncPcbFromSchematicInput,
-) -> tuple[list[dict[str, Any]], str]:
+) -> tuple[list[dict[str, Any]] | None, str | None, str]:
     if _board_is_open() and not payload.allow_open_board:
-        raise ToolFailedError(
+        return (
+            None,
             "Refusing file-based PCB sync while a board is open in KiCad. "
             "Close the board first, or rerun with allow_open_board=True if you want "
-            "KiCad to reload the updated file from disk."
+            "KiCad to reload the updated file from disk.",
+            "",
         )
     if blocking_lines := _pcb_sync_gate_failures(force=payload.force):
-        raise ToolFailedError("\n".join(blocking_lines))
+        return None, "\n".join(blocking_lines), ""
     force_note = "Pre-sync gate was overridden by force=True." if payload.force else ""
     components, issues = _collect_schematic_components()
     if issues:
-        raise ToolFailedError("PCB sync aborted:\n" + "\n".join(f"- {issue}" for issue in issues))
+        return None, "PCB sync aborted:\n" + "\n".join(f"- {issue}" for issue in issues), force_note
     if not components:
-        raise ToolFailedError("No schematic symbols were found to sync.")
+        return None, "No schematic symbols were found to sync.", force_note
     missing_assignments = [
         component["reference"]
         for component in components
@@ -4008,8 +4051,8 @@ def _validate_pcb_sync_preconditions(
             "footprint assignments:\n"
             + "\n".join(f"- {reference}" for reference in missing_assignments)
         )
-        raise ToolFailedError(msg)
-    return components, force_note
+        return None, msg, force_note
+    return components, None, force_note
 
 
 def _build_sync_additions(
@@ -4250,7 +4293,9 @@ def _register_schematic_sync_tools(mcp: FastMCP) -> None:
             force=force,
             auto_place=auto_place,
         )
-        components, force_note = _validate_pcb_sync_preconditions(payload)
+        components, abort_reason, force_note = _validate_pcb_sync_preconditions(payload)
+        if abort_reason is not None or components is None:
+            return abort_reason or ""
 
         board_file = _get_pcb_file_for_sync()
         board_content = _normalize_board_content(
@@ -4285,15 +4330,14 @@ def _register_schematic_sync_tools(mcp: FastMCP) -> None:
 
 
 def _auto_place_by_schematic_impl(payload: AutoPlaceBySchematicInput) -> str:
-    _guard_file_based_board_edit("auto-placement", payload.allow_open_board)
+    if refusal := _guard_file_based_board_edit("auto-placement", payload.allow_open_board):
+        return refusal
 
     components, issues = _collect_schematic_components()
     if issues:
-        raise ToolFailedError(
-            "Auto-placement aborted:\n" + "\n".join(f"- {issue}" for issue in issues)
-        )
+        return "Auto-placement aborted:\n" + "\n".join(f"- {issue}" for issue in issues)
     if not components:
-        raise ToolFailedError("No schematic symbols were found to place.")
+        return "No schematic symbols were found to place."
 
     board_file = _get_pcb_file_for_sync()
     board_content = _normalize_board_content(
@@ -4359,7 +4403,10 @@ def _auto_place_by_schematic_impl(payload: AutoPlaceBySchematicInput) -> str:
 
 
 def _place_decoupling_caps_impl(payload: PlaceDecouplingCapsInput) -> str:
-    _guard_file_based_board_edit("decoupling capacitor placement", payload.allow_open_board)
+    if refusal := _guard_file_based_board_edit(
+        "decoupling capacitor placement", payload.allow_open_board
+    ):
+        return refusal
 
     board_file = _get_pcb_file_for_sync()
     board_content = _normalize_board_content(
@@ -4367,11 +4414,11 @@ def _place_decoupling_caps_impl(payload: PlaceDecouplingCapsInput) -> str:
     )
     existing = _parse_board_footprint_blocks(board_content)
     if payload.ic_ref not in existing:
-        raise ToolFailedError(f"Footprint '{payload.ic_ref}' was not found on the PCB file.")
+        return f"Footprint '{payload.ic_ref}' was not found on the PCB file."
 
     missing_caps = [reference for reference in payload.cap_refs if reference not in existing]
     if missing_caps:
-        raise ToolFailedError(
+        return (
             "Decoupling placement aborted because some capacitor references are missing:\n"
             + "\n".join(f"- {reference}" for reference in missing_caps)
         )
@@ -4446,7 +4493,8 @@ def _place_decoupling_caps_impl(payload: PlaceDecouplingCapsInput) -> str:
 
 
 def _group_by_function_impl(payload: GroupFootprintsInput) -> str:
-    _guard_file_based_board_edit("functional grouping", payload.allow_open_board)
+    if refusal := _guard_file_based_board_edit("functional grouping", payload.allow_open_board):
+        return refusal
 
     board_file = _get_pcb_file_for_sync()
     board_content = _normalize_board_content(
@@ -4497,7 +4545,7 @@ def _group_by_function_impl(payload: GroupFootprintsInput) -> str:
             moved += 1
 
     if not replacements:
-        raise ToolFailedError("No existing footprints were moved by functional grouping.")
+        return "No existing footprints were moved by functional grouping."
 
     _transactional_board_write(lambda current: _replace_board_blocks(current, replacements, []))
     lines = [
@@ -4622,7 +4670,8 @@ def _register_footprint_alignment_tools(mcp: FastMCP) -> None:
             spacing_mm=spacing_mm,
             allow_open_board=allow_open_board,
         )
-        _guard_file_based_board_edit("footprint alignment", payload.allow_open_board)
+        if refusal := _guard_file_based_board_edit("footprint alignment", payload.allow_open_board):
+            return refusal
 
         board_file = _get_pcb_file_for_sync()
         board_content = _normalize_board_content(
@@ -4632,9 +4681,7 @@ def _register_footprint_alignment_tools(mcp: FastMCP) -> None:
         ordered_refs = [reference for reference in payload.refs if reference in existing]
         missing_refs = [reference for reference in payload.refs if reference not in existing]
         if len(ordered_refs) < 2:
-            raise ToolFailedError(
-                "At least two existing footprint references are required for alignment."
-            )
+            return "At least two existing footprint references are required for alignment."
 
         replacements = _aligned_footprint_replacements(existing, ordered_refs, payload)
 
@@ -4670,7 +4717,7 @@ def _register_copper_zone_tools(mcp: FastMCP) -> None:
     @requires_kicad_running
     def pcb_add_zone(
         net_name: str,
-        layer: LayerName,
+        layer: str,
         corners: list[dict[str, float]],
         clearance_mm: float = 0.3,
         min_width_mm: float = 0.25,
@@ -4695,11 +4742,11 @@ def _register_copper_zone_tools(mcp: FastMCP) -> None:
         )
         layer_value = resolve_layer(payload.layer)
         if "_Cu" not in BoardLayer.Name(layer_value):
-            raise ToolFailedError("Copper zones can only be added to copper layers.")
+            return "Copper zones can only be added to copper layers."
 
         unique_points = _unique_copper_zone_points(payload.corners)
         if len(unique_points) < 3:
-            raise ToolFailedError("Copper zones require at least three unique polygon corners.")
+            return "Copper zones require at least three unique polygon corners."
 
         zone = Zone()
         zone.name = payload.name or f"{payload.net_name}_{resolve_layer_name(payload.layer)}_ZONE"
@@ -4739,7 +4786,7 @@ def _register_copper_zone_tools(mcp: FastMCP) -> None:
     @requires_kicad_running
     def pcb_add_copper_zone(
         net_name: str,
-        layer: LayerName,
+        layer: str,
         corners: list[dict[str, float]],
         clearance_mm: float = 0.3,
         min_width_mm: float = 0.25,
@@ -4846,10 +4893,11 @@ def _register_mechanical_hole_tools(mcp: FastMCP) -> None:
             margin_mm=margin_mm,
             allow_open_board=allow_open_board,
         )
-        _guard_file_based_board_edit(
+        if refusal := _guard_file_based_board_edit(
             "mounting-hole insertion",
             payload.allow_open_board,
-        )
+        ):
+            return refusal
 
         board_file = _get_pcb_file_for_sync()
         board_content = _normalize_board_content(
@@ -4862,7 +4910,7 @@ def _register_mechanical_hole_tools(mcp: FastMCP) -> None:
         )
         margin_mm = max(payload.margin_mm, courtyard_radius_mm)
         if max_x_mm - min_x_mm <= 2 * margin_mm or max_y_mm - min_y_mm <= 2 * margin_mm:
-            raise ToolFailedError(
+            return (
                 "Mounting holes not added: board frame is too small to fit "
                 f"the {courtyard_radius_mm:.2f} mm courtyard radius at "
                 f"a {margin_mm:.2f} mm edge margin."
@@ -4932,7 +4980,8 @@ def _register_fiducial_tools(mcp: FastMCP) -> None:
             margin_mm=margin_mm,
             allow_open_board=allow_open_board,
         )
-        _guard_file_based_board_edit("fiducial insertion", payload.allow_open_board)
+        if refusal := _guard_file_based_board_edit("fiducial insertion", payload.allow_open_board):
+            return refusal
 
         board_file = _get_pcb_file_for_sync()
         board_content = _normalize_board_content(
@@ -4993,7 +5042,7 @@ def _register_reusable_board_block_tools(mcp: FastMCP) -> None:
     def pcb_block_create_from_selection(name: str, references: list[str]) -> str:
         """Capture a reusable PCB design block from selected footprint references."""
         if not references:
-            raise ToolFailedError("At least one footprint reference is required.")
+            return "At least one footprint reference is required."
 
         board_content = _normalize_board_content(
             _get_pcb_file_for_sync().read_text(encoding="utf-8")
@@ -5001,9 +5050,7 @@ def _register_reusable_board_block_tools(mcp: FastMCP) -> None:
         footprints = _parse_board_footprint_blocks(board_content)
         missing = [reference for reference in references if reference not in footprints]
         if missing:
-            raise ToolFailedError(
-                f"These references were not found on the board: {', '.join(missing)}"
-            )
+            return f"These references were not found on the board: {', '.join(missing)}"
 
         selected = [footprints[reference] for reference in references]
         min_x = min(float(item["x_mm"]) for item in selected if item["x_mm"] is not None)
@@ -5038,7 +5085,7 @@ def _register_reusable_board_block_tools(mcp: FastMCP) -> None:
         blocks = cast(dict[str, dict[str, Any]], state.get("blocks", {}))
         block = blocks.get(block_name)
         if block is None:
-            raise ToolFailedError(f"PCB block '{block_name}' was not found.")
+            return f"PCB block '{block_name}' was not found."
 
         board_content = _normalize_board_content(
             _get_pcb_file_for_sync().read_text(encoding="utf-8")
@@ -5225,7 +5272,7 @@ def _register_teardrop_tools(mcp: FastMCP) -> None:
             max_count=max_count,
         )
         if not _board_is_open():
-            raise ToolFailedError(
+            return (
                 "Teardrop generation requires an active PCB opened through KiCad IPC. "
                 "Open the board in KiCad and rerun this tool."
             )
@@ -5441,7 +5488,13 @@ def _register_placement_critique_tools(mcp: FastMCP) -> None:
 
         cfg = get_config()
         if cfg.pcb_file is None or not cfg.pcb_file.exists():
-            raise ToolFailedError("No PCB file configured. Call kicad_set_project() first.")
+            return json.dumps(
+                {
+                    "status": "error",
+                    "message": "No PCB file configured. Call kicad_set_project() first.",
+                },
+                indent=2,
+            )
 
         board_content = cfg.pcb_file.read_text(encoding="utf-8")
         footprints = _parse_board_footprint_blocks(board_content)

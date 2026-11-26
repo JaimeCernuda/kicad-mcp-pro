@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..errors import ToolFailedError
 from .references import power_reference_from_uuid
 
 
@@ -172,11 +171,11 @@ class SchematicBasicAuthoringService:
         if lib_definition is None:
             suggestions = self.suggest_symbol_names(library, symbol_name)
             hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
-            raise ToolFailedError(f"Symbol '{library}:{symbol_name}' was not found.{hint}")
+            return f"Symbol '{library}:{symbol_name}' was not found.{hint}"
 
         available_units = self.symbol_available_units(library, symbol_name)
         if available_units and unit not in available_units:
-            raise ToolFailedError(
+            return (
                 f"Symbol '{library}:{symbol_name}' does not support unit {unit}. "
                 f"Available units: {self.format_available_units(available_units)}."
             )
@@ -456,6 +455,8 @@ class SchematicBasicAuthoringService:
             sheet=sheet,
             sheet_file=sheet_file,
         )
+        if "was not found" in result:
+            return result
         return (
             f"{result}\nPower symbol {name} placed at "
             f"({self.format_mm(placed_x)}, {self.format_mm(placed_y)})"

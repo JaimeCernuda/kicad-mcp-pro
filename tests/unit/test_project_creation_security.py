@@ -11,7 +11,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.project.creation import ProjectCreationService
 
 
@@ -161,8 +160,8 @@ def test_existing_project_content_is_preserved_without_confirmation(tmp_path: Pa
     target.parent.mkdir(parents=True)
     target.write_text("IMPORTANT_EXISTING_BOARD", encoding="utf-8")
 
-    with pytest.raises(ToolFailedError, match="Refusing to create a project"):
-        _service(workspace).create(str(workspace), "demo", confirm_overwrite=False)
+    result = _service(workspace).create(str(workspace), "demo", confirm_overwrite=False)
+    assert "Refusing to create a project" in result
     assert target.read_text(encoding="utf-8") == "IMPORTANT_EXISTING_BOARD"
 
 

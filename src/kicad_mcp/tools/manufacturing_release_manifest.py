@@ -12,7 +12,6 @@ from mcp.server.mcpserver import MCPServer as FastMCP
 from .. import __version__
 from ..config import get_config
 from ..discovery import get_cli_capabilities
-from ..errors import ToolFailedError
 from ..manufacturing.release_manifest import (
     DesignIntentLike,
     ReleaseManifestContext,
@@ -82,4 +81,4 @@ def register(
                 output_path=output_path,
             )
         except ReleaseManifestPrerequisiteError as exc:
-            raise ToolFailedError(str(exc)) from exc
+            return str(exc)

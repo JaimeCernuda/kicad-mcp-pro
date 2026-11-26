@@ -2,13 +2,9 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from pathlib import Path
 from types import ModuleType
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.utils.sexpr import _extract_block, _sexpr_string
 
 
@@ -35,8 +31,10 @@ def test_assign_footprint_preserves_missing_and_update_behavior(tmp_path: Path) 
         project_dir=lambda: tmp_path,
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("Footprint 'Missing:Nope' was not found.")):
+    assert (
         service.assign_footprint("R1", "Missing", "Nope")
+        == "Footprint 'Missing:Nope' was not found."
+    )
     assert updates == []
     assert (
         service.assign_footprint("R1", "Resistor_SMD", "R_0805")
@@ -53,8 +51,7 @@ def test_create_custom_symbol_requires_active_project() -> None:
         project_dir=lambda: None,
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("No active project is configured.")):
-        service.create_custom_symbol("Demo", [])
+    assert service.create_custom_symbol("Demo", []) == "No active project is configured."
 
 
 def test_create_custom_symbol_preserves_defaults_and_file_shape(tmp_path: Path) -> None:
@@ -191,22 +188,22 @@ def test_generate_symbol_from_pintable_preserves_default_output_name(tmp_path: P
 def test_generate_symbol_from_pintable_reports_invalid_pin_specification(tmp_path: Path) -> None:
     service, upgrades = _pin_table_service(tmp_path)
 
-    with pytest.raises(ToolFailedError, match=re.escape("Invalid pin specification:")) as exc:
-        service.generate_symbol_from_pintable("Demo", [{"number": "1"}])
+    result = service.generate_symbol_from_pintable("Demo", [{"number": "1"}])
 
-    assert "raw: {'number': '1'}" in str(exc.value)
+    assert result.startswith("Invalid pin specification:")
+    assert "raw: {'number': '1'}" in result
     assert upgrades == []
 
 
 def test_generate_symbol_from_pintable_reports_generation_failure(tmp_path: Path) -> None:
     service, upgrades = _pin_table_service(tmp_path)
 
-    with pytest.raises(ToolFailedError, match=re.escape("Symbol generation failed:")):
-        service.generate_symbol_from_pintable(
-            "Demo",
-            [{"number": "1", "name": "A", "side": "diagonal"}],
-        )
+    result = service.generate_symbol_from_pintable(
+        "Demo",
+        [{"number": "1", "name": "A", "side": "diagonal"}],
+    )
 
+    assert result.startswith("Symbol generation failed:")
     assert upgrades == []
 
 
@@ -218,12 +215,13 @@ def test_generate_symbol_from_pintable_requires_resolver_for_custom_path(tmp_pat
         project_dir=lambda: tmp_path,
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("No project path resolver is configured.")):
-        service.generate_symbol_from_pintable(
-            "Demo",
-            [{"number": "1", "name": "A"}],
-            output_path="custom/Demo.kicad_sym",
-        )
+    result = service.generate_symbol_from_pintable(
+        "Demo",
+        [{"number": "1", "name": "A"}],
+        output_path="custom/Demo.kicad_sym",
+    )
+
+    assert result == "No project path resolver is configured."
 
 
 def test_generate_symbol_from_pintable_falls_back_to_project_output(tmp_path: Path) -> None:
@@ -252,8 +250,9 @@ def test_generate_symbol_from_pintable_requires_project_for_fallback_output() ->
         project_dir=lambda: None,
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("No active project is configured.")):
-        service.generate_symbol_from_pintable(
-            "Demo",
-            [{"number": "1", "name": "A"}],
-        )
+    result = service.generate_symbol_from_pintable(
+        "Demo",
+        [{"number": "1", "name": "A"}],
+    )
+
+    assert result == "No active project is configured."

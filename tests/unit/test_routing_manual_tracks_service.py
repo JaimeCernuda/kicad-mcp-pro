@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from types import SimpleNamespace
 from typing import cast
 
@@ -8,7 +7,6 @@ import pytest
 from kipy.board_types import Net
 from kipy.geometry import Vector2
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.models.common import _PadLike
 from kicad_mcp.routing.manual_tracks import RoutingManualTrackService, TrackSpec
 
@@ -117,11 +115,9 @@ def test_route_pad_to_pad_preserves_orthogonal_geometry_and_response() -> None:
 def test_route_pad_to_pad_preserves_missing_pad_message_without_write() -> None:
     service, writes = _service([_pad("R1", "1", 1.0, 2.0, "DATA")])
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("One or both pads were not found on the active board.")
-    ):
-        service.route_pad_to_pad("R1", "1", "U2", "3")
+    result = service.route_pad_to_pad("R1", "1", "U2", "3")
 
+    assert result == "One or both pads were not found on the active board."
     assert writes == []
 
 

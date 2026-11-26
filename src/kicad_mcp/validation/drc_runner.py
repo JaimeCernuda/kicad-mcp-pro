@@ -279,7 +279,7 @@ def run_drc_report(
     )
     last_return_code: int | None = None
     last_stderr = ""
-    errors: list[tuple[list[str], str]] = []
+    last_error = "DRC report was not produced."
 
     for variant in variants:
         try:
@@ -303,8 +303,10 @@ def run_drc_report(
         last_return_code = return_code
         last_stderr = normalized_stderr
         if not report_path.is_file():
-            errors.append(
-                (variant, _unavailable_error(return_code, normalized_stderr, report_missing=True))
+            last_error = _unavailable_error(
+                return_code,
+                normalized_stderr,
+                report_missing=True,
             )
             continue
 
@@ -312,7 +314,7 @@ def run_drc_report(
         if result is not None:
             return result
         if unavailable_err is not None:
-            errors.append((variant, unavailable_err))
+            last_error = unavailable_err
 
     return DrcRunResult(
         report_path,
@@ -320,15 +322,5 @@ def run_drc_report(
         None,
         last_return_code,
         last_stderr,
-        _attempts_error(errors),
+        last_error,
     )
-
-
-def _attempts_error(errors: list[tuple[list[str], str]]) -> str:
-    """Every attempt's error in the order tried, so a later spelling's usage error
-    does not replace the one that explains the failure."""
-    if not errors:
-        return "DRC report was not produced."
-    if len(errors) == 1:
-        return errors[0][1]
-    return "\n".join(f"kicad-cli {' '.join(variant)}: {error}" for variant, error in errors)

@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.topology import SchematicTopologyService
 
 SHEET = """(kicad_sch
@@ -64,10 +61,9 @@ def test_list_sheet_pins_reports_an_empty_sheet(tmp_path: Path) -> None:
 
 
 def test_list_sheet_pins_reports_a_missing_sheet(tmp_path: Path) -> None:
-    with pytest.raises(ToolFailedError) as exc:
-        _service(SHEET).list_sheet_pins(tmp_path / "root.kicad_sch", "nope")
+    report = _service(SHEET).list_sheet_pins(tmp_path / "root.kicad_sch", "nope")
 
-    assert "not found" in str(exc.value).casefold()
+    assert "not found" in report.casefold()
 
 
 def test_list_sheet_pins_reports_read_failures_and_warns(tmp_path: Path) -> None:
@@ -87,10 +83,9 @@ def test_list_sheet_pins_reports_read_failures_and_warns(tmp_path: Path) -> None
     )
     schematic_file = tmp_path / "root.kicad_sch"
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.list_sheet_pins(schematic_file, "02_mcu")
+    report = service.list_sheet_pins(schematic_file, "02_mcu")
 
-    assert str(exc.value) == f"Could not read '{schematic_file.name}': disk exploded"
+    assert report == f"Could not read '{schematic_file.name}': disk exploded"
     assert warnings == [
         (
             "schematic_list_sheet_pins_failed",

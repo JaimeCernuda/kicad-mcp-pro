@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.routing.net_class_rules import (
     RoutingNetClassRuleService,
     build_net_class_rule,
@@ -68,5 +64,6 @@ def test_set_rules_preserves_writer_failure_text() -> None:
 
     service = RoutingNetClassRuleService(write_rule=fail)
 
-    with pytest.raises(ToolFailedError, match=re.escape("Net-class rule update failed: bad rules")):
-        service.set_rules("high_speed", 0.18, 0.15, 0.45, 0.2)
+    assert service.set_rules("high_speed", 0.18, 0.15, 0.45, 0.2) == (
+        "Net-class rule update failed: bad rules"
+    )

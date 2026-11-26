@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from types import SimpleNamespace
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.ipc.command_queue import AmbiguousMutationError
 from kicad_mcp.pcb.live_edit_evidence import LiveMutationReceipt
 from kicad_mcp.pcb.transaction_lifecycle import PcbTransactionLifecycleService
@@ -455,8 +453,9 @@ def test_begin_treats_none_commit_handle_as_unsupported() -> None:
     board.begin_commit = lambda: None  # type: ignore[method-assign]
     service = _service([board])
 
-    with pytest.raises(ToolFailedError, match=re.escape("not supported")):
-        service.begin()
+    result = service.begin()
+
+    assert "not supported" in result
     assert service.status_payload()["transaction_supported"] is False
 
 
@@ -496,15 +495,13 @@ def test_push_and_drop_report_missing_native_control_methods() -> None:
     push_service = _service([push_board])
     assert push_service.begin().startswith("Transaction group started")
     push_board.push_commit = None  # type: ignore[method-assign]
-    with pytest.raises(ToolFailedError, match=re.escape("No active transaction group to commit.")):
-        push_service.push()
+    assert push_service.push() == "No active transaction group to commit."
 
     drop_board = FakeBoard()
     drop_service = _service([drop_board])
     assert drop_service.begin().startswith("Transaction group started")
     drop_board.drop_commit = None  # type: ignore[method-assign]
-    with pytest.raises(ToolFailedError, match=re.escape("No active transaction group to discard.")):
-        drop_service.drop()
+    assert drop_service.drop() == "No active transaction group to discard."
 
 
 def test_push_fails_closed_when_published_board_cannot_be_reread() -> None:

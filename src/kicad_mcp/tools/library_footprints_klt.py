@@ -14,7 +14,6 @@ from typing import Any
 from fastmcp import FastMCP
 
 from ..config import get_config
-from ..errors import ToolFailedError
 from ..library_resolution import footprint_file
 from ..library_tools import install, runner
 from .metadata import headless_compatible
@@ -112,8 +111,8 @@ def _footprint_path(path: str) -> Path:
     return get_config().resolve_within_project(path)
 
 
-def _failure(exc: Exception) -> ToolFailedError:
-    return ToolFailedError(f"Not done: {exc}")
+def _failure(exc: Exception) -> str:
+    return f"Not done: {exc}"
 
 
 def register(mcp: FastMCP) -> None:
@@ -133,7 +132,7 @@ def register(mcp: FastMCP) -> None:
         try:
             tools = _tools(models=False)
         except install.LibraryToolsInstallError as exc:
-            raise _failure(exc) from exc
+            return _failure(exc)
         if family:
             example = runner.family_example(tools, family)
             if not example:
@@ -195,7 +194,7 @@ def register(mcp: FastMCP) -> None:
                 tools=tools,
             )
         except (install.LibraryToolsInstallError, runner.LibraryToolsError, OSError) as exc:
-            raise _failure(exc) from exc
+            return _failure(exc)
 
     @mcp.tool()
     @headless_compatible
@@ -223,7 +222,7 @@ def register(mcp: FastMCP) -> None:
                 tools=tools,
             )
         except (install.LibraryToolsInstallError, runner.LibraryToolsError, OSError) as exc:
-            raise _failure(exc) from exc
+            return _failure(exc)
 
     @mcp.tool()
     @headless_compatible
@@ -248,7 +247,7 @@ def register(mcp: FastMCP) -> None:
             tools = _tools(models=False)
             target = _footprint_path(path)
             if not target.is_file():
-                raise ToolFailedError(f"Not done: {path} does not exist.")
+                return f"Not done: {path} does not exist."
             pads = _pads(land_pattern or [])
             result = runner.check(tools, target, pads, tolerance_mm)
         except (
@@ -257,7 +256,7 @@ def register(mcp: FastMCP) -> None:
             OSError,
             ValueError,
         ) as exc:
-            raise _failure(exc) from exc
+            return _failure(exc)
         project_dir, _ = _project()
         runner.update_record(
             project_dir,

@@ -7,7 +7,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
-from ..errors import ToolFailedError
 from ..models.verdict import Finding, Verdict, VerdictReport, stable_finding_id
 from ..utils.component_search import (
     ComponentRecord,
@@ -386,10 +385,10 @@ class LibrarySourcingService:
         ``NRND``, ``EOL``) when the provider reports it.
         """
         if query and keyword:
-            raise ToolFailedError("Provide either query or keyword, not both.")
+            return "Provide either query or keyword, not both."
         search_term = query or keyword
         if not search_term:
-            raise ToolFailedError("Provide a query string to search live component sources.")
+            return "Provide a query string to search live component sources."
 
         passive_query, catalog_keyword, catalog_package = self._search_params(search_term, package)
         try:
@@ -401,9 +400,7 @@ class LibrarySourcingService:
                 limit=min(self.max_items_per_response(), 20),
             )
         except (RuntimeError, ValueError, OSError) as exc:
-            raise ToolFailedError(
-                f"Live component search failed: {exc}{sourcing_hint(exc)}"
-            ) from exc
+            return f"Live component search failed: {exc}{sourcing_hint(exc)}"
 
         results, filter_info = _filter_sourcing_results(
             results,
@@ -447,11 +444,9 @@ class LibrarySourcingService:
             client = self.component_search_client(source)
             part = client.get_part(lcsc_code_or_mpn)
         except (RuntimeError, ValueError, OSError) as exc:
-            raise ToolFailedError(
-                f"Component detail lookup failed: {exc}{sourcing_hint(exc)}"
-            ) from exc
+            return f"Component detail lookup failed: {exc}{sourcing_hint(exc)}"
         if part is None:
-            raise ToolFailedError(f"No component details were found for '{lcsc_code_or_mpn}'.")
+            return f"No component details were found for '{lcsc_code_or_mpn}'."
 
         price = _format_optional_price(part.price, part.currency)
         lines = [
@@ -488,10 +483,25 @@ class LibrarySourcingService:
             client = self.component_search_client(source)
             part = client.get_part(lcsc_code_or_mpn)
         except (RuntimeError, ValueError, OSError) as exc:
-            raise ToolFailedError(f"Sourcing policy check failed on {source}: {exc}") from exc
+            return VerdictReport.from_text_verdict(
+                text=f"Sourcing policy check failed: {exc}",
+                summary="Sourcing backend was unavailable.",
+                verdict="FAIL",
+                source="lib_check_sourcing_policy",
+                evidence=[{"source": source, "error": str(exc)}],
+                remediation="Configure the sourcing backend and retry.",
+                retryable=True,
+                failure_mode="environment",
+            )
         if part is None:
-            raise ToolFailedError(
-                f"No component details were found for '{lcsc_code_or_mpn}' on {source}."
+            return VerdictReport.from_text_verdict(
+                text=f"No component details were found for '{lcsc_code_or_mpn}'.",
+                summary="Requested part was not found.",
+                verdict="FAIL",
+                source="lib_check_sourcing_policy",
+                evidence=[{"source": source, "part": lcsc_code_or_mpn}],
+                remediation="Use a valid LCSC code or MPN from lib_search_components().",
+                failure_mode="configuration",
             )
         checks = _sourcing_policy_checks(
             part,
@@ -543,12 +553,12 @@ class LibrarySourcingService:
     def get_bom_with_pricing(self, quantity: int = 1, source: str = "jlcsearch") -> str:
         """Generate a live BOM summary with unit and extended pricing."""
         if quantity < 1:
-            raise ToolFailedError("Quantity must be at least 1.")
+            return "Quantity must be at least 1."
         try:
             client = self.component_search_client(source)
             grouped_rows = self.group_bom_rows(self.schematic_component_rows())
         except (RuntimeError, ValueError, OSError) as exc:
-            raise ToolFailedError(f"Live BOM generation failed: {exc}{sourcing_hint(exc)}") from exc
+            return f"Live BOM generation failed: {exc}{sourcing_hint(exc)}"
 
         if not grouped_rows:
             return "No schematic symbols were available for BOM generation."
@@ -634,14 +644,12 @@ class LibrarySourcingService:
         wanted = {ref.strip().upper() for ref in (refs or []) if ref.strip()}
         if not wanted and not wanted_mpns:
             if refs is None and mpns is None:
-                raise ToolFailedError("Provide at least one of 'refs' or 'mpns'.")
-            raise ToolFailedError("No references were supplied.")
+                return "Provide at least one of 'refs' or 'mpns'."
+            return "No references were supplied."
         try:
             client = self.component_search_client(source)
         except (RuntimeError, ValueError, OSError) as exc:
-            raise ToolFailedError(
-                f"Stock availability check failed: {exc}{sourcing_hint(exc)}"
-            ) from exc
+            return f"Stock availability check failed: {exc}{sourcing_hint(exc)}"
 
         if wanted_mpns:
             return self._stock_lines_for_mpns(client, wanted_mpns, source=source)
@@ -649,15 +657,11 @@ class LibrarySourcingService:
         try:
             rows = self.schematic_component_rows()
         except (RuntimeError, ValueError, OSError) as exc:
-            raise ToolFailedError(
-                f"Stock availability check failed: {exc}{sourcing_hint(exc)}"
-            ) from exc
+            return f"Stock availability check failed: {exc}{sourcing_hint(exc)}"
 
         matches = [row for row in rows if row["reference"].upper() in wanted]
         if not matches:
-            raise ToolFailedError(
-                "None of the requested references were found in the active schematic."
-            )
+            return "None of the requested references were found in the active schematic."
         return self._stock_lines_for_refs(client, matches, source=source)
 
     def find_alternative_parts(
@@ -671,11 +675,9 @@ class LibrarySourcingService:
             client = self.component_search_client(source)
             base_part = client.get_part(lcsc_code)
         except (RuntimeError, ValueError, OSError) as exc:
-            raise ToolFailedError(
-                f"Alternative part search failed: {exc}{sourcing_hint(exc)}"
-            ) from exc
+            return f"Alternative part search failed: {exc}{sourcing_hint(exc)}"
         if base_part is None:
-            raise ToolFailedError(f"No base component details were found for '{lcsc_code}'.")
+            return f"No base component details were found for '{lcsc_code}'."
 
         try:
             candidates = client.search(
@@ -685,9 +687,7 @@ class LibrarySourcingService:
                 limit=20,
             )
         except (RuntimeError, ValueError, OSError) as exc:
-            raise ToolFailedError(
-                f"Alternative part search failed: {exc}{sourcing_hint(exc)}"
-            ) from exc
+            return f"Alternative part search failed: {exc}{sourcing_hint(exc)}"
 
         max_price = None
         if base_part.price is not None:
@@ -720,7 +720,7 @@ class LibrarySourcingService:
         try:
             derating = derating_check(kind, parameter, rated_value, operating_value)
         except ValueError as exc:
-            raise ToolFailedError(f"Derating check failed: {exc}") from exc
+            return f"Derating check failed: {exc}"
         avl_verdict, avl_summary = avl_check(manufacturer, approved_vendors or [])
         overall = _worst(derating.verdict, avl_verdict)
         lines = [
@@ -749,7 +749,7 @@ class LibrarySourcingService:
                 limit=50,
             )
         except (RuntimeError, ValueError, OSError) as exc:
-            raise ToolFailedError(f"Part recommendation search failed: {exc}") from exc
+            return f"Part recommendation search failed: {exc}"
 
         filtered = [item for item in results if item.stock > 0]
         matched = [
@@ -784,18 +784,16 @@ class LibrarySourcingService:
             client = self.component_search_client(source)
             part = client.get_part(lcsc_code_or_mpn)
         except (RuntimeError, ValueError, OSError) as exc:
-            raise ToolFailedError(f"Part lookup failed: {exc}") from exc
+            return f"Part lookup failed: {exc}"
 
         if part is None:
-            raise ToolFailedError(f"No part found for '{lcsc_code_or_mpn}' on {source}.")
+            return f"No part found for '{lcsc_code_or_mpn}' on {source}."
 
         try:
             self.update_symbol_property(sym_ref, "LCSC", part.lcsc_code)
             self.update_symbol_property(sym_ref, "MPN", part.mpn or "")
         except Exception as exc:
-            raise ToolFailedError(
-                f"Could not update schematic properties for '{sym_ref}': {exc}"
-            ) from exc
+            return f"Could not update schematic properties for '{sym_ref}': {exc}"
 
         lines = [
             f"Bound '{lcsc_code_or_mpn}' to {sym_ref}:",

@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.tools.schematic import _symbol_library_file
 from kicad_mcp.tools.schematic_cosmetics import (
     _connectivity_signature,
@@ -226,9 +225,8 @@ async def test_harness_refuses_connectivity_breaking_mutation(sample_project: Pa
         broken = text.replace("(at 50.8 45.72 0)", "(at 12.7 190.5 0)")
         return broken, [{"kind": "label", "ref": "N1"}]
 
-    with pytest.raises(ToolFailedError) as exc:
-        sc._run_cosmetic_fix("test_break", _breaking_mutator, apply=True)
-    payload = json.loads(str(exc.value))
+    raw = sc._run_cosmetic_fix("test_break", _breaking_mutator, apply=True)
+    payload = json.loads(raw)
 
     assert payload["status"] == "refused"
     assert payload["connectivity_preserved"] is False

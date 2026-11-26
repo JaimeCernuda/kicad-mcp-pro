@@ -280,7 +280,8 @@ def _write_snapshot_manifest(
 
 
 def _require_snapshot_export_success(label: str, result: str) -> None:
-    if "no files were produced" in result.casefold():
+    lowered = result.casefold()
+    if "failed:" in lowered or "no files were produced" in lowered:
         raise ValueError(f"{label} export failed: {result}")
 
 

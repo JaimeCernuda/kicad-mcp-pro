@@ -89,7 +89,7 @@ def register(
             confirm: Must be True when ``dry_run`` is False to run KiKit.
 
         Returns:
-            Confirmation with the panel file path; failures raise an error.
+            Confirmation with the panel file path, or an error message.
         """
         return service.panelize(
             layout=layout,

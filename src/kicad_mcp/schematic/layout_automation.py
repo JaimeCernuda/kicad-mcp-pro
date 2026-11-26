@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast
 
-from ..errors import SchematicWriteUnsafeError, ToolFailedError
+from ..errors import SchematicWriteUnsafeError
 from ..models.schematic import AutoPlaceSymbolsInput
 from .guarded_api_save import guarded_kicad_api_save
 
@@ -152,9 +152,7 @@ class SchematicLayoutAutomationService:
                 schematic_file=str(sch_file),
                 error=str(exc),
             )
-            raise ToolFailedError(
-                f"Could not load the active schematic for auto-placement: {exc}"
-            ) from exc
+            return f"Could not load the active schematic for auto-placement: {exc}"
 
         sch_data = self.parse_schematic(sch_file)
         all_syms = sch_data["symbols"] + sch_data["power_symbols"]
@@ -188,8 +186,8 @@ class SchematicLayoutAutomationService:
 
         if placed == 0:
             missing_suffix = f" Missing: {', '.join(missing)}." if missing else ""
-            raise ToolFailedError(
-                self.with_diagnostics(f"No matching symbols were placed.{missing_suffix}", sch_file)
+            return self.with_diagnostics(
+                f"No matching symbols were placed.{missing_suffix}", sch_file
             )
 
         try:
@@ -202,7 +200,7 @@ class SchematicLayoutAutomationService:
                 schematic_file=str(sch_file),
                 error=str(exc),
             )
-            raise ToolFailedError(f"Could not save auto-placement changes: {exc}") from exc
+            return f"Could not save auto-placement changes: {exc}"
 
         result = self.reload_schematic()
         missing_suffix = f" Missing: {', '.join(missing)}." if missing else ""
@@ -222,12 +220,9 @@ class SchematicLayoutAutomationService:
         sch_file = self.active_schematic_file()
         mutator, targets, updated = self.build_autoplace_fields_mutator(sch_file, references)
         if not targets:
-            message = self.with_diagnostics(
+            return self.with_diagnostics(
                 "No matching symbols found to auto-place fields for.", sch_file
             )
-            if references:
-                raise ToolFailedError(message)
-            return message
 
         if dry_run:
             mutator(sch_file.read_text(encoding="utf-8"))
@@ -464,9 +459,7 @@ class SchematicLayoutAutomationService:
         try:
             schematic = self.load_schematic(sch_file)
         except Exception as exc:
-            raise ToolFailedError(
-                f"Could not load the active schematic for functional placement: {exc}"
-            ) from exc
+            return f"Could not load the active schematic for functional placement: {exc}"
 
         sch_data = self.parse_schematic(sch_file)
         all_syms = sch_data["symbols"] + sch_data["power_symbols"]
@@ -532,10 +525,8 @@ class SchematicLayoutAutomationService:
 
         if placed == 0:
             missing_suffix = f" Missing refs: {', '.join(missing)}." if missing else ""
-            raise ToolFailedError(
-                self.with_diagnostics(
-                    f"No matching functional symbols were placed.{missing_suffix}", sch_file
-                )
+            return self.with_diagnostics(
+                f"No matching functional symbols were placed.{missing_suffix}", sch_file
             )
 
         try:
@@ -543,7 +534,7 @@ class SchematicLayoutAutomationService:
         except SchematicWriteUnsafeError:
             raise
         except Exception as exc:
-            raise ToolFailedError(f"Could not save functional placement changes: {exc}") from exc
+            return f"Could not save functional placement changes: {exc}"
 
         result = self.reload_schematic()
         missing_suffix = f" Missing refs: {', '.join(missing)}." if missing else ""

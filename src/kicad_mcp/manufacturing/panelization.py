@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from ..errors import ToolFailedError
-
 
 class PanelizationTimeoutError(TimeoutError):
     """Raised when KiKit panelization exceeds the runner timeout."""
@@ -51,7 +49,7 @@ class PanelizationService:
         confirm: bool = False,
     ) -> str:
         if not self.kikit_available():
-            raise ToolFailedError(
+            return (
                 "KiKit is not installed. "
                 "Install it with: pip install kikit\n"
                 "KiKit documentation: https://github.com/yaqwsx/KiKit"
@@ -59,16 +57,14 @@ class PanelizationService:
 
         pcb_file = self.get_pcb_file()
         if pcb_file is None or not pcb_file.exists():
-            raise ToolFailedError("No PCB file is configured. Call kicad_set_project() first.")
+            return "No PCB file is configured. Call kicad_set_project() first."
 
         layout_lower = layout.lower()
         if layout_lower not in ("grid", "mousebites", "vcut"):
-            raise ToolFailedError(
-                f"Invalid layout '{layout}'. Choose from: grid, mousebites, vcut."
-            )
+            return f"Invalid layout '{layout}'. Choose from: grid, mousebites, vcut."
 
         if rows < 1 or cols < 1:
-            raise ToolFailedError("rows and cols must both be >= 1.")
+            return "rows and cols must both be >= 1."
 
         out_dir = self.ensure_output_dir("panel")
         if output_path:
@@ -96,30 +92,27 @@ class PanelizationService:
                 "Set dry_run=false and confirm=true to create the panel file."
             )
         if not confirm:
-            raise ToolFailedError(
+            return (
                 "Panelization requires explicit confirmation because it writes a PCB file.\n"
                 f"- Intended output: {panel_file}\n"
                 "Rerun with dry_run=false and confirm=true."
             )
         if panel_file.exists():
-            raise ToolFailedError(
+            return (
                 "Refusing to overwrite an existing panel file without choosing a new output_path.\n"
                 f"- Existing file: {panel_file}"
             )
 
         try:
             result = self.run_command(cmd)
-        except PanelizationTimeoutError as exc:
-            raise ToolFailedError("KiKit panelization timed out after 120 seconds.") from exc
+        except PanelizationTimeoutError:
+            return "KiKit panelization timed out after 120 seconds."
         except OSError as exc:
-            raise ToolFailedError(f"Failed to run KiKit: {exc}") from exc
+            return f"Failed to run KiKit: {exc}"
 
         if result.returncode != 0:
             stderr = (result.stderr or "").strip()[:500]
-            raise ToolFailedError(
-                f"KiKit panelization failed (exit {result.returncode}):\n{stderr}",
-                exit_code=result.returncode,
-            )
+            return f"KiKit panelization failed (exit {result.returncode}):\n{stderr}"
 
         return (
             f"Panel created: {panel_file}\n"

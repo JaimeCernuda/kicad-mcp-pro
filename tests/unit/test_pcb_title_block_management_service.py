@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable
 from types import SimpleNamespace
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.pcb.title_block_management import PcbTitleBlockService
 
 
@@ -76,25 +74,19 @@ def test_title_block_requires_at_least_one_field_without_queueing() -> None:
 
     service = _service(SimpleNamespace(set_title_block_info=ignore_fields), queue_calls)
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("No title block fields specified. Provide at least one field to update."),
-    ):
-        service.set_title_block_info()
+    assert service.set_title_block_info() == (
+        "No title block fields specified. Provide at least one field to update."
+    )
     assert queue_calls == []
 
 
 def test_unsupported_title_block_preserves_legacy_message() -> None:
     service = _service(SimpleNamespace(), [])
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape(
-            "Title block editing requires KiCad 10.0.1 or later. "
-            "The current KiCad version does not support this operation."
-        ),
-    ):
-        service.set_title_block_info(title="Demo")
+    assert service.set_title_block_info(title="Demo") == (
+        "Title block editing requires KiCad 10.0.1 or later. "
+        "The current KiCad version does not support this operation."
+    )
 
 
 def test_title_block_connection_error_preserves_legacy_message() -> None:
@@ -107,8 +99,7 @@ def test_title_block_connection_error_preserves_legacy_message() -> None:
         connection_errors=(FakeConnectionError, OSError),
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("Failed to set title block info: offline")):
-        service.set_title_block_info(title="Demo")
+    assert service.set_title_block_info(title="Demo") == ("Failed to set title block info: offline")
 
 
 def test_unexpected_title_block_errors_are_not_hidden() -> None:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import sqlite3
 import subprocess
 from contextlib import closing
@@ -9,7 +8,6 @@ from typing import Any
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.resources.gate_history import GateHistory, _status
 from kicad_mcp.tools import board_file, export_support, routing_rules, schematic_transfer
 from kicad_mcp.tools.gates import GateOutcome
@@ -124,31 +122,6 @@ def test_export_support_reports_missing_files_and_variant_timeouts(
         "",
         "The kicad-cli command timed out.",
     )
-
-
-def test_cli_variants_that_all_fail_keep_every_attempts_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    results = iter(
-        [
-            (3, "", "Failed to load board: Unknown token 'this'"),
-            (1, "Usage: kicad-cli pcb export gerber", ""),
-        ]
-    )
-    monkeypatch.setattr(export_support, "_run_cli", lambda *_args: next(results))
-
-    code, stdout, stderr = export_support._run_cli_variants(
-        [["pcb", "export", "gerbers", "b.kicad_pcb"], ["pcb", "export", "gerber", "b.kicad_pcb"]]
-    )
-
-    assert code == 3
-    assert stdout == ""
-    assert stderr.splitlines() == [
-        "kicad-cli pcb export gerbers b.kicad_pcb -> exit code 3: "
-        "Failed to load board: Unknown token 'this'",
-        "kicad-cli pcb export gerber b.kicad_pcb -> exit code 1: "
-        "Usage: kicad-cli pcb export gerber",
-    ]
 
 
 def test_gate_history_records_trends_and_regressions(tmp_path: Path) -> None:
@@ -486,23 +459,25 @@ def test_hierarchy_authoring_resolve_target_sheet_blocks_and_errors(tmp_path: Pa
     assert blocks == ()
     assert "has no child sheets" in str(err)
 
-    with pytest.raises(ToolFailedError, match=re.escape("Sheet 'MissingSheet' was not found")):
-        service._resolve_target_sheet_blocks(
-            tmp_path / "root.kicad_sch", "(kicad_sch)", "MissingSheet"
-        )
+    blocks, err = service._resolve_target_sheet_blocks(
+        tmp_path / "root.kicad_sch", "(kicad_sch)", "MissingSheet"
+    )
+    assert blocks == ()
+    assert "Sheet 'MissingSheet' was not found" in str(err)
 
     skipped_sch = '(kicad_sch (sheet (property "Sheetname" "BrokenSheet")))'
-    with pytest.raises(ToolFailedError, match=re.escape("cannot be addressed")):
-        service._resolve_target_sheet_blocks(
-            tmp_path / "root.kicad_sch", skipped_sch, "BrokenSheet"
-        )
+    blocks, err = service._resolve_target_sheet_blocks(
+        tmp_path / "root.kicad_sch", skipped_sch, "BrokenSheet"
+    )
+    assert blocks == ()
+    assert "cannot be addressed" in str(err)
 
     def fail_read(p: Path) -> str:
         raise OSError("Read failed")
 
     service_unreadable = replace(service, read_text=fail_read)
-    with pytest.raises(ToolFailedError, match=re.escape("Could not read the top-level schematic")):
-        service_unreadable.import_sheet_pins(None, False, False)
+    res = service_unreadable.import_sheet_pins(None, False, False)
+    assert "Could not read the top-level schematic" in res
 
 
 def test_hierarchy_authoring_plan_block_pin_import_overflow_and_errors(

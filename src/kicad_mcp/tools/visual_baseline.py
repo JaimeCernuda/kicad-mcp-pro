@@ -21,7 +21,6 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
-from ..errors import ToolFailedError
 from .metadata import headless_compatible
 from .schematic import (
     _render_png_visual_diff,
@@ -103,12 +102,12 @@ def _capture_visual_baseline(
     include_title_block: bool,
 ) -> str:
     if dpi < 72 or dpi > 600:
-        raise ToolFailedError("dpi must be between 72 and 600.")
+        return json.dumps({"status": "error", "message": "dpi must be between 72 and 600."})
 
     try:
         target = _resolve_schematic_target(sheet=sheet, sheet_file=sheet_file)
     except ValueError as exc:
-        raise ToolFailedError(str(exc)) from exc
+        return json.dumps({"status": "error", "message": str(exc)})
 
     stem = target.path.stem
     png_path = _baseline_png(stem)
@@ -121,7 +120,7 @@ def _capture_visual_baseline(
             include_title_block=include_title_block,
         )
     except RuntimeError as exc:
-        raise ToolFailedError(f"Baseline render failed: {exc}") from exc
+        return json.dumps({"status": "error", "message": f"Baseline render failed: {exc}"})
 
     metadata: dict[str, Any] = {
         "sheet": stem,
@@ -152,12 +151,12 @@ def _compare_visual_baseline(
     threshold_pct: float,
 ) -> str:
     if dpi < 72 or dpi > 600:
-        raise ToolFailedError("dpi must be between 72 and 600.")
+        return json.dumps({"status": "error", "message": "dpi must be between 72 and 600."})
 
     try:
         target = _resolve_schematic_target(sheet=sheet, sheet_file=sheet_file)
     except ValueError as exc:
-        raise ToolFailedError(str(exc)) from exc
+        return json.dumps({"status": "error", "message": str(exc)})
 
     stem = target.path.stem
     baseline_png = _baseline_png(stem)
@@ -178,7 +177,7 @@ def _compare_visual_baseline(
             target.path, stem, baseline_png, render_dpi, include_title_block
         )
     except RuntimeError as exc:
-        raise ToolFailedError(f"Baseline compare failed: {exc}") from exc
+        return json.dumps({"status": "error", "message": f"Baseline compare failed: {exc}"})
 
     drift_pct, changed_pixels, total_pixels = _drift_from_diff(diff_meta)
     status = "PASS" if drift_pct <= threshold_pct else "DRIFT"

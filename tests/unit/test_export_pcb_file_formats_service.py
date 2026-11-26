@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from pathlib import Path
 from typing import Any
 
 import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 FORMAT_CASES = [
     ("step", "step", "board.step", "STEP", []),
@@ -202,10 +199,7 @@ def test_export_preserves_generic_option_and_variant_order(tmp_path: Path) -> No
 def test_unsupported_export_stops_before_path_resolution_and_cli(tmp_path: Path) -> None:
     service, calls = _service(tmp_path, supported=set())
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("STEP export is not supported by the detected KiCad CLI.")
-    ):
-        service.export("step")
+    assert service.export("step") == "STEP export is not supported by the detected KiCad CLI."
     assert calls["support"] == ["step"]
     assert calls["resolve"] == []
     assert calls["variant"] == []
@@ -215,8 +209,7 @@ def test_unsupported_export_stops_before_path_resolution_and_cli(tmp_path: Path)
 def test_invalid_output_path_preserves_message(tmp_path: Path) -> None:
     service, calls = _service(tmp_path, resolver_error=ValueError("unsafe path"))
 
-    with pytest.raises(ToolFailedError, match=re.escape("Invalid output path: unsafe path")):
-        service.export("step", "../escape.step")
+    assert service.export("step", "../escape.step") == "Invalid output path: unsafe path"
     assert calls["variant"] == []
     assert calls["cli"] == []
 
@@ -235,5 +228,4 @@ def test_failure_message_precedence(
     expected: str,
 ) -> None:
     service, _calls = _service(tmp_path, cli_result=cli_result)
-    with pytest.raises(ToolFailedError, match=re.escape(expected)):
-        service.export("step")
+    assert service.export("step") == expected

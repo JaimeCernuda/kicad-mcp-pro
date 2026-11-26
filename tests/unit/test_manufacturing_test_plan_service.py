@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
-
 if TYPE_CHECKING:
     from kicad_mcp.manufacturing.test_plan import ManufacturingTestPlanService
 
@@ -77,9 +75,8 @@ def test_output_path_write_and_overwrite_policy_are_preserved(service, tmp_path:
     assert first.startswith(f"Test plan saved to {out_file}\n\n")
     assert out_file.exists()
 
-    with pytest.raises(ToolFailedError) as refused:
-        service.create(intent, output_path="bringup/test_plan.md")
-    assert str(refused.value) == (
+    refused = service.create(intent, output_path="bringup/test_plan.md")
+    assert refused == (
         "Refusing to overwrite an existing test plan without confirmation.\n"
         f"- Existing file: {out_file}\n"
         "Rerun with confirm_overwrite=true or choose a different output_path."

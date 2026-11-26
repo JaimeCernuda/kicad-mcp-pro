@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from ..errors import ToolFailedError
-
 ProjectDirProvider = Callable[[], Path | None]
 LayerResolver = Callable[[str], Any]
 
@@ -99,7 +97,7 @@ class RoutingTuningProfileService:
         profiles = load_tuning_profiles(project_dir)
         profile = profiles.get(profile_name)
         if profile is None:
-            raise ToolFailedError(f"Tuning profile '{profile_name}' was not found.")
+            return f"Tuning profile '{profile_name}' was not found."
 
         assignments_state = load_state_file(
             project_dir,

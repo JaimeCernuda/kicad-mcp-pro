@@ -2,14 +2,9 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _service_type() -> type[Any]:
@@ -153,14 +148,8 @@ def test_vector_exports_preserve_unsupported_capability_messages(tmp_path: Path)
         capabilities=FakeCapabilities(supports_svg=False, supports_dxf=False),
     )
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("SVG export is not supported by the detected KiCad CLI.")
-    ):
-        service.export_svg()
-    with pytest.raises(
-        ToolFailedError, match=re.escape("DXF export is not supported by the detected KiCad CLI.")
-    ):
-        service.export_dxf()
+    assert service.export_svg() == "SVG export is not supported by the detected KiCad CLI."
+    assert service.export_dxf() == "DXF export is not supported by the detected KiCad CLI."
     assert ensure_calls == []
     assert cli_calls == []
     assert formatter_calls == []
@@ -168,9 +157,7 @@ def test_vector_exports_preserve_unsupported_capability_messages(tmp_path: Path)
 
 def test_vector_exports_preserve_failure_text_and_ignore_stdout(tmp_path: Path) -> None:
     svg_service, *_ = _service(tmp_path, cli_result=(2, "stdout detail", "stderr detail"))
-    with pytest.raises(ToolFailedError, match=re.escape("SVG export failed: stderr detail")):
-        svg_service.export_svg()
+    assert svg_service.export_svg() == "SVG export failed: stderr detail"
 
     dxf_service, *_ = _service(tmp_path, cli_result=(2, "stdout detail", ""))
-    with pytest.raises(ToolFailedError, match=re.escape("DXF export failed: unknown error")):
-        dxf_service.export_dxf()
+    assert dxf_service.export_dxf() == "DXF export failed: unknown error"

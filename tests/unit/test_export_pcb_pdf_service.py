@@ -2,13 +2,8 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from pathlib import Path
 from typing import Any
-
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _service_type() -> type[Any]:
@@ -88,10 +83,8 @@ def test_export_pcb_pdf_preserves_explicit_layers_and_failure_text(tmp_path: Pat
         default_layers=("F.Cu", "Edge.Cuts"),
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("PCB PDF export failed: pdf failed")):
-        service.export(["B.Cu", "Edge.Cuts"])
+    assert service.export(["B.Cu", "Edge.Cuts"]) == "PCB PDF export failed: pdf failed"
     assert cli.calls[0][0][-3:] == ["--layers", "B.Cu,Edge.Cuts", str(pcb)]
 
     cli.result = (2, "", "")
-    with pytest.raises(ToolFailedError, match=re.escape("PCB PDF export failed: unknown error")):
-        service.export([])
+    assert service.export([]) == "PCB PDF export failed: unknown error"

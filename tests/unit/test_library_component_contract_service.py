@@ -3,13 +3,8 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
-import re
 from pathlib import Path
 from types import ModuleType
-
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _module() -> ModuleType:
@@ -53,15 +48,10 @@ def test_verify_rejects_blank_and_unknown_reference(tmp_path: Path) -> None:
         footprint_file=lambda _library, _footprint: tmp_path / "missing.kicad_mod",
     )
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape(json.dumps({"error": "reference must not be empty."}))
-    ):
-        service.verify("   ")
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape(json.dumps({"error": "No placed symbol with reference 'R404' was found."})),
-    ):
-        service.verify("R404")
+    assert service.verify("   ") == json.dumps({"error": "reference must not be empty."})
+    assert service.verify("R404") == json.dumps(
+        {"error": "No placed symbol with reference 'R404' was found."}
+    )
 
 
 def test_verify_skips_unreadable_schematic_and_preserves_pass_report(tmp_path: Path) -> None:

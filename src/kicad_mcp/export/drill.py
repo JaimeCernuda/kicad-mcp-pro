@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..errors import ToolFailedError
 from .inventory import discover_drill_output_files
 
 type GetPcbFile = Callable[[], Path]
@@ -34,7 +33,7 @@ class ExportDrillService:
         try:
             out_dir = self.ensure_output_dir(output_subdir)
         except ValueError as exc:
-            raise ToolFailedError(f"Invalid output path: {exc}") from exc
+            return f"Invalid output path: {exc}"
         drill_command = self.get_drill_command()
         variant_args = self.active_variant_args(variant_name)
         code, _stdout, stderr = self.run_cli_variants(
@@ -61,8 +60,6 @@ class ExportDrillService:
             ]
         )
         if code != 0:
-            raise ToolFailedError(
-                f"Drill export failed: {stderr or 'unknown error'}", exit_code=code
-            )
+            return f"Drill export failed: {stderr or 'unknown error'}"
         files = discover_drill_output_files(out_dir)
         return self.format_file_list(files, f"Drill export completed in {out_dir}:")

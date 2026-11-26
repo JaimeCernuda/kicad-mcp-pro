@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.inspection import SchematicInspectionService
 
 
@@ -154,13 +152,9 @@ def test_pin_positions_preserves_unit_validation_and_sorted_output() -> None:
         },
     )
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape(
-            "Amplifier_Operational:LM358 does not support unit 3. Available units: 1, 2."
-        ),
-    ):
-        service.pin_positions("Amplifier_Operational", "LM358", 10.0, 20.0, 90, 3)
+    assert service.pin_positions("Amplifier_Operational", "LM358", 10.0, 20.0, 90, 3) == (
+        "Amplifier_Operational:LM358 does not support unit 3. Available units: 1, 2."
+    )
     assert service.pin_positions("Amplifier_Operational", "LM358", 10.0, 20.0, 90, 2) == (
         "Amplifier_Operational:LM358 @ (10.0, 20.0) rot=90 unit=2:\n"
         "- Pin 1: (10.0000, 20.0000) mm\n"

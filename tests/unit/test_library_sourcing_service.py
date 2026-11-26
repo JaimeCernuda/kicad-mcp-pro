@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from typing import Any
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.library.sourcing import LibrarySourcingService
 from kicad_mcp.utils.component_search import ComponentRecord, ComponentSearchClient
 
@@ -232,14 +230,11 @@ def test_bom_and_stock_keep_filenotfounderror_as_environment_failure() -> None:
 
     service = _service(FakeClient(), schematic_component_rows=missing_rows)
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Live BOM generation failed: schematic vanished")
-    ):
-        service.get_bom_with_pricing()
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Stock availability check failed: schematic vanished")
-    ):
+    assert service.get_bom_with_pricing() == "Live BOM generation failed: schematic vanished"
+    assert (
         service.check_stock_availability(refs=["R1"])
+        == "Stock availability check failed: schematic vanished"
+    )
 
 
 def test_stock_availability_preserves_client_filenotfounderror_as_environment_failure() -> None:
@@ -248,11 +243,10 @@ def test_stock_availability_preserves_client_filenotfounderror_as_environment_fa
 
     service = _service(FakeClient(), component_search_client=missing_client)
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Stock availability check failed: provider executable vanished"),
-    ):
+    assert (
         service.check_stock_availability(refs=["R1"])
+        == "Stock availability check failed: provider executable vanished"
+    )
 
 
 def test_stock_availability_preserves_direct_mpn_rendering() -> None:

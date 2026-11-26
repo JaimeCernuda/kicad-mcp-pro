@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.back_annotation import SchematicBackAnnotationService
 
 
@@ -135,11 +133,9 @@ def test_list_swappable_pins_omits_gate_discovery_without_library_file() -> None
 def test_swap_pins_rejects_invalid_candidates_without_state_write() -> None:
     service, state = _service(aliases={"1": (0.0, 0.0), "2": (1.0, 1.0)})
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Pins '1' and/or '3' are not swappable candidates for 'R1'."),
-    ):
-        service.swap_pins("R1", "1", "3")
+    assert service.swap_pins("R1", "1", "3") == (
+        "Pins '1' and/or '3' are not swappable candidates for 'R1'."
+    )
     assert state.saved == []
 
 
@@ -171,10 +167,7 @@ def test_swap_gates_rejects_invalid_candidates_without_state_write(tmp_path: Pat
     library.write_text("symbol library", encoding="utf-8")
     service, state = _service(symbol_library_file=library, units={1})
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Gates '1' and/or '2' are not available on 'R1'.")
-    ):
-        service.swap_gates("R1", 1, 2)
+    assert service.swap_gates("R1", 1, 2) == ("Gates '1' and/or '2' are not available on 'R1'.")
     assert state.saved == []
 
 

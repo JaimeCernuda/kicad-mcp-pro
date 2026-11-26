@@ -7,7 +7,6 @@ from typing import Any, Protocol
 
 from mcp.server.mcpserver import MCPServer as FastMCP
 
-from ..errors import ToolFailedError
 from ..models.verdict import VerdictReport
 from .metadata import headless_compatible
 
@@ -230,7 +229,7 @@ def register_compliance(mcp: FastMCP, deps: LibrarySourcingDependencies) -> None
 
             found = rating_from_specs(part, parameter)
             if isinstance(found, str):
-                raise ToolFailedError(f"Derating check failed: {found}")
+                return f"Derating check failed: {found}"
             rated_value, rated_from = found.number or 0.0, f"{found.display} [{found.source}]"
         verdict = deps.service.check_derating_compliance(
             kind,

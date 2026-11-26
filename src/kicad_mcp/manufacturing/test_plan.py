@@ -8,8 +8,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
-from ..errors import ToolFailedError
-
 
 class PowerRailLike(Protocol):
     @property
@@ -224,7 +222,7 @@ class ManufacturingTestPlanService:
     def _persist(self, text: str, output_path: str, *, confirm_overwrite: bool) -> str:
         out_file = self.resolve_output_path(output_path)
         if out_file.exists() and not confirm_overwrite:
-            raise ToolFailedError(
+            return (
                 "Refusing to overwrite an existing test plan without confirmation.\n"
                 f"- Existing file: {out_file}\n"
                 "Rerun with confirm_overwrite=true or choose a different output_path."

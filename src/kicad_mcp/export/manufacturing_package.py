@@ -12,9 +12,6 @@ from typing import Any
 
 import anyio
 
-from ..errors import ToolFailedError
-from .pcb_manufacturing_outputs import ExportNotSupportedError
-
 GateEvaluator = Callable[[], list[Any]]
 GateRenderer = Callable[[list[Any], str], str]
 ProgressReporter = Callable[[int, int, str], Awaitable[None]]
@@ -97,36 +94,30 @@ class ExportManufacturingPackageService:
         outcomes = await anyio.to_thread.run_sync(evaluate_project_gate)
         blocking = [outcome for outcome in outcomes if outcome.status != "PASS"]
         if blocking:
-            raise ToolFailedError(
-                render_gate_report(
-                    blocking,
-                    "- Manufacturing package export is hard-blocked until the full "
-                    "project quality gate passes.",
-                )
+            return render_gate_report(
+                blocking,
+                "- Manufacturing package export is hard-blocked until the full "
+                "project quality gate passes.",
             )
 
         evidence = self._load_approval_evidence(approval_evidence_path)
         if isinstance(evidence, str):
-            raise ToolFailedError(
-                "\n".join(
-                    [
-                        evidence,
-                        "- Run project_signoff_report() before final release export.",
-                        "- Store reviewer approval in a project-local JSON evidence file.",
-                    ]
-                )
+            return "\n".join(
+                [
+                    evidence,
+                    "- Run project_signoff_report() before final release export.",
+                    "- Store reviewer approval in a project-local JSON evidence file.",
+                ]
             )
         evidence_path, evidence_payload = evidence
         approved_files_error = self._verify_approved_project_files(evidence_path, evidence_payload)
         if approved_files_error is not None:
-            raise ToolFailedError(
-                "\n".join(
-                    [
-                        approved_files_error,
-                        "- Manufacturing export stopped before artifact generation.",
-                        "- Obtain fresh human approval for the current project state.",
-                    ]
-                )
+            return "\n".join(
+                [
+                    approved_files_error,
+                    "- Manufacturing export stopped before artifact generation.",
+                    "- Obtain fresh human approval for the current project state.",
+                ]
             )
 
         await report_progress(25, 100, "Exporting Gerbers...")
@@ -142,11 +133,12 @@ class ExportManufacturingPackageService:
             await anyio.to_thread.run_sync(lambda: self.export_pick_and_place(variant_name))
         )
 
-        for optional_export in (self.export_ipc2581, self.export_odb):
-            try:
-                results.append(await anyio.to_thread.run_sync(optional_export, variant_name))
-            except ExportNotSupportedError:
-                pass
+        ipc_result = await anyio.to_thread.run_sync(lambda: self.export_ipc2581(variant_name))
+        if not ipc_result.startswith("IPC-2581 export is not supported"):
+            results.append(ipc_result)
+        odb_result = await anyio.to_thread.run_sync(lambda: self.export_odb(variant_name))
+        if not odb_result.startswith("ODB++ export is not supported"):
+            results.append(odb_result)
 
         report_path = self._write_handoff_report(
             variant_name=variant_name,

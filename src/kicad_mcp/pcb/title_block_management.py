@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from ..errors import ToolFailedError
 from ..models.tool_result import MutatingToolResult, TransactionVerification
 
 
@@ -44,7 +43,7 @@ class PcbTitleBlockService:
             board = self.get_board()
             set_title_block_info = getattr(board, "set_title_block_info", None)
             if not callable(set_title_block_info):
-                raise ToolFailedError(
+                return (
                     "Title block editing requires KiCad 10.0.1 or later. "
                     "The current KiCad version does not support this operation."
                 )
@@ -61,9 +60,7 @@ class PcbTitleBlockService:
             )
             fields = {name: value for name, value in ordered_values if value is not None}
             if not fields:
-                raise ToolFailedError(
-                    "No title block fields specified. Provide at least one field to update."
-                )
+                return "No title block fields specified. Provide at least one field to update."
 
             self.run_mutation(
                 "pcb_set_title_block_info",
@@ -76,4 +73,4 @@ class PcbTitleBlockService:
             )
             return transaction.to_compat_text(f"Title block updated: {updated_fields}.")
         except self.connection_errors as exc:
-            raise ToolFailedError(f"Failed to set title block info: {exc}") from exc
+            return f"Failed to set title block info: {exc}"

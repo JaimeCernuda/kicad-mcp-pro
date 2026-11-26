@@ -7,7 +7,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..errors import ToolFailedError
 from ..models.export import ExportBOMInput
 
 type GetSchFile = Callable[[], Path]
@@ -66,7 +65,7 @@ class ExportBomService:
                         f"{self.read_preview(out_file)}"
                     )
             except (OSError, ValueError, RuntimeError) as exc:
-                raise ToolFailedError(f"BOM export failed: {exc}") from exc
+                return f"BOM export failed: {exc}"
 
         variant_args = self.active_variant_args(variant_name)
         code, _stdout, stderr = self.run_cli_variants(
@@ -98,5 +97,5 @@ class ExportBomService:
             ]
         )
         if code != 0 and not out_file.exists():
-            raise ToolFailedError(f"BOM export failed: {stderr or 'unknown error'}", exit_code=code)
+            return f"BOM export failed: {stderr or 'unknown error'}"
         return f"BOM exported to {out_file}\n\n{self.read_preview(out_file)}"

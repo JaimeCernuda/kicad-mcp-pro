@@ -9,8 +9,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
-from ..errors import ToolFailedError
-
 Report = dict[str, object]
 ProjectDir = Callable[[], Path | None]
 RunDrcReport = Callable[[str], tuple[Path | None, Report | None, str | None]]
@@ -81,7 +79,7 @@ class ValidationPolicyStateService:
     def add_drc_exclusions(self, reason: str = "Reviewed — not actionable.") -> str:
         _, report, error = self.run_drc_report("drc_add_exclusion.json")
         if report is None:
-            raise ToolFailedError(f"Could not run DRC: {error or 'unknown error'}")
+            return f"Could not run DRC: {error or 'unknown error'}"
         violations = self.report_entries(report, "violations")
         if not violations:
             return "No DRC violations found — nothing to exclude."
@@ -122,7 +120,7 @@ class ValidationPolicyStateService:
         state["exclusions"] = remaining
         removed = before - len(remaining)
         if removed == 0:
-            raise ToolFailedError(f"No exclusion found with UUID '{uuid}'.")
+            return f"No exclusion found with UUID '{uuid}'."
         self._save_drc_exclusions(state)
         return f"Removed 1 DRC exclusion (UUID: {uuid})."
 
@@ -134,7 +132,7 @@ class ValidationPolicyStateService:
 
         _, report, error = self.run_drc_report("drc_validate_exclusions.json")
         if report is None:
-            raise ToolFailedError(f"Could not run DRC: {error or 'unknown error'}")
+            return f"Could not run DRC: {error or 'unknown error'}"
         active_uuids = {
             str(violation.get("uuid", ""))
             for violation in self.report_entries(report, "violations")

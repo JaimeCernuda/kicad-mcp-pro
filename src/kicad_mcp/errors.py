@@ -151,24 +151,6 @@ class ToolValidationError(KiCadMcpError, ValueError):
     retryable = False
 
 
-class ToolFailedError(KiCadMcpError):
-    """A tool could not do what it was asked; the message says why.
-
-    Every tool failure raises this (or a more specific error) instead of returning
-    text, so the MCP boundary reports ``isError`` without guessing from wording.
-    ``exit_code`` is the failing external command's status when there is one.
-    """
-
-    code = "TOOL_FAILED"
-    hint = "Read the message, change the request or project state, and retry."
-    retryable = False
-
-    def __init__(self, message: str, *, exit_code: int | None = None) -> None:
-        self.exit_code = exit_code
-        suffix = f" (exit code {exit_code})" if exit_code is not None else ""
-        super().__init__(f"{message}{suffix}")
-
-
 class ExternalToolUnavailableError(KiCadMcpError):
     """Raised when a required external executable is unavailable."""
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..errors import SchematicRoutingUnsafeError, ToolFailedError
+from ..errors import SchematicRoutingUnsafeError
 from ..models.schematic import RouteWireBetweenPinsInput
 from ..utils.schematic_router import point_on_segment, segments_merge
 from .references import power_reference_from_uuid
@@ -627,7 +627,7 @@ class SchematicConnectivityAuthoringService:
             )
 
         if not (wire_blocks or terminal_blocks):
-            raise ToolFailedError("No pin labels were added.\n" + "\n".join(results))
+            return "No pin labels were added.\n" + "\n".join(results)
 
         self.transactional_write(
             lambda current: self._insert_pin_label_blocks(current, state), target.path
@@ -675,9 +675,9 @@ class SchematicConnectivityAuthoringService:
         first = symbols.get(payload.ref1)
         second = symbols.get(payload.ref2)
         if first is None:
-            raise ToolFailedError(f"Reference '{payload.ref1}' was not found in the schematic.")
+            return f"Reference '{payload.ref1}' was not found in the schematic."
         if second is None:
-            raise ToolFailedError(f"Reference '{payload.ref2}' was not found in the schematic.")
+            return f"Reference '{payload.ref2}' was not found in the schematic."
 
         first_library, first_symbol = self.split_lib_id(str(first["lib_id"]))
         second_library, second_symbol = self.split_lib_id(str(second["lib_id"]))
@@ -700,9 +700,9 @@ class SchematicConnectivityAuthoringService:
         start = first_pins.get(payload.pin1)
         end = second_pins.get(payload.pin2)
         if start is None:
-            raise ToolFailedError(f"Pin {payload.pin1} was not found on {payload.ref1}.")
+            return f"Pin {payload.pin1} was not found on {payload.ref1}."
         if end is None:
-            raise ToolFailedError(f"Pin {payload.pin2} was not found on {payload.ref2}.")
+            return f"Pin {payload.pin2} was not found on {payload.ref2}."
 
         # The direction each wire must leave and reach its pin in.  Without this
         # the search may leave a pin sideways for free, which turns at the pin

@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from ..errors import ToolFailedError
-
 YamlLoader = Callable[[TextIO], Any]
 
 
@@ -41,7 +39,7 @@ class SchematicTemplateInstantiationService:
         yaml_file = self.templates_dir / f"{template_name}.yaml"
         if not yaml_file.exists():
             available = [path.stem for path in self.templates_dir.glob("*.yaml")]
-            raise ToolFailedError(
+            return (
                 f"Template '{template_name}' not found. Available: {', '.join(sorted(available))}"
             )
 
@@ -49,12 +47,10 @@ class SchematicTemplateInstantiationService:
             load_yaml = self.yaml_loader_factory()
             with yaml_file.open(encoding="utf-8") as stream:
                 data = load_yaml(stream)
-        except ImportError as exc:
-            raise ToolFailedError(
-                "Template tools require PyYAML. Install it to instantiate templates."
-            ) from exc
+        except ImportError:
+            return "Template tools require PyYAML. Install it to instantiate templates."
         except Exception as exc:
-            raise ToolFailedError(f"Could not parse template '{template_name}': {exc}") from exc
+            return f"Could not parse template '{template_name}': {exc}"
 
         params = params or {}
         defaults = {key: value.get("default") for key, value in data.get("parameters", {}).items()}

@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..errors import ToolFailedError
 from ..utils.sexpr import _sexpr_string
 
 NetNamesProvider = Callable[[], set[str]]
@@ -77,7 +76,7 @@ class RoutingLengthTuningService:
     ) -> str:
         board_nets = self.list_board_net_names()
         if net_name not in board_nets:
-            raise ToolFailedError(
+            return (
                 "Length-tuning rule was not written. "
                 f"Net '{net_name}' was not found on the active board."
             )
@@ -88,7 +87,7 @@ class RoutingLengthTuningService:
         try:
             path = self.write_rule(rule_name, rule_body)
         except (OSError, ValueError) as exc:
-            raise ToolFailedError(f"Length-tuning rule update failed: {exc}") from exc
+            return f"Length-tuning rule update failed: {exc}"
 
         status = "within tolerance" if abs(delta) <= tolerance_mm else "needs tuning"
         return (
@@ -108,7 +107,7 @@ class RoutingLengthTuningService:
         board_nets = self.list_board_net_names()
         missing = [name for name in (net_name_p, net_name_n) if name not in board_nets]
         if missing:
-            raise ToolFailedError(
+            return (
                 "Differential-pair length tuning rules were not written. "
                 f"Missing nets: {', '.join(missing)}"
             )
@@ -122,7 +121,7 @@ class RoutingLengthTuningService:
             try:
                 path = self.write_rule(rule_name, rule_body)
             except (OSError, ValueError) as exc:
-                raise ToolFailedError(f"Differential-pair length tuning failed: {exc}") from exc
+                return f"Differential-pair length tuning failed: {exc}"
             written_paths.append(str(path))
 
         current_p = self.current_track_length_mm(net_name_p)

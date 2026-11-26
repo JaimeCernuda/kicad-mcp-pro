@@ -2,13 +2,8 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _service_module() -> ModuleType:
@@ -47,8 +42,7 @@ def test_panelization_validates_environment_and_arguments(tmp_path: Path) -> Non
         run_command=lambda _cmd: SimpleNamespace(returncode=0, stdout="", stderr=""),
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("KiKit is not installed")):
-        service.panelize()
+    assert "KiKit is not installed" in service.panelize()
 
     service = module.PanelizationService(
         kikit_available=lambda: True,
@@ -57,17 +51,11 @@ def test_panelization_validates_environment_and_arguments(tmp_path: Path) -> Non
         resolve_output_path=lambda path_text: tmp_path / path_text,
         run_command=lambda _cmd: SimpleNamespace(returncode=0, stdout="", stderr=""),
     )
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("No PCB file is configured. Call kicad_set_project() first."),
-    ):
-        service.panelize()
+    assert service.panelize() == "No PCB file is configured. Call kicad_set_project() first."
 
     service, _calls, _pcb = _service(tmp_path)
-    with pytest.raises(ToolFailedError, match=re.escape("Invalid layout 'radial'")):
-        service.panelize(layout="radial")
-    with pytest.raises(ToolFailedError, match=re.escape("rows and cols must both be >= 1.")):
-        service.panelize(rows=0)
+    assert "Invalid layout 'radial'" in service.panelize(layout="radial")
+    assert service.panelize(rows=0) == "rows and cols must both be >= 1."
 
 
 def test_grid_dry_run_preserves_command_and_output_contract(tmp_path: Path) -> None:
@@ -107,20 +95,16 @@ def test_grid_dry_run_preserves_command_and_output_contract(tmp_path: Path) -> N
 def test_panelization_preserves_write_safety_gates(tmp_path: Path) -> None:
     service, calls, _pcb = _service(tmp_path)
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Panelization requires explicit confirmation")
-    ):
-        service.panelize(dry_run=False, confirm=False)
+    confirmation = service.panelize(dry_run=False, confirm=False)
+    assert "Panelization requires explicit confirmation" in confirmation
     assert calls == []
 
     panel_file = tmp_path / "panel" / "demo_panel_2x2.kicad_pcb"
     panel_file.parent.mkdir(parents=True, exist_ok=True)
     panel_file.write_text("(kicad_pcb)", encoding="utf-8")
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Refusing to overwrite an existing panel file")
-    ):
-        service.panelize(dry_run=False, confirm=True)
+    overwrite = service.panelize(dry_run=False, confirm=True)
+    assert "Refusing to overwrite an existing panel file" in overwrite
     assert calls == []
 
 
@@ -139,8 +123,9 @@ def test_panelization_preserves_os_execution_failure(tmp_path: Path) -> None:
         resolve_output_path=lambda path_text: tmp_path / path_text,
         run_command=fail,
     )
-    with pytest.raises(ToolFailedError, match=re.escape("Failed to run KiKit: runner unavailable")):
-        service.panelize(dry_run=False, confirm=True)
+    assert service.panelize(dry_run=False, confirm=True) == (
+        "Failed to run KiKit: runner unavailable"
+    )
 
 
 def test_panelization_executes_variants_and_preserves_failures(tmp_path: Path) -> None:
@@ -166,10 +151,10 @@ def test_panelization_executes_variants_and_preserves_failures(tmp_path: Path) -
         resolve_output_path=lambda path_text: tmp_path / path_text,
         run_command=lambda _cmd: SimpleNamespace(returncode=2, stdout="", stderr="bad panel"),
     )
-    with pytest.raises(
-        ToolFailedError, match=re.escape("KiKit panelization failed (exit 2):\nbad panel")
-    ):
+    assert (
         failing.panelize(dry_run=False, confirm=True)
+        == "KiKit panelization failed (exit 2):\nbad panel"
+    )
 
     def timeout(_cmd: list[str]):  # type: ignore[no-untyped-def]
         raise module.PanelizationTimeoutError
@@ -181,7 +166,6 @@ def test_panelization_executes_variants_and_preserves_failures(tmp_path: Path) -
         resolve_output_path=lambda path_text: tmp_path / path_text,
         run_command=timeout,
     )
-    with pytest.raises(
-        ToolFailedError, match=re.escape("KiKit panelization timed out after 120 seconds.")
-    ):
-        timed.panelize(dry_run=False, confirm=True)
+    assert timed.panelize(dry_run=False, confirm=True) == (
+        "KiKit panelization timed out after 120 seconds."
+    )

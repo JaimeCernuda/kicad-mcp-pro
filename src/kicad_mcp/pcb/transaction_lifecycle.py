@@ -9,7 +9,6 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from ..errors import ToolFailedError
 from ..ipc.command_queue import AmbiguousMutationError
 from .live_edit_evidence import (
     LiveBoardIdentity,
@@ -256,9 +255,9 @@ class PcbTransactionLifecycleService:
         """Begin one atomic transaction group when supported by KiCad."""
         with self._lock:
             if self._recovery_required:
-                raise ToolFailedError(_AMBIGUOUS_TRANSACTION_MESSAGE)
+                return _AMBIGUOUS_TRANSACTION_MESSAGE
             if self._commit_handle is not None:
-                raise ToolFailedError(
+                return (
                     "A transaction group is already active. Commit or discard it before starting "
                     "another."
                 )
@@ -267,7 +266,7 @@ class PcbTransactionLifecycleService:
                 command = getattr(board, "begin_commit", None)
                 if not callable(command):
                     self._transaction_supported = False
-                    raise ToolFailedError(
+                    return (
                         "Transaction grouping is not supported by the current KiCad IPC version. "
                         "Mutations will be applied individually without atomic grouping."
                     )
@@ -284,7 +283,7 @@ class PcbTransactionLifecycleService:
                     raise
                 if commit_handle is None:
                     self._transaction_supported = False
-                    raise ToolFailedError(
+                    return (
                         "Transaction grouping is not supported by the current KiCad IPC version. "
                         "Mutations will be applied individually without atomic grouping."
                     )
@@ -301,7 +300,7 @@ class PcbTransactionLifecycleService:
                     "pcb_drop_commit to discard."
                 )
             except self.connection_errors as exc:
-                raise ToolFailedError(f"Failed to begin transaction: {exc}") from exc
+                return f"Failed to begin transaction: {exc}"
 
     def _mark_published_verification_failure(
         self,
@@ -363,13 +362,13 @@ class PcbTransactionLifecycleService:
         """Publish one native undo unit, then re-read every staged mutation before success."""
         with self._lock:
             if self._recovery_required:
-                raise ToolFailedError(_AMBIGUOUS_TRANSACTION_MESSAGE)
+                return _AMBIGUOUS_TRANSACTION_MESSAGE
             try:
                 if self._commit_handle is not None:
                     self._assert_connection_epoch()
                 board = self.get_board()
                 if self._commit_handle is None:
-                    raise ToolFailedError("No active transaction group to commit.")
+                    return "No active transaction group to commit."
                 self._assert_connection_epoch()
                 self._assert_same_board(board)
                 if any(receipt.recovery_required for receipt in self._receipts):
@@ -378,7 +377,7 @@ class PcbTransactionLifecycleService:
                     )
                 command = getattr(board, "push_commit", None)
                 if not callable(command):
-                    raise ToolFailedError("No active transaction group to commit.")
+                    return "No active transaction group to commit."
                 commit_handle = self._commit_handle
                 try:
                     self.run_mutation(
@@ -406,26 +405,26 @@ class PcbTransactionLifecycleService:
                 self._clear_active()
                 return "Transaction group committed successfully."
             except self.connection_errors as exc:
-                raise ToolFailedError(f"Failed to commit transaction: {exc}") from exc
+                return f"Failed to commit transaction: {exc}"
 
     def drop(self) -> str:
         """Discard the active transaction and prove the pre-operation state was restored."""
         with self._lock:
             if self._recovery_required:
-                raise ToolFailedError(_AMBIGUOUS_TRANSACTION_MESSAGE)
+                return _AMBIGUOUS_TRANSACTION_MESSAGE
             try:
                 if self._commit_handle is not None:
                     self._assert_connection_epoch()
                 board = self.get_board()
                 if self._commit_handle is None:
-                    raise ToolFailedError("No active transaction group to discard.")
+                    return "No active transaction group to discard."
                 self._assert_connection_epoch()
                 self._assert_same_board(board)
                 if self._pre_state_digest is None:
                     raise RuntimeError("Transaction pre-operation state is unavailable.")
                 command = getattr(board, "drop_commit", None)
                 if not callable(command):
-                    raise ToolFailedError("No active transaction group to discard.")
+                    return "No active transaction group to discard."
                 commit_handle = self._commit_handle
                 try:
                     self.run_mutation("pcb_drop_commit", lambda: command(commit_handle))
@@ -449,7 +448,7 @@ class PcbTransactionLifecycleService:
                 self._clear_active()
                 return "Transaction group discarded successfully."
             except self.connection_errors as exc:
-                raise ToolFailedError(f"Failed to discard transaction: {exc}") from exc
+                return f"Failed to discard transaction: {exc}"
 
     def _abort_after_mutation_failure(
         self,
@@ -615,12 +614,12 @@ class PcbTransactionLifecycleService:
         """Revert the board to its last saved state when supported by KiCad."""
         with self._lock:
             if self._recovery_required:
-                raise ToolFailedError(_AMBIGUOUS_TRANSACTION_MESSAGE)
+                return _AMBIGUOUS_TRANSACTION_MESSAGE
             try:
                 board = self.get_board()
                 command = getattr(board, "revert", None)
                 if not callable(command):
-                    raise ToolFailedError(
+                    return (
                         "Revert is not supported by the current KiCad IPC version. "
                         "Please save and reload the board manually."
                     )
@@ -629,4 +628,4 @@ class PcbTransactionLifecycleService:
                     "Board reverted to last saved state. All unsaved changes have been discarded."
                 )
             except self.connection_errors as exc:
-                raise ToolFailedError(f"Failed to revert board: {exc}") from exc
+                return f"Failed to revert board: {exc}"

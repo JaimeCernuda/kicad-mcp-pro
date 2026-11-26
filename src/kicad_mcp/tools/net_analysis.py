@@ -13,7 +13,6 @@ from typing import Any, cast
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..connection import KiCadConnectionError, get_board
-from ..errors import ToolFailedError
 from ..pcb.board_access import (
     BoardAccessError,
     board_footprints,
@@ -200,9 +199,7 @@ def register(mcp: FastMCP) -> None:
         matches = [n for n in nets if n.get("name", "") == net_name]
         if not matches:
             available = ", ".join(sorted({n.get("name", "") for n in nets[:100]}))
-            raise ToolFailedError(
-                f"Net '{net_name}' was not found in the PCB. Sample nets: {available}"
-            )
+            return f"Net '{net_name}' was not found in the PCB. Sample nets: {available}"
 
         net = matches[0]
         net_code = net.get("code")

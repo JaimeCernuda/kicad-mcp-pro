@@ -7,7 +7,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..errors import ToolFailedError
 from ..utils.sexpr import _sexpr_string
 
 NetNamesProvider = Callable[[], set[str]]
@@ -88,7 +87,7 @@ class RoutingDifferentialPairService:
         board_nets = self.list_board_net_names()
         missing = [name for name in (net_p, net_n) if name not in board_nets]
         if missing:
-            raise ToolFailedError(
+            return (
                 "Differential-pair routing rule was not written. "
                 f"Missing nets: {', '.join(missing)}"
             )
@@ -98,7 +97,7 @@ class RoutingDifferentialPairService:
         try:
             path = self.write_rule(rule_name, rule_body)
         except (OSError, ValueError) as exc:
-            raise ToolFailedError(f"Differential-pair rule update failed: {exc}") from exc
+            return f"Differential-pair rule update failed: {exc}"
         return (
             f"Differential-pair routing rule '{rule_name}' written to {path}.\n"
             f"Layer intent: {layer}, width: {_mm(width_mm)}, gap: {_mm(gap_mm)}, "

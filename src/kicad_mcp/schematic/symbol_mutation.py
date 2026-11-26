@@ -6,8 +6,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from ..errors import ToolFailedError
-
 type SymbolMatch = tuple[str, int, int, Mapping[str, Any]]
 type UpdateSymbolProperty = Callable[[str, str, str], str]
 type SetSymbolDnp = Callable[[str, bool, str | None], str]
@@ -89,7 +87,7 @@ class SchematicSymbolMutationService:
         try:
             self.transactional_write(mutator)
         except ValueError as exc:
-            raise ToolFailedError(str(exc)) from exc
+            return str(exc)
 
         result = self.reload_schematic()
         lines = [

@@ -1,32 +1,42 @@
-"""IPC failures must never masquerade as PCB design results."""
+"""IPC failures must never masquerade as PCB design-validation failures."""
 
 from __future__ import annotations
 
 import pytest
 
-from kicad_mcp.errors import IpcDisconnectedError, KiCadBoardNotOpenError, ToolFailedError
+from kicad_mcp.errors import IpcDisconnectedError, KiCadBoardNotOpenError
 from kicad_mcp.tools import pcb
 
 
 @pytest.mark.parametrize(
-    "error",
+    ("error", "failure_mode", "retryable"),
     [
-        IpcDisconnectedError("Disconnected stale KiCad IPC endpoint"),
-        KiCadBoardNotOpenError("No board open"),
+        (IpcDisconnectedError("Disconnected stale KiCad IPC endpoint"), "environment", True),
+        (KiCadBoardNotOpenError("No board open"), "configuration", False),
     ],
 )
-def test_board_summary_without_a_board_fails_with_its_diagnostics(
+def test_board_summary_unavailable_reports_setup_not_pcb_design(
     monkeypatch: pytest.MonkeyPatch,
     error: Exception,
+    failure_mode: str,
+    retryable: bool,
 ) -> None:
     monkeypatch.setattr(pcb, "_configured_board_file", lambda: None)
+    report = pcb._file_backed_board_summary(error)
 
-    with pytest.raises(ToolFailedError) as exc_info:
-        pcb._file_backed_board_summary(error)
-
-    text = str(exc_info.value)
-    assert "no configured .kicad_pcb file" in text
-    assert "0 footprint" not in text
+    assert report.verdict == "FAIL"
+    assert report.summary.startswith("Board summary unavailable")
+    assert "0 footprint" not in report.summary
+    assert report.failure_mode == failure_mode
+    assert report.retryable is retryable
+    assert report.findings[0].failure_mode == failure_mode
+    assert report.findings[0].retryable is retryable
+    assert report.findings[0].suggested_fix is None
+    assert "kicad_set_project(project_dir=" in report.remediation
+    assert "no configured .kicad_pcb file" in report.text
+    assert report.metadata == {"source": "file-backed", "available": False}
+    assert "footprints" not in report.metadata
+    assert "nets" not in report.metadata
 
 
 def test_file_backed_summary_reports_source_and_environment_warning(

@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from ..errors import ToolFailedError
-
 
 class ResolveOutputFile(Protocol):
     def __call__(self, subdir: str, raw_name: str, *, default_name: str) -> Path: ...
@@ -114,21 +112,23 @@ class ExportPcb3dRenderService:
         options = options or Pcb3dRenderOptions()
         pcb_file = self.get_pcb_file()
         if not self.is_supported():
-            raise ToolFailedError("3D render export is not supported by the detected KiCad CLI.")
+            return Pcb3dRenderResponse(
+                text="3D render export is not supported by the detected KiCad CLI."
+            )
 
         try:
             out_file = self.resolve_output_file(
                 "3d", options.output_file, default_name="render.png"
             )
         except ValueError as exc:
-            raise ToolFailedError(f"Invalid output path: {exc}") from exc
+            return Pcb3dRenderResponse(text=f"Invalid output path: {exc}")
 
         args = _render_args(options, out_file)
         args.extend(self.active_variant_args())
         args.append(str(pcb_file))
         code, _, stderr = self.run_cli_variants([args])
         if code != 0:
-            raise ToolFailedError(f"3D render failed: {stderr or 'unknown error'}", exit_code=code)
+            return Pcb3dRenderResponse(text=f"3D render failed: {stderr or 'unknown error'}")
         if not out_file.exists():
             return Pcb3dRenderResponse(text=f"Rendered board image exported to {out_file}")
 

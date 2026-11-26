@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..errors import ToolFailedError
 from ..utils.impedance import (
     TraceType,
     propagation_delay_ps_per_mm,
@@ -153,7 +152,7 @@ class RoutingTimeDomainTuningService:
         layer: str | None = None,
     ) -> str:
         if any(char in net_or_group for char in "*?"):
-            raise ToolFailedError(_WILDCARD_UNSUPPORTED)
+            return _WILDCARD_UNSUPPORTED
 
         profiles = load_tuning_profiles(self.get_project_dir())
         speed_factor, impedance_ohm = _resolve_layer_profile_settings(profiles, layer)
@@ -178,7 +177,7 @@ class RoutingTimeDomainTuningService:
         try:
             path = self.write_rule(rule_name, rule_body)
         except (OSError, ValueError) as exc:
-            raise ToolFailedError(f"Time-domain tuning rule update failed: {exc}") from exc
+            return f"Time-domain tuning rule update failed: {exc}"
 
         lines = [
             f"Time-domain tuning rule '{rule_name}' written to {path}.",

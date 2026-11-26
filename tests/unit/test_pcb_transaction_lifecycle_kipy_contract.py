@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from inspect import signature
 
-import pytest
 from kipy.board import Board
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.pcb.transaction_lifecycle import PcbTransactionLifecycleService
 
 
@@ -87,11 +84,7 @@ def test_second_begin_is_rejected_while_commit_is_active() -> None:
     service = _service(board)
 
     assert service.begin().startswith("Transaction group started.")
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape(
-            "A transaction group is already active. Commit or discard it before starting another."
-        ),
-    ):
-        service.begin()
+    assert service.begin() == (
+        "A transaction group is already active. Commit or discard it before starting another."
+    )
     assert board.calls == [("begin",)]

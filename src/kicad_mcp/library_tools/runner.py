@@ -12,7 +12,6 @@ check.
 from __future__ import annotations
 
 import json
-import os
 import re
 import secrets
 import shutil
@@ -179,7 +178,7 @@ def generate_custom(tools: Installed, script: str) -> Generated:
     env = {
         "KICAD_MCP_FOOTPRINT_DIR": str(out / "fp"),
         "KICAD_MCP_MODEL_DIR": str(out / "3d"),
-        "PYTHONPATH": os.pathsep.join([str(tools.root / "src"), str(tools.root)]),
+        "PYTHONPATH": f"{tools.root / 'src'}:{tools.root}",
     }
     code, text = _run([str(tools.python), str(path)], cwd=out, timeout=_GENERATE_TIMEOUT_S, env=env)
     result = _collect(out)
@@ -394,6 +393,8 @@ def check_record(result: CheckResult, datasheet: str, tolerance_mm: float) -> di
 def _run(
     argv: list[str], *, cwd: Path, timeout: int, env: dict[str, str] | None = None
 ) -> tuple[int, str]:
+    import os  # noqa: PLC0415
+
     full_env = {**os.environ, **(env or {})}
     try:
         result = subprocess.run(  # noqa: S603  # nosec B603

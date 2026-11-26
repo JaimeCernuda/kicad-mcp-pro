@@ -16,7 +16,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, cast
 
-from ..errors import ToolFailedError
 from .evidence_edit_bridge import (
     EvidenceImpactSnapshot,
     compile_evidence_impact,
@@ -191,28 +190,34 @@ class ProjectEditImpactService:
             )
         return render_evidence_impact(compile_evidence_impact(self.evidence_snapshot()))
 
-    def _resolve_baseline(self, baseline_spec_json: str) -> dict[str, Any]:
+    def _resolve_baseline(self, baseline_spec_json: str) -> tuple[dict[str, Any] | None, str]:
         if not baseline_spec_json.strip():
-            return self.load_baseline()
+            return self.load_baseline(), ""
         try:
             baseline = json.loads(baseline_spec_json)
         except json.JSONDecodeError as exc:
-            raise ToolFailedError(f"Invalid baseline_spec_json: {exc}") from exc
+            return None, f"Invalid baseline_spec_json: {exc}"
         if not isinstance(baseline, dict):
-            raise ToolFailedError("baseline_spec_json must be a JSON object (a design spec).")
-        return cast(dict[str, Any], baseline)
+            return None, "baseline_spec_json must be a JSON object (a design spec)."
+        return baseline, ""
 
-    def _infer(self) -> dict[str, Any]:
+    def _infer(self) -> tuple[dict[str, Any] | None, str]:
         try:
-            return self.infer_current()
+            return self.infer_current(), ""
         except Exception as exc:
             if not isinstance(exc, self.inference_error_types):
                 raise
-            raise ToolFailedError(f"Could not infer the current board intent: {exc}") from exc
+            return None, f"Could not infer the current board intent: {exc}"
 
     def assess(self, baseline_spec_json: str = "") -> str:
-        baseline_value = self._resolve_baseline(baseline_spec_json)
-        current_value = self._infer()
+        baseline, error = self._resolve_baseline(baseline_spec_json)
+        if error:
+            return error
+        current, error = self._infer()
+        if error:
+            return error
+        baseline_value = cast(dict[str, Any], baseline)
+        current_value = cast(dict[str, Any], current)
         changes = semantic_intent_diff(baseline_value, current_value)
         return render_impact_report(impact_of_changes(changes)) + "\n\n" + self._evidence_summary()
 
@@ -222,8 +227,14 @@ class ProjectEditImpactService:
         manufacturer: str = "",
         tier: str = "",
     ) -> str:
-        baseline_value = self._resolve_baseline(baseline_spec_json)
-        current_value = self._infer()
+        baseline, error = self._resolve_baseline(baseline_spec_json)
+        if error:
+            return error
+        current, error = self._infer()
+        if error:
+            return error
+        baseline_value = cast(dict[str, Any], baseline)
+        current_value = cast(dict[str, Any], current)
 
         changes = semantic_intent_diff(baseline_value, current_value)
         report = impact_of_changes(changes)

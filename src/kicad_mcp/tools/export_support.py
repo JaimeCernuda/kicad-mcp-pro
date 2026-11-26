@@ -111,13 +111,8 @@ def _is_transient_cli_failure(stderr: str) -> bool:
 
 
 def _run_cli_variants(variants: list[list[str]]) -> tuple[int, str, str]:
-    """Try multiple command variants and return the first success.
-
-    When every variant fails, the result carries each attempt's command, exit code and
-    output in the order tried, with the first attempt's exit code, so the error that
-    explains the failure is not replaced by a later spelling's usage error.
-    """
-    failures: list[tuple[list[str], tuple[int, str, str]]] = []
+    """Try multiple command variants and return the first success."""
+    last_result = (1, "", "No CLI variants were attempted.")
     for variant in variants:
         try:
             result = _run_cli(*variant)
@@ -127,17 +122,8 @@ def _run_cli_variants(variants: list[list[str]]) -> tuple[int, str, str]:
             result = (124, "", "The kicad-cli command timed out.")
         if result[0] == 0:
             return result
-        failures.append((variant, result))
-    if not failures:
-        return (1, "", "No CLI variants were attempted.")
-    if len(failures) == 1:
-        return failures[0][1]
-    attempts = [
-        f"kicad-cli {' '.join(variant)} -> exit code {code}: "
-        f"{(stderr.strip() or stdout.strip() or '(no output)')}"
-        for variant, (code, stdout, stderr) in failures
-    ]
-    return (failures[0][1][0], "", "\n".join(attempts))
+        last_result = result
+    return last_result
 
 
 def _get_pcb_file() -> Path:

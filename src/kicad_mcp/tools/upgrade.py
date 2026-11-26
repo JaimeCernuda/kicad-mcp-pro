@@ -11,7 +11,6 @@ from pathlib import Path
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
-from ..errors import ToolFailedError
 from .export_support import _run_cli
 from .metadata import headless_compatible
 
@@ -21,11 +20,11 @@ def _resolve_upgrade_paths(
     output_file: str,
     configured_file: Path | None,
     file_type: str,
-) -> tuple[Path, str]:
+) -> tuple[Path, str] | str:
     cfg = get_config()
     if not input_file:
         if configured_file is None:
-            raise ToolFailedError(
+            return (
                 f"No input file provided and no {file_type} configured. "
                 "Provide an input_file path or call kicad_set_project() first."
             )
@@ -71,7 +70,10 @@ def _perform_upgrade(
     force: bool,
     dry_run: bool,
 ) -> str:
-    in_path, out_path = _resolve_upgrade_paths(input_file, output_file, default_file, kind_label)
+    resolved = _resolve_upgrade_paths(input_file, output_file, default_file, kind_label)
+    if isinstance(resolved, str):
+        return resolved
+    in_path, out_path = resolved
 
     if dry_run:
         return (
@@ -87,9 +89,7 @@ def _perform_upgrade(
 
     code, stdout, stderr = _run_cli(*cmd)
     if code != 0:
-        raise ToolFailedError(
-            f"{name_label} upgrade failed: {stderr or stdout or 'unknown error'}", exit_code=code
-        )
+        return f"{name_label} upgrade failed: {stderr or stdout or 'unknown error'}"
     return f"{name_label} upgraded and saved to {out_path}"
 
 

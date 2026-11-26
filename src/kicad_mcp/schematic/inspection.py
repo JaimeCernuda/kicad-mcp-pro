@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..errors import ToolFailedError
-
 type SchematicData = Mapping[str, Any]
 type ParseSchematic = Callable[[Path], SchematicData]
 type WithDiagnostics = Callable[[str, Path], str]
@@ -123,7 +121,7 @@ class SchematicInspectionService:
         available_units = self.symbol_available_units(library, symbol_name)
         if available_units and unit not in available_units:
             units = ", ".join(str(value) for value in sorted(available_units))
-            raise ToolFailedError(
+            return (
                 f"{library}:{symbol_name} does not support unit {unit}. Available units: {units}."
             )
 
@@ -136,7 +134,7 @@ class SchematicInspectionService:
             unit,
         )
         if not positions:
-            raise ToolFailedError(f"Could not calculate pin positions for {library}:{symbol_name}.")
+            return f"Could not calculate pin positions for {library}:{symbol_name}."
         lines = [f"{library}:{symbol_name} @ ({x_mm}, {y_mm}) rot={rotation} unit={unit}:"]
         for pin, coordinates in sorted(positions.items()):
             lines.append(f"- Pin {pin}: ({coordinates[0]:.4f}, {coordinates[1]:.4f}) mm")

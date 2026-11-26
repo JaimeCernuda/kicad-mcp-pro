@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TextIO
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.template_instantiation import (
     SchematicTemplateInstantiationService,
 )
@@ -44,10 +40,9 @@ def test_instantiate_reports_missing_name_with_sorted_available_files(tmp_path: 
         loaded = True
         raise AssertionError("loader must not be requested")
 
-    with pytest.raises(ToolFailedError) as exc:
-        _service(templates, loader_factory=factory).instantiate("missing", prefix=" TEST ")
+    result = _service(templates, loader_factory=factory).instantiate("missing", prefix=" TEST ")
 
-    assert str(exc.value) == "Template 'missing' not found. Available: alpha, zeta"
+    assert result == "Template 'missing' not found. Available: alpha, zeta"
     assert loaded is False
 
 
@@ -62,15 +57,12 @@ def test_instantiate_preserves_pyyaml_and_parse_errors(tmp_path: Path) -> None:
     def bad_load(_stream: TextIO) -> object:
         raise ValueError("invalid mapping")
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Template tools require PyYAML. Install it to instantiate templates."),
-    ):
-        _service(templates, loader_factory=missing_factory).instantiate("demo")
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Could not parse template 'demo': invalid mapping")
-    ):
-        _service(templates, loader_factory=lambda: bad_load).instantiate("demo")
+    assert _service(templates, loader_factory=missing_factory).instantiate("demo") == (
+        "Template tools require PyYAML. Install it to instantiate templates."
+    )
+    assert _service(templates, loader_factory=lambda: bad_load).instantiate("demo") == (
+        "Could not parse template 'demo': invalid mapping"
+    )
 
 
 def test_instantiate_renders_exact_action_plan_with_overrides(tmp_path: Path) -> None:

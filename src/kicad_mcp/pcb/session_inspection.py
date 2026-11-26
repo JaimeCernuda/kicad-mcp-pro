@@ -8,7 +8,7 @@ from typing import Protocol, cast
 
 type LoadedBoard = tuple[object, str, list[str]]
 type GetBoard = Callable[[], object]
-type LoadFileBackedBoard = Callable[[BaseException], LoadedBoard]
+type LoadFileBackedBoard = Callable[[BaseException], LoadedBoard | str]
 type FormatSelectionId = Callable[[object], str]
 type GetMaxTextResponseChars = Callable[[], int]
 type ConnectionErrors = tuple[type[Exception], ...]
@@ -38,7 +38,10 @@ class PcbSessionInspectionService:
             board = cast(SessionBoard, self.get_board())
             items = list(board.get_selection())
         except self.connection_errors as exc:
-            _, _, diagnostics = self.load_file_backed_board(exc)
+            loaded = self.load_file_backed_board(exc)
+            if isinstance(loaded, str):
+                return loaded
+            _, _, diagnostics = loaded
             return "\n".join(
                 [
                     "No PCB items are selected in the file-backed fallback.",
@@ -59,7 +62,10 @@ class PcbSessionInspectionService:
             board = cast(SessionBoard, self.get_board())
             data = board.get_as_string()
         except self.connection_errors as exc:
-            _, data, diagnostics = self.load_file_backed_board(exc)
+            loaded = self.load_file_backed_board(exc)
+            if isinstance(loaded, str):
+                return loaded
+            _, data, diagnostics = loaded
         limit = self.get_max_text_response_chars()
         if len(data) > limit:
             data = f"{data[:limit]}\n... [truncated]"

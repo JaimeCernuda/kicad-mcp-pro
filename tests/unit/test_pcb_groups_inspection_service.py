@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import re
 from types import SimpleNamespace
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.pcb.groups_inspection import PcbGroupsInspectionService
 
 
@@ -47,14 +45,10 @@ def test_groups_listing_preserves_empty_and_unsupported_messages() -> None:
     assert _service(SimpleNamespace(get_groups=no_groups)).get_groups() == (
         "No groups are present on the active board."
     )
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape(
-            "Group support requires KiCad 10.0.0 or later. "
-            "The current KiCad version does not support board groups."
-        ),
-    ):
-        _service(SimpleNamespace()).get_groups()
+    assert _service(SimpleNamespace()).get_groups() == (
+        "Group support requires KiCad 10.0.0 or later. "
+        "The current KiCad version does not support board groups."
+    )
 
 
 def test_groups_connection_error_preserves_legacy_message() -> None:
@@ -66,8 +60,7 @@ def test_groups_connection_error_preserves_legacy_message() -> None:
         connection_errors=(FakeConnectionError, OSError),
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("Failed to get groups: offline")):
-        service.get_groups()
+    assert service.get_groups() == "Failed to get groups: offline"
 
 
 def test_unexpected_groups_errors_are_not_hidden() -> None:

@@ -306,7 +306,7 @@
         },
         "manufacturing": {
           "availableCount": 0,
-          "blockedCount": 22,
+          "blockedCount": 23,
           "canarySurfaces": [
             "read",
             "write",
@@ -320,9 +320,9 @@
             "local-filesystem"
           ],
           "selectedBackends": {
-            "unavailable": 22
+            "unavailable": 23
           },
-          "toolCount": 22
+          "toolCount": 23
         },
         "pcb_read": {
           "availableCount": 26,
@@ -648,7 +648,7 @@
           "toolCount": 37
         },
         "manufacturing": {
-          "availableCount": 22,
+          "availableCount": 23,
           "blockedCount": 0,
           "canarySurfaces": [
             "read",
@@ -663,9 +663,9 @@
             "local-filesystem"
           ],
           "selectedBackends": {
-            "kicad-cli": 22
+            "kicad-cli": 23
           },
-          "toolCount": 22
+          "toolCount": 23
         },
         "pcb_read": {
           "availableCount": 27,
@@ -991,7 +991,7 @@
           "toolCount": 37
         },
         "manufacturing": {
-          "availableCount": 22,
+          "availableCount": 23,
           "blockedCount": 0,
           "canarySurfaces": [
             "read",
@@ -1006,9 +1006,9 @@
             "local-filesystem"
           ],
           "selectedBackends": {
-            "kicad-cli": 22
+            "kicad-cli": 23
           },
-          "toolCount": 22
+          "toolCount": 23
         },
         "pcb_read": {
           "availableCount": 27,
@@ -1266,7 +1266,7 @@
     "previewBaseline": "11.x",
     "publicSupportClaim": "KiCad 11 remains preview until native canaries pass.",
     "stableBaseline": "10.0.x",
-    "toolCount": 413
+    "toolCount": 414
   },
   "tools": [
     {
@@ -2683,6 +2683,30 @@
       "runtime": "kicad_cli",
       "tier": "export",
       "tool": "fp_export_svg",
+      "writesFiles": true
+    },
+    {
+      "category": "manufacturing",
+      "routes": {
+        "degradedNoKiCad": {
+          "available": false,
+          "backend": "unavailable",
+          "mutationGuard": "isolated-output-and-source-preservation"
+        },
+        "kicad10Gui": {
+          "available": true,
+          "backend": "kicad-cli",
+          "mutationGuard": "isolated-output-and-source-preservation"
+        },
+        "kicad11Headless": {
+          "available": true,
+          "backend": "kicad-cli",
+          "mutationGuard": "isolated-output-and-source-preservation"
+        }
+      },
+      "runtime": "kicad_cli",
+      "tier": "write",
+      "tool": "fp_get_info",
       "writesFiles": true
     },
     {

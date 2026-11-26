@@ -4,9 +4,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.semantic_ir import SchematicSemanticIRService
 
 
@@ -53,10 +50,7 @@ def test_get_summary_logs_and_wraps_parse_failures(tmp_path: Path) -> None:
         warn_parse_failure=lambda exc: warnings.append(str(exc)),
     )
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.get_summary()
-
-    assert str(exc.value) == "diagnostic: Could not parse IR: broken IR"
+    assert service.get_summary() == "diagnostic: Could not parse IR: broken IR"
     assert warnings == ["broken IR"]
     assert diagnostics == [("Could not parse IR: broken IR", schematic)]
 

@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _service_type() -> type[Any]:
@@ -196,8 +193,7 @@ def test_csv_multi_schematic_preserves_consolidation_failure_messages(
         rows_error=error,
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape(f"BOM export failed: {error}")):
-        service.export()
+    assert service.export() == f"BOM export failed: {error}"
     assert cli.calls == []
     assert variant_args.calls == []
     assert preview_calls == []
@@ -207,8 +203,7 @@ def test_cli_failure_only_fails_when_output_file_is_absent(tmp_path: Path) -> No
     service, _out_dir, _sch, _cli, _variant_args, _preview_calls = _service(
         tmp_path, cli_result=(2, "", "cli failed")
     )
-    with pytest.raises(ToolFailedError, match=re.escape("BOM export failed: cli failed")):
-        service.export()
+    assert service.export() == "BOM export failed: cli failed"
 
     service, out_dir, _sch, _cli, _variant_args, _preview_calls = _service(
         tmp_path, cli_result=(2, "", "cli failed")

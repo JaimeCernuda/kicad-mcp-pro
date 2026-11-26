@@ -22,7 +22,6 @@ from pydantic import BaseModel, Field
 from .. import __version__
 from ..config import get_config
 from ..discovery import get_cli_capabilities
-from ..errors import ToolFailedError
 from ..models.component_contracts import find_component_contract
 from ..models.verdict import Finding, SuggestedFix, Verdict, VerdictReport, stable_finding_id
 from ..path_safety import resolve_under
@@ -643,13 +642,6 @@ def _drc_report_payload(
             "report_status": report_status,
         },
     )
-
-
-def _produced(payload: VerdictReport) -> VerdictReport:
-    """The check's report, or its failure when kicad-cli produced no readable report."""
-    if payload.metadata.get("available") is False:
-        raise ToolFailedError(payload.text)
-    return payload
 
 
 def _erc_report_payload(
@@ -4324,7 +4316,7 @@ def _register_drc_rule_toggle_export_tools(mcp: FastMCP) -> None:
         root, version = parse_dru(_load_rules_content(path))
         rule = find_rule(root, rule_name)
         if rule is None:
-            raise ToolFailedError(f"Custom DRC rule '{rule_name}' was not found.")
+            return f"Custom DRC rule '{rule_name}' was not found."
 
         state = _load_drc_state()
         severity_map = cast(dict[str, str], state.setdefault("severity", {}))
@@ -4453,7 +4445,7 @@ def _register_schematic_gate_tools(mcp: FastMCP) -> None:
     def run_erc(save_report: bool = False) -> VerdictReport:
         """Run schematic electrical rule checks."""
         path, report, error = _run_erc_report("erc_report.json")
-        return _produced(_erc_report_payload(path, report, error, save_report=save_report))
+        return _erc_report_payload(path, report, error, save_report=save_report)
 
     @mcp.tool()
     @headless_compatible
@@ -4486,7 +4478,7 @@ def _register_pcb_gate_tools(mcp: FastMCP) -> None:
     def run_drc(save_report: bool = False) -> VerdictReport:
         """Return full DRC report with PCB violations, unconnected items, and courtyard issues."""
         path, report, error = _run_drc_report("drc_report.json")
-        return _produced(_drc_report_payload(path, report, error, save_report=save_report))
+        return _drc_report_payload(path, report, error, save_report=save_report)
 
     @mcp.tool()
     @headless_compatible
@@ -4666,7 +4658,7 @@ def _register_targeted_drc_read_tools(mcp: FastMCP) -> None:
         """Return only unconnected DRC issues for focused follow-up after run_drc."""
         _, report, error = _run_drc_report("unconnected.json")
         if report is None:
-            raise ToolFailedError(f"Unable to compute unconnected nets: {error or 'unknown error'}")
+            return f"Unable to compute unconnected nets: {error or 'unknown error'}"
 
         entries = _entries(report, "unconnected_items")
         if not entries:
@@ -4679,7 +4671,7 @@ def _register_targeted_drc_read_tools(mcp: FastMCP) -> None:
         """Return only courtyard DRC issues for focused follow-up after run_drc."""
         _, report, error = _run_drc_report("courtyard.json")
         if report is None:
-            raise ToolFailedError(f"Unable to compute courtyard issues: {error or 'unknown error'}")
+            return f"Unable to compute courtyard issues: {error or 'unknown error'}"
 
         entries = courtyard_violations(report)
         if not entries:
@@ -4696,9 +4688,7 @@ def _register_targeted_other_tools(mcp: FastMCP) -> None:
         """Return silkscreen overlap issues from DRC."""
         _, report, error = _run_drc_report("silk_to_pad.json")
         if report is None:
-            raise ToolFailedError(
-                f"Unable to compute silk-to-pad issues: {error or 'unknown error'}"
-            )
+            return f"Unable to compute silk-to-pad issues: {error or 'unknown error'}"
 
         entries = [
             entry

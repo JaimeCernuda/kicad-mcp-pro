@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from typing import Any
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.symbol_mutation import SchematicSymbolMutationService
 
 
@@ -147,10 +143,9 @@ def test_move_symbol_preserves_missing_reference_as_result_without_reload() -> N
     transaction = _TransactionRecorder()
     service = _service(events=events, transaction=transaction, match=None)
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Reference 'R404' was not found in the schematic.")
-    ):
-        service.move_symbol("R404", 1.0, 2.0, True)
+    assert service.move_symbol("R404", 1.0, 2.0, True) == (
+        "Reference 'R404' was not found in the schematic."
+    )
     assert transaction.calls == [False]
     assert transaction.updated is None
     assert ("reload", ()) not in events

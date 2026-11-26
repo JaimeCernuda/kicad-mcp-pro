@@ -2,14 +2,9 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _service_module():  # type: ignore[no-untyped-def]
@@ -145,16 +140,12 @@ def test_pick_and_place_passes_a_file_path_to_output(tmp_path: Path) -> None:
 
 def test_pick_and_place_preserves_failure_text_and_ignores_stdout(tmp_path: Path) -> None:
     stderr_service, _ = _service(tmp_path, cli_result=(2, "stdout detail", "stderr detail"))
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Pick and place export failed: stderr detail")
-    ):
-        stderr_service.export_pick_and_place()
+    assert stderr_service.export_pick_and_place() == "Pick and place export failed: stderr detail"
 
     stdout_only_service, _ = _service(tmp_path, cli_result=(2, "stdout detail", ""))
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Pick and place export failed: unknown error")
-    ):
-        stdout_only_service.export_pick_and_place()
+    assert (
+        stdout_only_service.export_pick_and_place() == "Pick and place export failed: unknown error"
+    )
 
 
 def test_ipc2581_preserves_capability_path_variant_and_cli_fallbacks(tmp_path: Path) -> None:
@@ -162,18 +153,16 @@ def test_ipc2581_preserves_capability_path_variant_and_cli_fallbacks(tmp_path: P
         tmp_path,
         capabilities=FakeCapabilities(supports_ipc2581=False),
     )
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("IPC-2581 export is not supported by the detected KiCad CLI."),
-    ):
+    assert (
         unsupported.export_ipc2581()
+        == "IPC-2581 export is not supported by the detected KiCad CLI."
+    )
     assert unsupported_calls["pcb"] == [None]
     assert unsupported_calls["resolve"] == []
     assert unsupported_calls["cli"] == []
 
     invalid, invalid_calls = _service(tmp_path, resolve_error=ValueError("unsafe output"))
-    with pytest.raises(ToolFailedError, match=re.escape("Invalid output path: unsafe output")):
-        invalid.export_ipc2581()
+    assert invalid.export_ipc2581() == "Invalid output path: unsafe output"
     assert invalid_calls["resolve"] == [("ipc2581", "", "board.ipc2581")]
     assert invalid_calls["cli"] == []
 
@@ -223,12 +212,10 @@ def test_odb_success_does_not_change_output_contract_for_stderr(tmp_path: Path) 
 
 def test_ipc2581_preserves_failure_text_and_ignores_stdout(tmp_path: Path) -> None:
     stderr_service, _ = _service(tmp_path, cli_result=(2, "stdout detail", "stderr detail"))
-    with pytest.raises(ToolFailedError, match=re.escape("IPC-2581 export failed: stderr detail")):
-        stderr_service.export_ipc2581()
+    assert stderr_service.export_ipc2581() == "IPC-2581 export failed: stderr detail"
 
     stdout_only_service, _ = _service(tmp_path, cli_result=(2, "stdout detail", ""))
-    with pytest.raises(ToolFailedError, match=re.escape("IPC-2581 export failed: unknown error")):
-        stdout_only_service.export_ipc2581()
+    assert stdout_only_service.export_ipc2581() == "IPC-2581 export failed: unknown error"
 
 
 def test_odb_preserves_capability_compression_variant_and_cli_fallbacks(tmp_path: Path) -> None:
@@ -236,10 +223,7 @@ def test_odb_preserves_capability_compression_variant_and_cli_fallbacks(tmp_path
         tmp_path,
         capabilities=FakeCapabilities(supports_odb_export=False),
     )
-    with pytest.raises(
-        ToolFailedError, match=re.escape("ODB++ export is not supported by the detected KiCad CLI.")
-    ):
-        unsupported.export_odb()
+    assert unsupported.export_odb() == "ODB++ export is not supported by the detected KiCad CLI."
     assert unsupported_calls["pcb"] == [None]
     assert unsupported_calls["resolve"] == []
     assert unsupported_calls["cli"] == []
@@ -282,10 +266,8 @@ def test_odb_preserves_capability_compression_variant_and_cli_fallbacks(tmp_path
 
 def test_odb_preserves_path_and_failure_text(tmp_path: Path) -> None:
     invalid, invalid_calls = _service(tmp_path, resolve_error=ValueError("unsafe output"))
-    with pytest.raises(ToolFailedError, match=re.escape("Invalid output path: unsafe output")):
-        invalid.export_odb()
+    assert invalid.export_odb() == "Invalid output path: unsafe output"
     assert invalid_calls["cli"] == []
 
     failed, _ = _service(tmp_path, cli_result=(2, "stdout detail", ""))
-    with pytest.raises(ToolFailedError, match=re.escape("ODB++ export failed: unknown error")):
-        failed.export_odb()
+    assert failed.export_odb() == "ODB++ export failed: unknown error"

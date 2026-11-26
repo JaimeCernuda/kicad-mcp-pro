@@ -1293,6 +1293,23 @@
     "destructive": false,
     "experimental": false,
     "headless": true,
+    "idempotent": false,
+    "name": "fp_get_info",
+    "open_world": false,
+    "profiles": [
+      "agent_full",
+      "expert",
+      "full",
+      "manufacturing",
+      "manufacturing_release"
+    ],
+    "read_only": false,
+    "requires_kicad_running": false
+  },
+  {
+    "destructive": false,
+    "experimental": false,
+    "headless": true,
     "idempotent": true,
     "name": "fp_upgrade",
     "open_world": false,

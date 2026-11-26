@@ -12,12 +12,8 @@ Validates:
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.back_annotation import SchematicBackAnnotationService
 from kicad_mcp.tools.validation import PlacementAnalysis
 
@@ -65,8 +61,8 @@ def test_sch_swap_pins_and_gates_back_annotation(tmp_path: Path) -> None:
     assert pin_state["swaps"][0] == {"reference": "RN1", "pin_a": "1", "pin_b": "2"}
 
     # Invalid pin swap rejected
-    with pytest.raises(ToolFailedError, match=re.escape("are not swappable candidates")):
-        service.swap_pins("RN1", "1", "99")
+    res_inv = service.swap_pins("RN1", "1", "99")
+    assert "are not swappable candidates" in res_inv
 
 
 def test_pcb_auto_placement_metrics_and_scoring() -> None:

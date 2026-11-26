@@ -9,7 +9,6 @@ from typing import Any
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.hierarchy_authoring import SchematicHierarchyAuthoringService
 from kicad_mcp.schematic.sheet_pins import parse_sheet_blocks
 
@@ -182,11 +181,9 @@ def test_create_sheet_preserves_missing_dependency_result_and_warning(tmp_path: 
         dependency_error=ImportError("missing module"),
     )
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("kicad-sch-api is unavailable, so child sheet creation could not run."),
-    ):
-        service.create_sheet("Power", "power", 10.0, 20.0, True)
+    assert service.create_sheet("Power", "power", 10.0, 20.0, True) == (
+        "kicad-sch-api is unavailable, so child sheet creation could not run."
+    )
     assert root.added == []
     assert warnings == [("schematic_create_sheet_dependency_missing", {"error": "missing module"})]
 
@@ -198,8 +195,9 @@ def test_create_sheet_preserves_duplicate_result_before_child_creation(tmp_path:
         root=_RootSchematic(duplicate=True),
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("Sheet 'Power' already exists.")):
-        service.create_sheet("Power", "power", 10.0, 20.0, True)
+    assert service.create_sheet("Power", "power", 10.0, 20.0, True) == (
+        "Sheet 'Power' already exists."
+    )
     assert child.saved == []
     assert root.added == []
     assert warnings == []
@@ -251,11 +249,9 @@ def test_create_sheet_preserves_failure_result_and_warning(tmp_path: Path) -> No
         load_error=RuntimeError("cannot parse root"),
     )
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Could not create child sheet 'Power': cannot parse root"),
-    ):
-        service.create_sheet("Power", "power", 10.0, 20.0, True)
+    assert service.create_sheet("Power", "power", 10.0, 20.0, True) == (
+        "Could not create child sheet 'Power': cannot parse root"
+    )
     assert warnings == [
         (
             "schematic_create_sheet_failed",
@@ -441,10 +437,9 @@ def test_import_sheet_pins_reports_an_unreadable_child(tmp_path: Path) -> None:
     store = _TextStore({"root.kicad_sch": ROOT_TEXT})
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError, match=re.escape("No sheet pins could be imported.")) as exc:
-        service.import_sheet_pins(None, True, False)
+    report = service.import_sheet_pins(None, True, False)
 
-    assert "blocked" in str(exc.value).casefold()
+    assert "blocked" in report.casefold()
     assert store.writes == []
 
 
@@ -452,9 +447,9 @@ def test_import_sheet_pins_rejects_an_unknown_sheet(tmp_path: Path) -> None:
     store = _TextStore({"root.kicad_sch": ROOT_TEXT, "child.kicad_sch": CHILD_TEXT})
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError, match=re.escape("Sheet 'nope' was not found")):
-        service.import_sheet_pins("nope", True, False)
+    report = service.import_sheet_pins("nope", True, False)
 
+    assert "not found" in report.casefold()
     assert store.writes == []
 
 
@@ -474,9 +469,9 @@ def test_add_sheet_pin_rejects_an_invalid_type(tmp_path: Path) -> None:
     store = _TextStore({"root.kicad_sch": ROOT_TEXT, "child.kicad_sch": CHILD_TEXT})
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError, match=re.escape("nonsense")):
-        service.add_sheet_pin("02_mcu", "MANUAL", "nonsense", "left", 5.08)
+    report = service.add_sheet_pin("02_mcu", "MANUAL", "nonsense", "left", 5.08)
 
+    assert "nonsense" in report
     assert store.writes == []
 
 
@@ -594,10 +589,8 @@ def test_import_sheet_pins_reports_a_missing_anchor_when_writing(tmp_path: Path)
     store = _TextStore({"root.kicad_sch": ROOT_TEXT_NO_ANCHOR, "child.kicad_sch": CHILD_TEXT})
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.import_sheet_pins(None, True, False)
+    report = service.import_sheet_pins(None, True, False)
 
-    report = str(exc.value)
     assert store.writes == []
     assert "02_mcu" in report
     assert "instances" in report.casefold()
@@ -734,10 +727,8 @@ def test_import_sheet_pins_rejects_a_sheet_that_moved_before_the_write(tmp_path:
     )
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.import_sheet_pins(None, True, False)
+    report = service.import_sheet_pins(None, True, False)
 
-    report = str(exc.value)
     assert store.writes == []
     assert "02_mcu" in report
     assert "moved" in report.casefold() or "resized" in report.casefold()
@@ -750,10 +741,8 @@ def test_add_sheet_pin_rejects_a_sheet_that_moved_before_the_write(tmp_path: Pat
     )
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.add_sheet_pin("02_mcu", "MANUAL", "bidirectional", "top", 5.08)
+    report = service.add_sheet_pin("02_mcu", "MANUAL", "bidirectional", "top", 5.08)
 
-    report = str(exc.value)
     assert store.writes == []
     assert "02_mcu" in report
     assert "moved" in report.casefold() or "resized" in report.casefold()
@@ -824,10 +813,8 @@ def test_import_sheet_pins_omits_per_sheet_lines_when_nothing_was_written(
     )
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.import_sheet_pins(None, True, False)
+    report = service.import_sheet_pins(None, True, False)
 
-    report = str(exc.value)
     assert store.writes == []
     assert "added" not in report
     assert report.startswith("Could not import sheet pins:")
@@ -841,17 +828,17 @@ def test_both_import_failure_paths_have_the_same_shape(tmp_path: Path) -> None:
     replay_store = _TextStore(
         {"root.kicad_sch": ROOT_TEXT_NO_ANCHOR, "child.kicad_sch": CHILD_TEXT}
     )
-    with pytest.raises(ToolFailedError) as replay_exc:
-        _pin_service(replay_store, tmp_path / "root.kicad_sch").import_sheet_pins(None, True, False)
-    replay_report = str(replay_exc.value)
+    replay_report = _pin_service(replay_store, tmp_path / "root.kicad_sch").import_sheet_pins(
+        None, True, False
+    )
 
     write_store = _GeometryDriftStore(
         {"root.kicad_sch": ROOT_TEXT, "child.kicad_sch": CHILD_TEXT},
         drifted_root_text=ROOT_TEXT_MOVED,
     )
-    with pytest.raises(ToolFailedError) as write_exc:
-        _pin_service(write_store, tmp_path / "root.kicad_sch").import_sheet_pins(None, True, False)
-    write_report = str(write_exc.value)
+    write_report = _pin_service(write_store, tmp_path / "root.kicad_sch").import_sheet_pins(
+        None, True, False
+    )
 
     for report in (replay_report, write_report):
         assert report.startswith("Could not import sheet pins: ")
@@ -877,10 +864,8 @@ def test_import_sheet_pins_reports_a_sheet_that_vanished_before_the_write(
     store = _VanishingSheetStore({"root.kicad_sch": ROOT_TEXT, "child.kicad_sch": CHILD_TEXT})
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.import_sheet_pins(None, True, False)
+    report = service.import_sheet_pins(None, True, False)
 
-    report = str(exc.value)
     assert "Imported sheet pins." not in report
     assert "added" not in report
     assert "02_mcu" in report
@@ -896,12 +881,8 @@ def test_import_sheet_pins_distinguishes_an_unusable_sheet_from_a_missing_one(
     store = _TextStore({"root.kicad_sch": ROOT_TEXT_DEGRADED_SHEET, "child.kicad_sch": CHILD_TEXT})
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError) as degraded_exc:
-        service.import_sheet_pins("02_mcu", True, False)
-    with pytest.raises(ToolFailedError) as missing_exc:
-        service.import_sheet_pins("nope", True, False)
-    degraded = str(degraded_exc.value)
-    missing = str(missing_exc.value)
+    degraded = service.import_sheet_pins("02_mcu", True, False)
+    missing = service.import_sheet_pins("nope", True, False)
 
     assert "not found" not in degraded
     assert "cannot be addressed" in degraded
@@ -917,9 +898,9 @@ def test_add_sheet_pin_warns_when_the_schematic_cannot_be_read(tmp_path: Path) -
         warn=lambda event, **fields: warnings.append((event, fields)),
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("Could not read")):
-        service.add_sheet_pin("02_mcu", "MANUAL", "input", "left", 5.08)
+    report = service.add_sheet_pin("02_mcu", "MANUAL", "input", "left", 5.08)
 
+    assert "Could not read" in report
     assert [event for event, _fields in warnings] == ["schematic_add_sheet_pin_unreadable"]
 
 
@@ -930,10 +911,8 @@ def test_create_sheet_says_pins_were_not_applied_to_an_existing_sheet(tmp_path: 
         root=_RootSchematic(duplicate=True),
     )
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.create_sheet("Power", "power", 10.0, 20.0, True, (("VIN", "input"),))
+    report = service.create_sheet("Power", "power", 10.0, 20.0, True, (("VIN", "input"),))
 
-    report = str(exc.value)
     assert "already exists" in report
     assert "no sheet pins were applied" in report
 
@@ -1312,11 +1291,10 @@ def test_spread_sheets_refuses_when_a_pin_is_already_wired(tmp_path: Path) -> No
     store = _TextStore({"root.kicad_sch": wired_text})
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.spread_sheets(10.0, 2.54, False)
+    report = service.spread_sheets(10.0, 2.54, False)
 
     assert store.writes == []
-    assert "02_right" in str(exc.value)
+    assert "02_right" in report
 
 
 def test_spread_sheets_does_not_treat_a_nearby_wire_as_attached(tmp_path: Path) -> None:
@@ -1343,10 +1321,8 @@ def test_spread_sheets_uses_portrait_page_width_for_overflow(tmp_path: Path) -> 
     store = _TextStore({"root.kicad_sch": text})
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.spread_sheets(180.0, 2.54, False)
+    report = service.spread_sheets(180.0, 2.54, False)
 
-    report = str(exc.value)
     assert store.writes == []
     assert "Nothing was moved." in report
     assert "past the usable edge" in report
@@ -1356,10 +1332,8 @@ def test_spread_sheets_refuses_to_push_past_the_page_edge(tmp_path: Path) -> Non
     store = _TextStore({"root.kicad_sch": ROOT_TEXT_SPREAD_TWO_COLUMNS})
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.spread_sheets(1000.0, 2.54, False)
+    report = service.spread_sheets(1000.0, 2.54, False)
 
-    report = str(exc.value)
     assert store.writes == []
     assert "usable" in report.casefold() or "past" in report.casefold()
 
@@ -1471,9 +1445,9 @@ def test_move_sheet_reports_a_missing_name(tmp_path: Path) -> None:
     store = _TextStore({"root.kicad_sch": ROOT_TEXT_WITH_PIN})
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError, match=re.escape("was not found")):
-        service.move_sheet("does_not_exist", 10.0, 20.0, False)
+    report = service.move_sheet("does_not_exist", 10.0, 20.0, False)
 
+    assert "was not found" in report
     assert store.writes == []
 
 
@@ -1506,10 +1480,8 @@ def test_delete_sheet_refuses_concurrent_move_or_resize(tmp_path: Path) -> None:
 
     service = replace(service, transactional_write=concurrent_write)
 
-    with pytest.raises(ToolFailedError) as exc:
-        service.delete_sheet("02_mcu")
+    report = service.delete_sheet("02_mcu")
 
-    report = str(exc.value)
     (block,) = parse_sheet_blocks(store.files["root.kicad_sch"])
     assert block.origin == (81.28, 30.48)
     assert "moved or resized since it was read" in report
@@ -1520,9 +1492,9 @@ def test_delete_sheet_reports_a_missing_name(tmp_path: Path) -> None:
     store = _TextStore({"root.kicad_sch": ROOT_TEXT_WITH_PIN})
     service = _pin_service(store, tmp_path / "root.kicad_sch")
 
-    with pytest.raises(ToolFailedError, match=re.escape("was not found")):
-        service.delete_sheet("does_not_exist")
+    report = service.delete_sheet("does_not_exist")
 
+    assert "was not found" in report
     assert store.writes == []
 
 

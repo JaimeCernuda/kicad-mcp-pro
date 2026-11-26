@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.destructive_edit import SchematicDestructiveEditService
 
 
@@ -138,10 +136,9 @@ def test_delete_wire_preserves_prefix_matching_and_destructive_transaction() -> 
 
 def test_delete_wire_preserves_missing_and_ambiguous_results() -> None:
     missing, missing_tx = _service(current="plain")
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Wire 'missing' was not found in the active schematic.")
-    ):
-        missing.delete_wire("missing")
+    assert missing.delete_wire("missing") == (
+        "Wire 'missing' was not found in the active schematic."
+    )
     assert missing_tx.calls == []
 
     ambiguous, ambiguous_tx = _service(
@@ -151,11 +148,9 @@ def test_delete_wire_preserves_missing_and_ambiguous_results() -> None:
             {"uuid": "abcd-2", "x1": 1, "y1": 1, "x2": 2, "y2": 2},
         ],
     )
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Wire identifier 'abcd' is ambiguous. Matching UUIDs: abcd-1, abcd-2"),
-    ):
-        ambiguous.delete_wire("abcd")
+    assert ambiguous.delete_wire("abcd") == (
+        "Wire identifier 'abcd' is ambiguous. Matching UUIDs: abcd-1, abcd-2"
+    )
     assert ambiguous_tx.calls == []
 
 
@@ -169,8 +164,7 @@ def test_delete_wire_preserves_transaction_time_missing_result() -> None:
         wire_blocks={"(wire-a)": record},
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("Wire 'abc' could not be removed.")):
-        service.delete_wire("abc")
+    assert service.delete_wire("abc") == "Wire 'abc' could not be removed."
     assert transaction.calls == [True]
     assert transaction.updated is None
 
@@ -197,10 +191,7 @@ def test_delete_symbol_removes_matching_symbols_and_attached_wires() -> None:
 def test_delete_symbol_preserves_missing_reference_result() -> None:
     service, transaction = _service(current="plain")
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Reference 'R404' was not found in the schematic.")
-    ):
-        service.delete_symbol("R404")
+    assert service.delete_symbol("R404") == ("Reference 'R404' was not found in the schematic.")
     assert transaction.calls == [True]
     assert transaction.updated is None
 
@@ -274,8 +265,7 @@ def test_delete_label_skips_nonmatching_label_before_target() -> None:
 def test_delete_label_preserves_missing_result() -> None:
     service, transaction = _service(current="aa(label-gnd)bb")
 
-    with pytest.raises(ToolFailedError, match=re.escape("No label 'GND' found near (1, 2).")):
-        service.delete_label("GND", 1.0, 2.0)
+    assert service.delete_label("GND", 1.0, 2.0) == ("No label 'GND' found near (1, 2).")
     assert transaction.calls == [True]
     assert transaction.updated is None
 
@@ -315,8 +305,7 @@ def test_delete_no_connect_skips_nonmatching_marker_before_target() -> None:
 def test_delete_no_connect_preserves_missing_result() -> None:
     service, transaction = _service(current="aa(no_connect-a)bb")
 
-    with pytest.raises(ToolFailedError, match=re.escape("No no-connect marker found near (1, 2).")):
-        service.delete_no_connect(1.0, 2.0)
+    assert service.delete_no_connect(1.0, 2.0) == ("No no-connect marker found near (1, 2).")
     assert transaction.calls == [True]
     assert transaction.updated is None
 
@@ -343,8 +332,9 @@ def test_move_label_preserves_rotation_snap_notice_and_normal_transaction() -> N
 def test_move_label_preserves_missing_result_without_reload() -> None:
     service, transaction = _service(current="plain")
 
-    with pytest.raises(ToolFailedError, match=re.escape("No label 'NOPE' found near (1, 2).")):
-        service.move_label("NOPE", 1.0, 2.0, 3.0, 4.0, 0, False)
+    assert service.move_label("NOPE", 1.0, 2.0, 3.0, 4.0, 0, False) == (
+        "No label 'NOPE' found near (1, 2)."
+    )
     assert transaction.calls == [False]
     assert transaction.updated is None
 
@@ -375,6 +365,5 @@ def test_modify_label_preserves_centered_and_missing_results() -> None:
     )
 
     missing, missing_tx = _service(current="plain")
-    with pytest.raises(ToolFailedError, match=re.escape("No label 'NOPE' found near (1, 2).")):
-        missing.modify_label("NOPE", 1.0, 2.0, "left")
+    assert missing.modify_label("NOPE", 1.0, 2.0, "left") == ("No label 'NOPE' found near (1, 2).")
     assert missing_tx.calls == [False]

@@ -2,14 +2,9 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Protocol
-
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _service_module() -> ModuleType:
@@ -199,29 +194,24 @@ def test_render_preserves_partial_pan_and_rotation_defaults(tmp_path: Path) -> N
 
 def test_render_preserves_capability_and_path_failures(tmp_path: Path) -> None:
     unsupported, unsupported_calls = _service(tmp_path, supported=False)
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("3D render export is not supported by the detected KiCad CLI."),
-    ):
-        _render(unsupported)
+    response = _render(unsupported)
+    assert response.text == "3D render export is not supported by the detected KiCad CLI."
     assert unsupported_calls["pcb"] == [None]
     assert unsupported_calls["resolve"] == []
     assert unsupported_calls["cli"] == []
 
     invalid, invalid_calls = _service(tmp_path)
-    with pytest.raises(ToolFailedError, match=re.escape("Invalid output path: unsafe output")):
-        _render(invalid, output_file="bad.png")
+    response = _render(invalid, output_file="bad.png")
+    assert response.text == "Invalid output path: unsafe output"
     assert invalid_calls["cli"] == []
 
 
 def test_render_preserves_failure_precedence_and_ignores_stdout(tmp_path: Path) -> None:
     stderr_service, _ = _service(tmp_path, cli_result=(2, "stdout detail", "stderr detail"))
-    with pytest.raises(ToolFailedError, match=re.escape("3D render failed: stderr detail")):
-        _render(stderr_service)
+    assert _render(stderr_service).text == "3D render failed: stderr detail"
 
     stdout_only_service, _ = _service(tmp_path, cli_result=(2, "stdout detail", ""))
-    with pytest.raises(ToolFailedError, match=re.escape("3D render failed: unknown error")):
-        _render(stdout_only_service)
+    assert _render(stdout_only_service).text == "3D render failed: unknown error"
 
 
 def test_render_returns_image_response_with_human_size_when_artifact_exists(tmp_path: Path) -> None:

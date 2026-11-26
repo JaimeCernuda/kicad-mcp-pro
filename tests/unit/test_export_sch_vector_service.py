@@ -2,13 +2,8 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from pathlib import Path
 from typing import Any
-
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _service_type() -> type[Any]:
@@ -230,10 +225,8 @@ def test_vector_exports_preserve_invalid_output_path_messages(tmp_path: Path) ->
         format_file_list=FakeFormatter(),
     )
 
-    with pytest.raises(ToolFailedError, match=re.escape("Invalid output path: unsafe path")):
-        service.export_svg(output_dir="../svg")
-    with pytest.raises(ToolFailedError, match=re.escape("Invalid output path: unsafe path")):
-        service.export_dxf(output_dir="../dxf")
+    assert service.export_svg(output_dir="../svg") == "Invalid output path: unsafe path"
+    assert service.export_dxf(output_dir="../dxf") == "Invalid output path: unsafe path"
     assert cli.calls == []
 
 
@@ -253,27 +246,17 @@ def test_vector_exports_preserve_failure_message_precedence(tmp_path: Path) -> N
             format_file_list=FakeFormatter(),
         )
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Schematic SVG export failed: stderr detail")
-    ):
-        service_for((2, "stdout detail", "stderr detail")).export_svg()
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Schematic SVG export failed: stdout detail")
-    ):
-        service_for((2, "stdout detail", "")).export_svg()
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Schematic SVG export failed: unknown error")
-    ):
-        service_for((2, "", "")).export_svg()
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Schematic DXF export failed: stderr detail")
-    ):
-        service_for((2, "stdout detail", "stderr detail")).export_dxf()
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Schematic DXF export failed: stdout detail")
-    ):
-        service_for((2, "stdout detail", "")).export_dxf()
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Schematic DXF export failed: unknown error")
-    ):
-        service_for((2, "", "")).export_dxf()
+    assert service_for((2, "stdout detail", "stderr detail")).export_svg() == (
+        "Schematic SVG export failed: stderr detail"
+    )
+    assert service_for((2, "stdout detail", "")).export_svg() == (
+        "Schematic SVG export failed: stdout detail"
+    )
+    assert service_for((2, "", "")).export_svg() == "Schematic SVG export failed: unknown error"
+    assert service_for((2, "stdout detail", "stderr detail")).export_dxf() == (
+        "Schematic DXF export failed: stderr detail"
+    )
+    assert service_for((2, "stdout detail", "")).export_dxf() == (
+        "Schematic DXF export failed: stdout detail"
+    )
+    assert service_for((2, "", "")).export_dxf() == "Schematic DXF export failed: unknown error"

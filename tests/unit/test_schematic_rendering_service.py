@@ -2,14 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.schematic.rendering import SchematicRenderingService
 
 
@@ -130,8 +126,9 @@ def test_render_png_validates_dpi_and_handles_empty_sheet(tmp_path: Path) -> Non
     harness = RenderingHarness(tmp_path)
     service = harness.service()
 
-    with pytest.raises(ToolFailedError, match=re.escape("dpi must be between 72 and 600.")):
-        service.render_png(dpi=71)
+    invalid = service.render_png(dpi=71)
+    assert invalid.text == "dpi must be between 72 and 600."
+    assert invalid.metadata is None
 
     harness.renderable = False
     empty = service.render_png()
@@ -151,13 +148,11 @@ def test_render_png_preserves_output_errors_and_success_metadata(tmp_path: Path)
     service = harness.service()
 
     harness.safe_output_error = ValueError("unsafe")
-    with pytest.raises(ToolFailedError, match=re.escape("Invalid output path: unsafe")):
-        service.render_png(output_file="bad.png")
+    assert service.render_png(output_file="bad.png").text == "Invalid output path: unsafe"
 
     harness.safe_output_error = None
     harness.render_error = RuntimeError("cli failed")
-    with pytest.raises(ToolFailedError, match=re.escape("Schematic PNG render failed: cli failed")):
-        service.render_png()
+    assert service.render_png().text == "Schematic PNG render failed: cli failed"
 
     harness.render_error = None
     response = service.render_png(
@@ -211,15 +206,11 @@ def test_visual_diff_renders_exact_artifacts_and_metadata(tmp_path: Path) -> Non
     service = harness.service()
 
     harness.safe_output_error = ValueError("unsafe")
-    with pytest.raises(ToolFailedError, match=re.escape("Invalid output path: unsafe")):
-        service.render_visual_diff()
+    assert service.render_visual_diff().text == "Invalid output path: unsafe"
 
     harness.safe_output_error = None
     harness.render_error = RuntimeError("export failed")
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Schematic visual diff failed: export failed")
-    ):
-        service.render_visual_diff()
+    assert service.render_visual_diff().text == "Schematic visual diff failed: export failed"
 
     harness.render_error = None
     response = service.render_visual_diff(
@@ -239,12 +230,8 @@ def test_live_preview_validates_arguments_and_initializes_state(tmp_path: Path) 
     harness = RenderingHarness(tmp_path)
     service = harness.service()
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("debounce_ms must be between 0 and 60000.")
-    ):
-        service.live_preview(debounce_ms=-1)
-    with pytest.raises(ToolFailedError, match=re.escape("dpi must be between 72 and 600.")):
-        service.live_preview(dpi=601)
+    assert service.live_preview(debounce_ms=-1).text == ("debounce_ms must be between 0 and 60000.")
+    assert service.live_preview(dpi=601).text == "dpi must be between 72 and 600."
 
     response = service.live_preview(render=False)
     payload = _json(response.text)
@@ -351,8 +338,10 @@ def test_live_preview_force_renders_on_first_call(tmp_path: Path) -> None:
 
 
 def test_visual_diff_validates_dpi(tmp_path: Path) -> None:
-    with pytest.raises(ToolFailedError, match=re.escape("dpi must be between 72 and 600.")):
-        RenderingHarness(tmp_path).service().render_visual_diff(dpi=601)
+    response = RenderingHarness(tmp_path).service().render_visual_diff(dpi=601)
+
+    assert response.text == "dpi must be between 72 and 600."
+    assert response.metadata is None
 
 
 def test_live_preview_reports_reload_only_status(tmp_path: Path) -> None:

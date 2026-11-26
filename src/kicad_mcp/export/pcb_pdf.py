@@ -6,7 +6,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..errors import ToolFailedError
 from ..models.export import ExportPdfInput
 
 type GetPcbFile = Callable[[], Path]
@@ -61,7 +60,5 @@ class ExportPcbPdfService:
             ]
         )
         if code != 0:
-            raise ToolFailedError(
-                f"PCB PDF export failed: {stderr or 'unknown error'}", exit_code=code
-            )
+            return f"PCB PDF export failed: {stderr or 'unknown error'}"
         return f"PCB PDF exported to {out_file}"

@@ -82,14 +82,15 @@ async def test_compare_reports_no_baseline(sample_project: Path) -> None:
 @pytest.mark.mcp_mode("write")
 async def test_baseline_tools_reject_bad_dpi(sample_project: Path) -> None:
     from kicad_mcp.server import build_server
-    from tests.conftest import call_tool_text, tool_text
+    from tests.conftest import call_tool_text
 
     server = build_server("schematic")
     await call_tool_text(server, "kicad_set_project", {"project_dir": str(sample_project)})
     for tool in ("sch_visual_baseline_set", "sch_visual_baseline_compare"):
-        result = await server.call_tool(tool, {"dpi": 9999})
-        assert result.is_error is True
-        assert "dpi must be between 72 and 600." in tool_text(result)
+        raw = await call_tool_text(server, tool, {"dpi": 9999})
+        payload = json.loads(raw)
+        assert payload["status"] == "error"
+        assert "dpi" in payload["message"]
 
 
 def test_baseline_metadata_falls_back_safely(

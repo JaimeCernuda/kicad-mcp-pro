@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.routing.length_tuning import (
     RoutingLengthTuningService,
     build_diff_pair_length_rules,
@@ -56,13 +52,9 @@ def _service(
 def test_tune_net_preserves_missing_net_message() -> None:
     service = _service(nets={"DATA0"})
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape(
-            "Length-tuning rule was not written. Net 'CLK' was not found on the active board."
-        ),
-    ):
-        service.tune_net("CLK", 45.0)
+    assert service.tune_net("CLK", 45.0) == (
+        "Length-tuning rule was not written. Net 'CLK' was not found on the active board."
+    )
 
 
 def test_tune_net_preserves_success_response_and_status(tmp_path: Path) -> None:
@@ -93,22 +85,15 @@ def test_tune_net_preserves_writer_failure_text() -> None:
 
     service = _service(nets={"CLK"}, write_rule=fail)
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Length-tuning rule update failed: bad rules")
-    ):
-        service.tune_net("CLK", 45.0)
+    assert service.tune_net("CLK", 45.0) == "Length-tuning rule update failed: bad rules"
 
 
 def test_tune_diff_pair_preserves_missing_net_order() -> None:
     service = _service(nets={"USB_DP"})
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape(
-            "Differential-pair length tuning rules were not written. Missing nets: NOPE"
-        ),
-    ):
-        service.tune_diff_pair("USB_DP", "NOPE", 50.0)
+    assert service.tune_diff_pair("USB_DP", "NOPE", 50.0) == (
+        "Differential-pair length tuning rules were not written. Missing nets: NOPE"
+    )
 
 
 def test_tune_diff_pair_preserves_success_response_and_rule_order(tmp_path: Path) -> None:
@@ -152,7 +137,6 @@ def test_tune_diff_pair_preserves_writer_failure_text() -> None:
         write_rule=fail_second,
     )
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Differential-pair length tuning failed: disk full")
-    ):
-        service.tune_diff_pair("USB_DP", "USB_DN", 51.0)
+    assert service.tune_diff_pair("USB_DP", "USB_DN", 51.0) == (
+        "Differential-pair length tuning failed: disk full"
+    )

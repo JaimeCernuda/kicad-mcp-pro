@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..errors import ToolFailedError
 from ..models.export import ExportGerberInput
 from .inventory import discover_gerber_output_files
 
@@ -41,7 +40,7 @@ class ExportGerberService:
         try:
             out_dir = self.ensure_output_dir(payload.output_subdir)
         except ValueError as exc:
-            raise ToolFailedError(f"Invalid output path: {exc}") from exc
+            return f"Invalid output path: {exc}"
 
         layer_args: list[str] = []
         if payload.layers:
@@ -83,9 +82,7 @@ class ExportGerberService:
 
         code, _stdout, stderr = self.run_cli_variants(variants)
         if code != 0:
-            raise ToolFailedError(
-                f"Gerber export failed: {stderr or 'unknown error'}", exit_code=code
-            )
+            return f"Gerber export failed: {stderr or 'unknown error'}"
 
         files = discover_gerber_output_files(out_dir)
         return self.format_file_list(files, f"Gerber export completed in {out_dir}:")

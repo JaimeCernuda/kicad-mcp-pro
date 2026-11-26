@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..errors import ToolFailedError
 from ..utils.sexpr import _sexpr_string
 
 RuleWriter = Callable[[str, str], Path]
@@ -82,7 +81,7 @@ class RoutingNetClassRuleService:
         try:
             path = self.write_rule(rule_name, rule_body)
         except (OSError, ValueError) as exc:
-            raise ToolFailedError(f"Net-class rule update failed: {exc}") from exc
+            return f"Net-class rule update failed: {exc}"
         return (
             f"Net-class routing rule '{rule_name}' written to {path}.\n"
             f"Track width: {_mm(width_mm)}, clearance: {_mm(clearance_mm)}, "

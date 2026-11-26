@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..errors import ToolFailedError
 from ..file_formats import GENERATED_SEXPR_DIALECT_VERSION
 from ..utils.sexpr import _sexpr_string
 from ..utils.symbol_gen import PinSpec, generate_symbol
@@ -89,7 +88,7 @@ class LibraryLocalAuthoringService:
     def assign_footprint(self, reference: str, library: str, footprint: str) -> str:
         path = self.footprint_file(library, footprint)
         if not path.exists():
-            raise ToolFailedError(f"Footprint '{library}:{footprint}' was not found.")
+            return f"Footprint '{library}:{footprint}' was not found."
         assignment = f"{library}:{footprint}"
         self.update_symbol_property(reference, "Footprint", assignment)
         return f"Assigned footprint '{assignment}' to '{reference}'."
@@ -97,7 +96,7 @@ class LibraryLocalAuthoringService:
     def create_custom_symbol(self, name: str, pins: list[dict[str, Any]]) -> str:
         project_dir = self.project_dir()
         if project_dir is None:
-            raise ToolFailedError("No active project is configured.")
+            return "No active project is configured."
 
         library_file = project_dir / "custom_symbols.kicad_sym"
         if library_file.exists():
@@ -126,7 +125,7 @@ class LibraryLocalAuthoringService:
         """Generate a KiCad symbol library from structured pin-table data."""
         pin_specs, pin_error = _pin_specs_from_rows(pins)
         if pin_error is not None:
-            raise ToolFailedError(pin_error)
+            return pin_error
 
         try:
             sexpr = generate_symbol(
@@ -138,11 +137,11 @@ class LibraryLocalAuthoringService:
                 footprint_hint=footprint_hint,
             )
         except Exception as exc:
-            raise ToolFailedError(f"Symbol generation failed: {exc}") from exc
+            return f"Symbol generation failed: {exc}"
 
         if output_path:
             if self.resolve_within_project is None:
-                raise ToolFailedError("No project path resolver is configured.")
+                return "No project path resolver is configured."
             out_file = self.resolve_within_project(output_path)
         else:
             if self.default_output_dir is not None:
@@ -150,7 +149,7 @@ class LibraryLocalAuthoringService:
             else:
                 project_dir = self.project_dir()
                 if project_dir is None:
-                    raise ToolFailedError("No active project is configured.")
+                    return "No active project is configured."
                 out_dir = project_dir / "output" / "symbols"
             out_dir.mkdir(parents=True, exist_ok=True)
             safe_name = name.replace(" ", "_").replace("/", "_")

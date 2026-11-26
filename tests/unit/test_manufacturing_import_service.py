@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _service_module() -> ModuleType:
@@ -111,19 +108,12 @@ def test_legacy_import_wrappers_preserve_block_and_result_wording(tmp_path: Path
         ),
     )
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape(
-            "blocked: KiCad CLI import --format allegro is not a supported product capability"
-        ),
-    ):
-        service.import_allegro("legacy.brd")
-    with pytest.raises(ToolFailedError, match=re.escape("pads import failed: unsupported")):
-        service.import_pads("legacy.brd")
-    with pytest.raises(ToolFailedError, match=re.escape("geda import failed: unsupported")):
-        service.import_geda("legacy.brd")
-    with pytest.raises(ToolFailedError, match=re.escape("specctra import failed: unsupported")):
-        service.import_specctra("legacy.brd")
+    assert service.import_allegro("legacy.brd") == (
+        "blocked: KiCad CLI import --format allegro is not a supported product capability"
+    )
+    assert service.import_pads("legacy.brd") == "pads import failed: unsupported"
+    assert service.import_geda("legacy.brd") == "geda import failed: unsupported"
+    assert service.import_specctra("legacy.brd") == "specctra import failed: unsupported"
 
 
 def test_legacy_import_wrappers_preserve_success_wording(tmp_path: Path) -> None:

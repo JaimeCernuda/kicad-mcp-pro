@@ -2,13 +2,8 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from pathlib import Path
 from types import ModuleType
-
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _module() -> ModuleType:
@@ -112,13 +107,13 @@ def test_search_symbols_preserves_validation_filter_pagination_and_rendering(
     tmp_path: Path,
 ) -> None:
     service, _ = _service(tmp_path)
-    with pytest.raises(ToolFailedError, match=re.escape("page must be >= 1.")):
-        service.search_symbols("R", page=0)
-    with pytest.raises(ToolFailedError, match=re.escape("page_size must be >= 1.")):
-        service.search_symbols("R", page_size=0)
+    assert service.search_symbols("R", page=0) == "page must be >= 1."
+    assert service.search_symbols("R", page_size=0) == "page_size must be >= 1."
     assert service.search_symbols("missing") == "No symbols matched 'missing'."
-    with pytest.raises(ToolFailedError, match=re.escape("Page 3 exceeds total pages (2).")):
+    assert (
         service.search_symbols("R", library_filter="Device", page=3, page_size=1)
+        == "Page 3 exceeds total pages (2)."
+    )
 
     first = service.search_symbols("R", library_filter="device", page=1, page_size=1)
     assert "Symbol matches for 'R' (page 1/2, 1 shown, 2 total):" in first
@@ -162,10 +157,8 @@ def test_search_symbols_single_word_query_stays_substring(tmp_path: Path) -> Non
 
 def test_get_symbol_info_preserves_missing_properties_and_inherited_pins(tmp_path: Path) -> None:
     service, _ = _service(tmp_path)
-    with pytest.raises(ToolFailedError, match=re.escape("Symbol library 'Missing' was not found.")):
-        service.get_symbol_info("Missing", "R")
-    with pytest.raises(ToolFailedError, match=re.escape("Symbol 'Device:Missing' was not found.")):
-        service.get_symbol_info("Device", "Missing")
+    assert service.get_symbol_info("Missing", "R") == "Symbol library 'Missing' was not found."
+    assert service.get_symbol_info("Device", "Missing") == "Symbol 'Device:Missing' was not found."
 
     text = service.get_symbol_info("Device", "R")
     assert "Symbol: Device:R" in text
@@ -204,26 +197,20 @@ def test_symbol_pin_parsing_does_not_bleed_between_blocks_and_preserves_duplicat
 
 def test_search_footprints_preserves_filter_validation_and_pagination(tmp_path: Path) -> None:
     service, _ = _service(tmp_path)
-    with pytest.raises(ToolFailedError, match=re.escape("page must be >= 1.")):
-        service.search_footprints("R", page=0)
-    with pytest.raises(ToolFailedError, match=re.escape("page_size must be >= 1.")):
-        service.search_footprints("R", page_size=0)
+    assert service.search_footprints("R", page=0) == "page must be >= 1."
+    assert service.search_footprints("R", page_size=0) == "page_size must be >= 1."
     assert service.search_footprints("missing") == "No footprints matched 'missing'."
     text = service.search_footprints("R_", library_filter="resistor", page=1, page_size=1)
     assert "Footprint matches for 'R_' (page 1/2, 1 shown, 2 total):" in text
     assert "... and 1 more matches (use page=2)" in text
-    with pytest.raises(ToolFailedError, match=re.escape("Page 3 exceeds total pages (2).")):
-        service.search_footprints("R_", page=3, page_size=1)
+    assert service.search_footprints("R_", page=3, page_size=1) == "Page 3 exceeds total pages (2)."
 
 
 def test_list_rebuild_and_footprint_details_preserve_exact_behavior(tmp_path: Path) -> None:
     service, rebuild_calls = _service(tmp_path)
     listed = service.list_footprints("Resistor_SMD")
     assert listed == "Footprints in Resistor_SMD (2 total):\n- R_0603"
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Footprint library 'Missing' was not found.")
-    ):
-        service.list_footprints("Missing")
+    assert service.list_footprints("Missing") == "Footprint library 'Missing' was not found."
 
     assert service.rebuild_index() == "Rebuilt the symbol index with 3 entries."
     assert rebuild_calls == ["rebuild"]
@@ -234,22 +221,19 @@ def test_list_rebuild_and_footprint_details_preserve_exact_behavior(tmp_path: Pa
     assert info == expected
     no_model = service.get_footprint_info("Resistor_SMD", "R_0603")
     assert no_model.endswith("- 3D model: (none)")
-    with pytest.raises(ToolFailedError, match=re.escape("Footprint 'Missing:X' was not found.")):
-        service.get_footprint_info("Missing", "X")
+    assert service.get_footprint_info("Missing", "X") == "Footprint 'Missing:X' was not found."
 
     assert service.get_footprint_3d_model("Resistor_SMD", "R_0805") == "R_0805.wrl"
     assert (
         service.get_footprint_3d_model("Resistor_SMD", "R_0603")
         == "Footprint 'Resistor_SMD:R_0603' does not define a 3D model."
     )
-    with pytest.raises(ToolFailedError, match=re.escape("Footprint 'Missing:X' was not found.")):
-        service.get_footprint_3d_model("Missing", "X")
+    assert service.get_footprint_3d_model("Missing", "X") == "Footprint 'Missing:X' was not found."
 
 
 def test_get_datasheet_url_preserves_exact_missing_and_match_behavior(tmp_path: Path) -> None:
     service, _ = _service(tmp_path)
-    with pytest.raises(ToolFailedError, match=re.escape("Symbol library 'Missing' was not found.")):
-        service.get_datasheet_url("Missing", "R")
+    assert service.get_datasheet_url("Missing", "R") == "Symbol library 'Missing' was not found."
     assert (
         service.get_datasheet_url("Device", "Missing")
         == "No datasheet URL was found for 'Device:Missing'."

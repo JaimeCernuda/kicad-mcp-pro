@@ -11,7 +11,6 @@ from pathlib import Path
 from mcp.server.mcpserver import MCPServer as FastMCP
 
 from ..config import get_config
-from ..errors import ToolFailedError
 from .export_support import _ensure_output_dir, _run_cli, _run_cli_variants
 from .metadata import headless_compatible
 
@@ -36,7 +35,7 @@ def fp_export(
     """
     cfg = get_config()
     if cfg.pcb_file is None:
-        raise ToolFailedError("No PCB file configured. Call kicad_set_project() first.")
+        return "No PCB file configured. Call kicad_set_project() first."
 
     out_dir = _ensure_output_dir("footprints")
     board_stem = cfg.pcb_file.stem
@@ -65,9 +64,7 @@ def fp_export(
         ]
     )
     if code != 0:
-        raise ToolFailedError(
-            f"Footprint export failed: {stderr or 'unknown error'}", exit_code=code
-        )
+        return f"Footprint export failed: {stderr or 'unknown error'}"
     return f"Footprint exported to {out_file}"
 
 
@@ -120,7 +117,7 @@ def fp_export_svg(
     """
     cfg = get_config()
     if not input_path:
-        raise ToolFailedError("Error: input_path parameter is required.")
+        return "Error: input_path parameter is required."
 
     try:
         from ..path_safety import resolve_under
@@ -133,7 +130,7 @@ def fp_export_svg(
         raise ValueError(f"Unsafe input path: {exc}") from exc
 
     if not in_path.exists():
-        raise ToolFailedError(f"Input footprint file or directory not found: {input_path}")
+        return f"Input footprint file or directory not found: {input_path}"
 
     out_dir = _ensure_output_dir("footprints")
     if output_dir:
@@ -149,9 +146,7 @@ def fp_export_svg(
 
     code, stdout, stderr = _run_cli(*cmd)
     if code != 0:
-        raise ToolFailedError(
-            f"Footprint SVG export failed: {stderr or stdout or 'unknown error'}", exit_code=code
-        )
+        return f"Footprint SVG export failed: {stderr or stdout or 'unknown error'}"
     return f"Footprint SVG exported successfully to {out_dir}"
 
 
@@ -187,20 +182,18 @@ def fp_upgrade(
     input_file : str
         Legacy input file parameter (for backward compatibility).
     output_file : str
-        Where the upgraded library is written. Defaults to
-        output/upgraded/<library name>, leaving the input unchanged; pass the
-        input path itself to upgrade it in place.
+        Legacy output file parameter (for backward compatibility).
     input_path : str
         Path to the footprint library to upgrade. If omitted, input_file is used.
     force : bool
-        Resave even when the library is already in the current format.
+        Force resaving regardless of version.
     dry_run : bool
         Only report commands and files that would be affected.
     """
     cfg = get_config()
     raw_in = input_path or input_file
     if not raw_in and cfg.pcb_file is None:
-        raise ToolFailedError(
+        return (
             "No input file provided and no PCB configured. "
             "Provide an input_path or call kicad_set_project() first."
         )
@@ -233,10 +226,32 @@ def fp_upgrade(
 
     code, stdout, stderr = _run_cli(*cmd)
     if code != 0:
-        raise ToolFailedError(
-            f"Footprint upgrade failed: {stderr or stdout or 'unknown error'}", exit_code=code
-        )
+        return f"Footprint upgrade failed: {stderr or stdout or 'unknown error'}"
     return f"Footprint upgraded and saved to {out_path}"
+
+
+@headless_compatible
+def fp_get_info() -> str:
+    """Return metadata about the active board's footprint library.
+
+    Runs ``kicad-cli fp get`` to inspect footprint properties such as
+    3D model references, layer assignment, and pad count.
+    """
+    cfg = get_config()
+    if cfg.pcb_file is None:
+        return "No PCB file configured. Call kicad_set_project() first."
+
+    code, stdout, stderr = _run_cli_variants(
+        [
+            ["fp", "get", str(cfg.pcb_file)],
+            ["fp", "get", "--input", str(cfg.pcb_file)],
+        ]
+    )
+    if code != 0:
+        # The command may not be available on older KiCad CLIs.
+        return f"Footprint info unavailable: {stderr or stdout or 'unknown error'}"
+
+    return stdout or "Footprint info retrieved."
 
 
 def register(mcp: FastMCP) -> None:
@@ -244,3 +259,4 @@ def register(mcp: FastMCP) -> None:
     mcp.tool()(fp_export)
     mcp.tool()(fp_export_svg)
     mcp.tool()(fp_upgrade)
+    mcp.tool()(fp_get_info)

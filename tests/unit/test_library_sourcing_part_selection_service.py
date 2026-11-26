@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 
 import pytest
 
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.library.sourcing import LibrarySourcingService
 from kicad_mcp.utils.component_search import ComponentRecord
 
@@ -111,16 +109,12 @@ class RaisingClient(FakeClient):
 
 def test_bind_part_to_symbol_reports_lookup_failure() -> None:
     service = _service(RaisingClient([]), [])
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Part lookup failed: lookup failed for C404")
-    ):
-        service.bind_part_to_symbol("U1", "C404")
+    assert service.bind_part_to_symbol("U1", "C404") == "Part lookup failed: lookup failed for C404"
 
 
 def test_bind_part_to_symbol_reports_missing_part() -> None:
     service = _service(FakeClient([], part=None), [])
-    with pytest.raises(ToolFailedError, match=re.escape("No part found for 'C404' on jlcsearch.")):
-        service.bind_part_to_symbol("U1", "C404")
+    assert service.bind_part_to_symbol("U1", "C404") == "No part found for 'C404' on jlcsearch."
 
 
 def test_bind_part_to_symbol_reports_identity_update_failure() -> None:
@@ -130,11 +124,9 @@ def test_bind_part_to_symbol_reports_identity_update_failure() -> None:
         raise RuntimeError("write blocked")
 
     service = _service(FakeClient([], part=part), [], update_symbol_property=fail_update)
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Could not update schematic properties for 'U1': write blocked"),
-    ):
-        service.bind_part_to_symbol("U1", "C500")
+    assert service.bind_part_to_symbol("U1", "C500") == (
+        "Could not update schematic properties for 'U1': write blocked"
+    )
 
 
 def test_bind_part_to_symbol_reports_missing_package_for_auto_assignment() -> None:
@@ -179,11 +171,10 @@ def test_recommend_part_reports_search_failure() -> None:
             raise OSError(f"search failed for {query}")
 
     service = _service(SearchFailureClient([]), [])
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Part recommendation search failed: search failed for LDO"),
-    ):
+    assert (
         service.recommend_part("LDO", {})
+        == "Part recommendation search failed: search failed for LDO"
+    )
 
 
 @pytest.mark.parametrize(
@@ -252,8 +243,5 @@ def test_check_derating_compliance_preserves_warning_and_error_behavior() -> Non
     assert warning.startswith("Part sourcing compliance: WARN\n- Derating [WARN]:")
     assert "- AVL [WARN]: No approved-vendor list configured — AVL not enforced." in warning
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Derating check failed: No derating policy for 'unobtanium'/'flux'."),
-    ):
-        service.check_derating_compliance("unobtanium", "flux", 1.0, 0.1)
+    failure = service.check_derating_compliance("unobtanium", "flux", 1.0, 0.1)
+    assert failure.startswith("Derating check failed: No derating policy for 'unobtanium'/'flux'.")

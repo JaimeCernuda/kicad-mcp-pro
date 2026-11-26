@@ -2,13 +2,8 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import re
 from pathlib import Path
 from typing import Any
-
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 
 
 def _service_type() -> type[Any]:
@@ -111,11 +106,10 @@ def test_set_project_rejects_missing_directory_without_side_effects(tmp_path: Pa
         render_project_info=lambda: "project-info",
     )
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Project directory does not exist or is not a directory."),
-    ):
+    assert (
         service.set_project(str(missing))
+        == "Project directory does not exist or is not a directory."
+    )
     assert events == []
 
 
@@ -132,15 +126,11 @@ def test_set_project_preserves_incomplete_project_error(tmp_path: Path) -> None:
         render_project_info=lambda: "project-info",
     )
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape(
-            "E_PROJECT_SCAN_INCOMPLETE: Found a .kicad_pro file but no matching "
-            ".kicad_pcb or .kicad_sch file in the selected directory. "
-            "Add at least one board or schematic file before activating this project."
-        ),
-    ):
-        service.set_project(str(tmp_path))
+    assert service.set_project(str(tmp_path)) == (
+        "E_PROJECT_SCAN_INCOMPLETE: Found a .kicad_pro file but no matching "
+        ".kicad_pcb or .kicad_sch file in the selected directory. "
+        "Add at least one board or schematic file before activating this project."
+    )
 
 
 def test_get_project_info_delegates_to_renderer() -> None:

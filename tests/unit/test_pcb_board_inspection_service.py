@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 from types import SimpleNamespace
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.models.verdict import VerdictReport
 from kicad_mcp.pcb.board_inspection import PcbBoardInspectionService
 
@@ -187,11 +183,9 @@ def test_tracks_preserve_filters_pagination_formatting_and_fallback() -> None:
             "1. (5.00, 6.00) -> (7.00, 8.00) mm layer=B_Cu width=0.300 mm net=VCC id=track-2",
         ]
     )
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Track page 3 is out of range. Available pages: 1-2."),
-    ):
-        service.get_tracks(page=3, page_size=1)
+    assert service.get_tracks(page=3, page_size=1) == (
+        "Track page 3 is out of range. Available pages: 1-2."
+    )
     assert service.get_tracks(filter_net="missing") == (
         "diag::No tracks match the supplied filters on the active board."
     )
@@ -279,11 +273,9 @@ def test_footprints_preserve_filter_pagination_formatting_and_fallback() -> None
             "- R1 (10k) @ (3.00, 4.00) mm layer=B_Cu id=fp-2",
         ]
     )
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Footprint page 3 is out of range. Available pages: 1-2."),
-    ):
-        service.get_footprints(page=3, page_size=1)
+    assert service.get_footprints(page=3, page_size=1) == (
+        "Footprint page 3 is out of range. Available pages: 1-2."
+    )
     assert service.get_footprints(filter_layer="missing") == (
         "diag::No footprints match the supplied layer filter on the active board."
     )

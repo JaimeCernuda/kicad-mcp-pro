@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
-from ..errors import SchematicWriteUnsafeError, ToolFailedError
+from ..errors import SchematicWriteUnsafeError
 from .guarded_api_save import guarded_kicad_api_save
 from .sheet_pins import (
     EDGES,
@@ -273,9 +273,7 @@ class SchematicHierarchyAuthoringService:
             create_schematic = self.resolve_create_schematic()
         except Exception as exc:
             self.warn("schematic_create_sheet_dependency_missing", error=str(exc))
-            raise ToolFailedError(
-                "kicad-sch-api is unavailable, so child sheet creation could not run."
-            ) from exc
+            return "kicad-sch-api is unavailable, so child sheet creation could not run."
 
         top_schematic_path = self.active_schematic_file()
         sheet_x, sheet_y = self.snap_point(x_mm, y_mm, snap_to_grid)
@@ -287,7 +285,15 @@ class SchematicHierarchyAuthoringService:
 
         try:
             schematic = self.load_schematic(top_schematic_path)
-            existing_sheet = schematic.sheets.get_sheet_by_name(name)
+            if schematic.sheets.get_sheet_by_name(name) is not None:
+                already = f"Sheet '{name}' already exists."
+                if sheet_pins:
+                    already += (
+                        " Nothing was created and no sheet pins were applied -- this early "
+                        "return does not touch an existing sheet. Use sch_add_sheet_pin or "
+                        "sch_import_sheet_pins to add pins to it."
+                    )
+                return already
         except Exception as exc:
             self.warn(
                 "schematic_create_sheet_failed",
@@ -295,16 +301,7 @@ class SchematicHierarchyAuthoringService:
                 filename=str(child_path),
                 error=str(exc),
             )
-            raise ToolFailedError(f"Could not create child sheet '{name}': {exc}") from exc
-        if existing_sheet is not None:
-            already = f"Sheet '{name}' already exists."
-            if sheet_pins:
-                already += (
-                    " Nothing was created and no sheet pins were applied -- this early "
-                    "return does not touch an existing sheet. Use sch_add_sheet_pin or "
-                    "sch_import_sheet_pins to add pins to it."
-                )
-            raise ToolFailedError(already)
+            return f"Could not create child sheet '{name}': {exc}"
 
         # Track only new files/directories, so failures do not delete user data.
         created_dirs = self._new_sheet_directories(child_path)
@@ -317,7 +314,7 @@ class SchematicHierarchyAuthoringService:
                 filename=str(child_path),
                 error=str(exc),
             )
-            raise ToolFailedError(f"Could not create child sheet '{name}': {exc}") from exc
+            return f"Could not create child sheet '{name}': {exc}"
 
         try:
             self._stage_new_child_sheet(
@@ -339,7 +336,7 @@ class SchematicHierarchyAuthoringService:
             )
             if isinstance(exc, SchematicWriteUnsafeError):
                 raise
-            raise ToolFailedError(f"Could not create child sheet '{name}': {exc}") from exc
+            return f"Could not create child sheet '{name}': {exc}"
 
         pin_detail = (
             self._apply_sheet_pins(name, top_schematic_path, sheet_pins) if sheet_pins else ""
@@ -565,11 +562,11 @@ class SchematicHierarchyAuthoringService:
                     None,
                 )
                 if skipped is not None:
-                    raise ToolFailedError(
+                    return (), (
                         f"Sheet '{sheet}' is in {root_path.name} but cannot be addressed: "
                         f"{skipped.reason}. Fix that block in KiCad and retry."
                     )
-                raise ToolFailedError(f"Sheet '{sheet}' was not found in {root_path.name}.")
+                return (), f"Sheet '{sheet}' was not found in {root_path.name}."
         if not blocks:
             return (), f"{root_path.name} has no child sheets, so there is nothing to import."
         return blocks, None
@@ -641,7 +638,7 @@ class SchematicHierarchyAuthoringService:
             root_text = self.read_text(root_path)
         except OSError as exc:
             self.warn("schematic_import_sheet_pins_unreadable", error=str(exc))
-            raise ToolFailedError(f"Could not read the top-level schematic: {exc}") from exc
+            return f"Could not read the top-level schematic: {exc}"
 
         blocks, err = self._resolve_target_sheet_blocks(root_path, root_text, sheet)
         if err is not None:
@@ -657,10 +654,7 @@ class SchematicHierarchyAuthoringService:
                 pending.append(item)
 
         if not pending:
-            message = "\n".join(["No sheet pins could be imported.", *lines])
-            if dry_run:
-                return message
-            raise ToolFailedError(message)
+            return "\n".join(["No sheet pins could be imported.", *lines])
 
         def mutator(current: str) -> str:
             return self._apply_import_sheet_pin_plans(current, pending)
@@ -673,7 +667,7 @@ class SchematicHierarchyAuthoringService:
             # printing "1 added" for a sheet the transaction rolled back would
             # be false. The two failure returns therefore have the same shape.
             self.warn("schematic_import_sheet_pins_failed", error=str(exc))
-            raise ToolFailedError(f"Could not import sheet pins: {exc}") from exc
+            return f"Could not import sheet pins: {exc}"
 
         if mutated == root_text:
             return "\n".join(["Sheet pins are already up to date; nothing was written.", *lines])
@@ -684,7 +678,7 @@ class SchematicHierarchyAuthoringService:
             self.transactional_write(mutator, root_path)
         except Exception as exc:
             self.warn("schematic_import_sheet_pins_failed", error=str(exc))
-            raise ToolFailedError(f"Could not import sheet pins: {exc}") from exc
+            return f"Could not import sheet pins: {exc}"
 
         result = self.reload_schematic()
         return "\n".join([result, "Imported sheet pins.", *lines])
@@ -699,18 +693,16 @@ class SchematicHierarchyAuthoringService:
     ) -> str:
         """Add one sheet pin at an explicit edge position, without auto-layout."""
         if pin_type not in PIN_TYPES:
-            raise ToolFailedError(
-                f"Unknown sheet pin type '{pin_type}'. Use one of: {', '.join(PIN_TYPES)}."
-            )
+            return f"Unknown sheet pin type '{pin_type}'. Use one of: {', '.join(PIN_TYPES)}."
         if edge not in EDGES:
-            raise ToolFailedError(f"Unknown sheet edge '{edge}'. Use one of: {', '.join(EDGES)}.")
+            return f"Unknown sheet edge '{edge}'. Use one of: {', '.join(EDGES)}."
 
         root_path = self.active_schematic_file()
         try:
             root_text = self.read_text(root_path)
         except OSError as exc:
             self.warn("schematic_add_sheet_pin_unreadable", sheet=sheet, error=str(exc))
-            raise ToolFailedError(f"Could not read the top-level schematic: {exc}") from exc
+            return f"Could not read the top-level schematic: {exc}"
 
         block = next(
             (candidate for candidate in parse_sheet_blocks(root_text) if candidate.name == sheet),
@@ -726,11 +718,11 @@ class SchematicHierarchyAuthoringService:
                 None,
             )
             if skipped is not None:
-                raise ToolFailedError(
+                return (
                     f"Sheet '{sheet}' is in {root_path.name} but cannot be addressed: "
                     f"{skipped.reason}. Fix that block in KiCad and retry."
                 )
-            raise ToolFailedError(f"Sheet '{sheet}' was not found in {root_path.name}.")
+            return f"Sheet '{sheet}' was not found in {root_path.name}."
 
         placement = placement_on_edge(
             block, name, pin_type, edge, position_along_edge, self.new_uuid()
@@ -756,7 +748,7 @@ class SchematicHierarchyAuthoringService:
             self.transactional_write(mutator, root_path)
         except Exception as exc:
             self.warn("schematic_add_sheet_pin_failed", sheet=sheet, name=name, error=str(exc))
-            raise ToolFailedError(f"Could not add sheet pin '{name}': {exc}") from exc
+            return f"Could not add sheet pin '{name}': {exc}"
 
         result = self.reload_schematic()
         return (
@@ -764,8 +756,8 @@ class SchematicHierarchyAuthoringService:
             f"on the {edge} edge at {placement.x_mm}, {placement.y_mm} mm."
         )
 
-    def _find_sheet_block(self, root_path: Path, root_text: str, name: str) -> SheetBlock:
-        """Return the addressable block named ``name``, or raise if it is not one.
+    def _find_sheet_block(self, root_path: Path, root_text: str, name: str) -> SheetBlock | str:
+        """Return the addressable block named ``name``, or a report string if it is not one.
 
         Mirrors the lookup ``add_sheet_pin`` and ``import_sheet_pins`` use: a
         block that is in the file but unaddressable (bad ``(at ...)``, missing
@@ -787,11 +779,11 @@ class SchematicHierarchyAuthoringService:
             None,
         )
         if skipped is not None:
-            raise ToolFailedError(
+            return (
                 f"Sheet '{name}' is in {root_path.name} but cannot be addressed: "
                 f"{skipped.reason}. Fix that block in KiCad and retry."
             )
-        raise ToolFailedError(f"Sheet '{name}' was not found in {root_path.name}.")
+        return f"Sheet '{name}' was not found in {root_path.name}."
 
     def move_sheet(self, name: str, x_mm: float, y_mm: float, snap_to_grid: bool) -> str:
         """Move the hierarchical sheet symbol named ``name`` to a new anchor coordinate.
@@ -806,9 +798,11 @@ class SchematicHierarchyAuthoringService:
             root_text = self.read_text(root_path)
         except OSError as exc:
             self.warn("schematic_move_sheet_unreadable", name=name, error=str(exc))
-            raise ToolFailedError(f"Could not read the top-level schematic: {exc}") from exc
+            return f"Could not read the top-level schematic: {exc}"
 
         block = self._find_sheet_block(root_path, root_text, name)
+        if isinstance(block, str):
+            return block
 
         new_x, new_y = self.snap_point(x_mm, y_mm, snap_to_grid)
         snap_note = self.snap_notice((x_mm, y_mm), (new_x, new_y))
@@ -836,7 +830,7 @@ class SchematicHierarchyAuthoringService:
             self.transactional_write(mutator, root_path)
         except Exception as exc:
             self.warn("schematic_move_sheet_failed", name=name, error=str(exc))
-            raise ToolFailedError(f"Could not move sheet '{name}': {exc}") from exc
+            return f"Could not move sheet '{name}': {exc}"
 
         result = self.reload_schematic()
         lines = [result, f"Moved sheet '{name}' to {new_x}, {new_y} mm."]
@@ -863,9 +857,11 @@ class SchematicHierarchyAuthoringService:
             root_text = self.read_text(root_path)
         except OSError as exc:
             self.warn("schematic_delete_sheet_unreadable", name=name, error=str(exc))
-            raise ToolFailedError(f"Could not read the top-level schematic: {exc}") from exc
+            return f"Could not read the top-level schematic: {exc}"
 
         block = self._find_sheet_block(root_path, root_text, name)
+        if isinstance(block, str):
+            return block
 
         def mutator(current: str) -> str:
             target = next(
@@ -887,7 +883,7 @@ class SchematicHierarchyAuthoringService:
             self.transactional_write(mutator, root_path, allow_node_loss=True)
         except Exception as exc:
             self.warn("schematic_delete_sheet_failed", name=name, error=str(exc))
-            raise ToolFailedError(f"Could not delete sheet '{name}': {exc}") from exc
+            return f"Could not delete sheet '{name}': {exc}"
 
         result = self.reload_schematic()
         return f"{result}\nDeleted sheet '{name}' from {root_path.name}."
@@ -917,13 +913,13 @@ class SchematicHierarchyAuthoringService:
             root_text = self.read_text(root_path)
         except OSError as exc:
             self.warn("schematic_wire_sheet_pins_unreadable", error=str(exc))
-            raise ToolFailedError(f"Could not read the top-level schematic: {exc}") from exc
+            return f"Could not read the top-level schematic: {exc}"
 
         blocks = parse_sheet_blocks(root_text)
         if not blocks:
             return f"{root_path.name} has no child sheets, so there is nothing to wire."
         if sheet is not None and not any(block.name == sheet for block in blocks):
-            raise ToolFailedError(f"Sheet '{sheet}' was not found in {root_path.name}.")
+            return f"Sheet '{sheet}' was not found in {root_path.name}."
 
         wired_points = self.parse_wire_endpoints(root_text)
         plan = plan_sheet_wiring(
@@ -963,7 +959,7 @@ class SchematicHierarchyAuthoringService:
             mutated = mutator(root_text)
         except Exception as exc:
             self.warn("schematic_wire_sheet_pins_failed", error=str(exc))
-            raise ToolFailedError(f"Could not wire sheet pins: {exc}") from exc
+            return f"Could not wire sheet pins: {exc}"
 
         lines = list(plan.notes)
         if plan.orphans:
@@ -986,7 +982,7 @@ class SchematicHierarchyAuthoringService:
             self.transactional_write(mutator, root_path)
         except Exception as exc:
             self.warn("schematic_wire_sheet_pins_failed", error=str(exc))
-            raise ToolFailedError(f"Could not wire sheet pins: {exc}") from exc
+            return f"Could not wire sheet pins: {exc}"
 
         result = self.reload_schematic()
         return "\n".join(
@@ -1016,7 +1012,7 @@ class SchematicHierarchyAuthoringService:
             root_text = self.read_text(root_path)
         except OSError as exc:
             self.warn("schematic_spread_sheets_unreadable", error=str(exc))
-            raise ToolFailedError(f"Could not read the top-level schematic: {exc}") from exc
+            return f"Could not read the top-level schematic: {exc}"
 
         blocks = parse_sheet_blocks(root_text)
         if not blocks:
@@ -1036,11 +1032,10 @@ class SchematicHierarchyAuthoringService:
         )
         lines = list(plan.notes)
 
-        if plan.blocked or plan.overflow_mm:
-            message = "\n".join(["Nothing was moved.", *lines])
-            if dry_run:
-                return message
-            raise ToolFailedError(message)
+        if plan.blocked:
+            return "\n".join(["Nothing was moved.", *lines])
+        if plan.overflow_mm:
+            return "\n".join(["Nothing was moved.", *lines])
         if not plan.shifts:
             return "\n".join(["Sheets are already spread out; nothing was written.", *lines])
 
@@ -1062,7 +1057,7 @@ class SchematicHierarchyAuthoringService:
             mutated = mutator(root_text)
         except ValueError as exc:
             self.warn("schematic_spread_sheets_failed", error=str(exc))
-            raise ToolFailedError(f"Could not spread sheets: {exc}") from exc
+            return f"Could not spread sheets: {exc}"
 
         if skipped_pins:
             lines.append(
@@ -1084,7 +1079,7 @@ class SchematicHierarchyAuthoringService:
             self.transactional_write(mutator, root_path)
         except Exception as exc:
             self.warn("schematic_spread_sheets_failed", error=str(exc))
-            raise ToolFailedError(f"Could not spread sheets: {exc}") from exc
+            return f"Could not spread sheets: {exc}"
 
         result = self.reload_schematic()
         return "\n".join([result, f"Spread {len(dx_by_sheet)} sheet(s): {moved}.", *lines])

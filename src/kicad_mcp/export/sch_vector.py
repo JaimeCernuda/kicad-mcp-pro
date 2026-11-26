@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from ..errors import ToolFailedError
-
 type GetSchFile = Callable[[], Path]
 type EnsureOutputDir = Callable[[str], Path]
 type FormatFileList = Callable[[list[Path], str], str]
@@ -59,7 +57,7 @@ class ExportSchVectorService:
                 else self.resolve_output_file(format_name, output_dir, default_name="")
             )
         except ValueError as exc:
-            raise ToolFailedError(f"Invalid output path: {exc}") from exc
+            return f"Invalid output path: {exc}"
 
         cmd = ["sch", "export", format_name]
         if pages:
@@ -81,10 +79,7 @@ class ExportSchVectorService:
 
         code, stdout, stderr = self.run_cli(*cmd)
         if code != 0:
-            raise ToolFailedError(
-                f"Schematic {label} export failed: {stderr or stdout or 'unknown error'}",
-                exit_code=code,
-            )
+            return f"Schematic {label} export failed: {stderr or stdout or 'unknown error'}"
         files = sorted(out_dir.glob(f"*.{extension}")) if out_dir.is_dir() else []
         return self.format_file_list(files, f"Schematic {label} export completed in {out_dir}:")
 

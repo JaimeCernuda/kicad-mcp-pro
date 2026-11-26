@@ -7,9 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.models.tool_result import MutatingToolResult, TransactionVerification
 from kicad_mcp.schematic.document_settings import SchematicDocumentSettingsService
 
@@ -98,14 +95,11 @@ def test_title_block_requires_at_least_one_field(tmp_path: Path) -> None:
         resolved = True
         return FakeTarget(path)
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("No schematic title block fields specified. Provide at least one field."),
-    ):
-        _service(path, resolve_target=resolve).set_title_block_info(
-            None, None, None, None, None, None, None, None, None, None, False
-        )
+    result = _service(path, resolve_target=resolve).set_title_block_info(
+        None, None, None, None, None, None, None, None, None, None, False
+    )
 
+    assert result == "No schematic title block fields specified. Provide at least one field."
     assert resolved is False
 
 
@@ -226,13 +220,9 @@ def test_set_sheet_size_rejects_unknown_paper_after_trimming(tmp_path: Path) -> 
     path = tmp_path / "root.kicad_sch"
     path.write_text('(kicad_sch\n  (paper "A4")\n)', encoding="utf-8")
 
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape(
-            "Unknown paper size 'BAD'. Available sizes: A0, A1, A2, A3, A4, B, C, D, E."
-        ),
-    ):
-        _service(path).set_sheet_size(" BAD ")
+    result = _service(path).set_sheet_size(" BAD ")
+
+    assert result == "Unknown paper size 'BAD'. Available sizes: A0, A1, A2, A3, A4, B, C, D, E."
 
 
 def test_set_sheet_size_replaces_paper_and_preserves_summary(tmp_path: Path) -> None:
@@ -293,10 +283,9 @@ def test_set_sheet_size_preserves_write_failure_text(tmp_path: Path) -> None:
     def fail(_mutator: Callable[[str], str], _target: Path) -> None:
         raise OSError("disk full")
 
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Could not write schematic file: disk full")
-    ):
-        _service(path, transactional_write=fail).set_sheet_size("A3")
+    assert _service(path, transactional_write=fail).set_sheet_size("A3") == (
+        "Could not write schematic file: disk full"
+    )
 
 
 def test_auto_resize_handles_empty_and_oversized_schematics(tmp_path: Path) -> None:
@@ -304,17 +293,16 @@ def test_auto_resize_handles_empty_and_oversized_schematics(tmp_path: Path) -> N
     path.write_text('(kicad_sch\n  (paper "A4")\n)', encoding="utf-8")
 
     empty = _service(path).auto_resize_sheet()
-    with pytest.raises(ToolFailedError) as exc:
-        _service(
-            path,
-            parse_schematic=lambda _path: {
-                "symbols": [{"x": 2000.0, "y": 1000.0}],
-                "power_symbols": [],
-            },
-        ).auto_resize_sheet()
+    huge = _service(
+        path,
+        parse_schematic=lambda _path: {
+            "symbols": [{"x": 2000.0, "y": 1000.0}],
+            "power_symbols": [],
+        },
+    ).auto_resize_sheet()
 
     assert empty == "No symbols found — sheet size unchanged."
-    assert str(exc.value) == (
+    assert huge == (
         "Symbols span 2023 x 1021 mm — no standard size is large enough.  "
         "Consider splitting into hierarchical sheets (sch_create_sheet)."
     )

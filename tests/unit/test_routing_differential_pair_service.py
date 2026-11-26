@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-import pytest
-
-from kicad_mcp.errors import ToolFailedError
 from kicad_mcp.routing.differential_pair_rules import (
     RoutingDifferentialPairService,
     build_differential_pair_rule,
@@ -45,11 +41,9 @@ def test_set_pair_preserves_missing_net_message() -> None:
         list_board_net_names=lambda: {"USB_DP"},
         write_rule=lambda _name, _body: Path("unused.kicad_dru"),
     )
-    with pytest.raises(
-        ToolFailedError,
-        match=re.escape("Differential-pair routing rule was not written. Missing nets: USB_DN"),
-    ):
-        service.set_pair("USB_DP", "USB_DN")
+    assert service.set_pair("USB_DP", "USB_DN") == (
+        "Differential-pair routing rule was not written. Missing nets: USB_DN"
+    )
 
 
 def test_set_pair_preserves_success_response(tmp_path: Path) -> None:
@@ -76,7 +70,6 @@ def test_set_pair_preserves_writer_failure_text() -> None:
         list_board_net_names=lambda: {"USB_DP", "USB_DN"},
         write_rule=fail,
     )
-    with pytest.raises(
-        ToolFailedError, match=re.escape("Differential-pair rule update failed: bad rules")
-    ):
-        service.set_pair("USB_DP", "USB_DN")
+    assert service.set_pair("USB_DP", "USB_DN") == (
+        "Differential-pair rule update failed: bad rules"
+    )

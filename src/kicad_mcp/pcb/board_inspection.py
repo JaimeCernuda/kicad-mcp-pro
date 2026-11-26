@@ -6,7 +6,6 @@ from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from typing import Protocol, cast
 
-from ..errors import ToolFailedError
 from ..models.verdict import VerdictReport
 from .board_access import (
     BoardAccessError,
@@ -272,9 +271,7 @@ class PcbBoardInspectionService:
                 )
             return self.with_pcb_diagnostics("No tracks are present on the active board.")
         if not tracks:
-            raise ToolFailedError(
-                f"Track page {page} is out of range. Available pages: 1-{page_count}."
-            )
+            return f"Track page {page} is out of range. Available pages: 1-{page_count}."
 
         lines = [
             f"Tracks ({total} total):",
@@ -353,9 +350,7 @@ class PcbBoardInspectionService:
                 )
             return self.with_pcb_diagnostics("No footprints are present on the active board.")
         if not footprints:
-            raise ToolFailedError(
-                f"Footprint page {page} is out of range. Available pages: 1-{page_count}."
-            )
+            return f"Footprint page {page} is out of range. Available pages: 1-{page_count}."
 
         lines = [
             f"Footprints ({total} total):",

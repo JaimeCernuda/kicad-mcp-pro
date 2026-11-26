@@ -9,8 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..errors import ToolFailedError
-
 PathResolver = Callable[[str], Path]
 
 _DEFAULT_ROTATIONS_JSON = Path(__file__).parent.parent / "dfm_profiles" / "jlcpcb_rotations.json"
@@ -44,18 +42,18 @@ def find_rotation_offset(
     return best[1] if best else None
 
 
-def _read_cpl_rows(in_path: Path) -> tuple[list[str], list[dict[str, str]]]:
+def _read_cpl_rows(in_path: Path) -> tuple[list[str], list[dict[str, str]]] | str:
     try:
         with in_path.open(newline="", encoding="utf-8") as fh:
             reader = csv.DictReader(fh)
             if reader.fieldnames is None:
-                raise ToolFailedError("CPL CSV has no header row.")
+                return "CPL CSV has no header row."
             return list(reader.fieldnames), list(reader)
     except (OSError, csv.Error) as exc:
-        raise ToolFailedError(f"Failed to read CPL CSV: {exc}") from exc
+        return f"Failed to read CPL CSV: {exc}"
 
 
-def _resolve_cpl_columns(fieldnames: list[str]) -> tuple[str, str]:
+def _resolve_cpl_columns(fieldnames: list[str]) -> tuple[str, str] | str:
     rot_col = "Rot"
     pkg_col = "Package"
     for col in fieldnames:
@@ -65,13 +63,9 @@ def _resolve_cpl_columns(fieldnames: list[str]) -> tuple[str, str]:
             pkg_col = col
 
     if rot_col not in fieldnames:
-        raise ToolFailedError(
-            f"Rotation column ('{rot_col}') not found in CSV. Columns: {fieldnames}"
-        )
+        return f"Rotation column ('{rot_col}') not found in CSV. Columns: {fieldnames}"
     if pkg_col not in fieldnames:
-        raise ToolFailedError(
-            f"Package column ('{pkg_col}') not found in CSV. Columns: {fieldnames}"
-        )
+        return f"Package column ('{pkg_col}') not found in CSV. Columns: {fieldnames}"
     return rot_col, pkg_col
 
 
@@ -108,7 +102,7 @@ def _write_cpl_csv(
     out_path: Path,
     fieldnames: list[str],
     rows: list[dict[str, str]],
-) -> None:
+) -> str | None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with out_path.open("w", newline="", encoding="utf-8") as fh:
@@ -116,7 +110,8 @@ def _write_cpl_csv(
             writer.writeheader()
             writer.writerows(rows)
     except OSError as exc:
-        raise ToolFailedError(f"Failed to write corrected CPL CSV: {exc}") from exc
+        return f"Failed to write corrected CPL CSV: {exc}"
+    return None
 
 
 @dataclass(frozen=True)
@@ -136,14 +131,21 @@ class ManufacturingCplRotationService:
     ) -> str:
         in_path = self.resolve_path(cpl_csv_path)
         if not in_path.exists():
-            raise ToolFailedError(f"CPL file not found: {in_path}")
+            return f"CPL file not found: {in_path}"
 
         table = load_rotation_table(self.rotation_table_path)
         if not table:
-            raise ToolFailedError("Could not load rotation table from jlcpcb_rotations.json.")
+            return "Could not load rotation table from jlcpcb_rotations.json."
 
-        fieldnames, rows = _read_cpl_rows(in_path)
-        rot_col, pkg_col = _resolve_cpl_columns(fieldnames)
+        csv_result = _read_cpl_rows(in_path)
+        if isinstance(csv_result, str):
+            return csv_result
+        fieldnames, rows = csv_result
+
+        cols_result = _resolve_cpl_columns(fieldnames)
+        if isinstance(cols_result, str):
+            return cols_result
+        rot_col, pkg_col = cols_result
 
         corrected_count, preview_lines = _apply_rotation_corrections(rows, table, rot_col, pkg_col)
 
@@ -162,19 +164,21 @@ class ManufacturingCplRotationService:
                 + ("\n...(truncated)" if len(preview_lines) > 50 else "")
             )
         if not confirm:
-            raise ToolFailedError(
+            return (
                 "CPL rotation correction writes a new CSV and requires explicit confirmation.\n"
                 f"- Intended output: {out_path}\n"
                 "Rerun with dry_run=false and confirm=true."
             )
         if out_path.exists():
-            raise ToolFailedError(
+            return (
                 "Refusing to overwrite an existing corrected CPL CSV.\n"
                 f"- Existing file: {out_path}\n"
                 "Choose a different output_path."
             )
 
-        _write_cpl_csv(out_path, fieldnames, rows)
+        write_err = _write_cpl_csv(out_path, fieldnames, rows)
+        if write_err:
+            return write_err
 
         return (
             f"CPL rotation corrections applied: {corrected_count} component(s) corrected.\n"
