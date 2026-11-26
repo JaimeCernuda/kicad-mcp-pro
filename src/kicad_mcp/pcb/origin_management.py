@@ -7,6 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
+from ..errors import ToolFailedError
+
 
 class RunMutation(Protocol):
     def __call__[T](self, operation: str, command: Callable[[], T]) -> T: ...
@@ -38,7 +40,9 @@ class PcbOriginService:
             board = self.get_board()
             set_origin = getattr(board, "set_origin", None)
             if not callable(set_origin):
-                return "Origin setting is not supported by the current KiCad IPC version."
+                raise ToolFailedError(
+                    "Origin setting is not supported by the current KiCad IPC version."
+                )
             origin = self.vector_from_xy(
                 int(self.mm_to_nm(x_mm)),
                 int(self.mm_to_nm(y_mm)),
@@ -46,7 +50,7 @@ class PcbOriginService:
             self.run_mutation("pcb_set_origin", lambda: set_origin(origin))
             return f"Board origin set to ({x_mm:.3f}, {y_mm:.3f}) mm."
         except self.connection_errors as exc:
-            return f"Failed to set origin: {exc}"
+            raise ToolFailedError(f"Failed to set origin: {exc}") from exc
 
     def get_origin(self) -> str:
         """Return the board drill origin in millimeters when supported."""
@@ -54,7 +58,9 @@ class PcbOriginService:
             board = self.get_board()
             get_origin = getattr(board, "get_origin", None)
             if not callable(get_origin):
-                return "Origin retrieval is not supported by the current KiCad IPC version."
+                raise ToolFailedError(
+                    "Origin retrieval is not supported by the current KiCad IPC version."
+                )
             origin = get_origin()
             x_mm = self.nm_to_mm(self.coord_nm(origin, "x"))
             y_mm = self.nm_to_mm(self.coord_nm(origin, "y"))
@@ -63,4 +69,4 @@ class PcbOriginService:
                 indent=2,
             )
         except self.connection_errors as exc:
-            return f"Failed to get origin: {exc}"
+            raise ToolFailedError(f"Failed to get origin: {exc}") from exc
