@@ -7,6 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..errors import ToolFailedError
+
 type GetPcbFile = Callable[[], Path]
 type EnsureOutputDir = Callable[[str | None], Path]
 type RunCliVariants = Callable[[list[list[str]]], tuple[int, str, str]]
@@ -43,7 +45,9 @@ class ExportBoardStatsService:
         if out_file.exists():
             return self.read_preview(out_file)
         if code != 0:
-            return f"Board stats export failed: {stderr or 'unknown error'}"
+            raise ToolFailedError(
+                f"Board stats export failed: {stderr or 'unknown error'}", exit_code=code
+            )
         return stdout or "Board statistics were generated without a text report."
 
     def export_board_stats(self, output_name: str | None = None) -> str:
@@ -76,9 +80,11 @@ class ExportBoardStatsService:
             ]
         )
         if code != 0:
-            return f"Board stats export failed: {stderr or 'unknown error'}"
+            raise ToolFailedError(
+                f"Board stats export failed: {stderr or 'unknown error'}", exit_code=code
+            )
         if not out_file.exists():
-            return "Board stats export completed but no output file was produced."
+            raise ToolFailedError("Board stats export completed but no output file was produced.")
 
         try:
             stats = json.loads(out_file.read_text(encoding="utf-8"))

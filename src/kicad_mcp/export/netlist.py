@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..errors import ToolFailedError
 from ..models.export import ExportNetlistInput
 
 type GetSchFile = Callable[[], Path]
@@ -58,5 +59,7 @@ class ExportNetlistService:
             ]
         )
         if code != 0:
-            return f"Netlist export failed: {stderr or 'unknown error'}"
+            raise ToolFailedError(
+                f"Netlist export failed: {stderr or 'unknown error'}", exit_code=code
+            )
         return f"Netlist exported to {out_file}"

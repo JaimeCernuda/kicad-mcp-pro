@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ..errors import ToolFailedError
 from .inventory import IPC2581_DEFAULT_NAME
+
+
+class ExportNotSupportedError(ToolFailedError):
+    """The detected KiCad CLI cannot produce this optional export format."""
 
 
 class PcbManufacturingCapabilities(Protocol):
@@ -106,7 +111,9 @@ class ExportPcbManufacturingOutputsService:
             ]
         )
         if code != 0:
-            return f"Pick and place export failed: {stderr or 'unknown error'}"
+            raise ToolFailedError(
+                f"Pick and place export failed: {stderr or 'unknown error'}", exit_code=code
+            )
         files = sorted(out_dir.iterdir()) if out_dir.exists() else []
         return self.format_file_list(files, f"Pick and place data exported to {out_dir}:")
 
@@ -124,7 +131,9 @@ class ExportPcbManufacturingOutputsService:
         pcb_file = self.get_pcb_file()
         capabilities = self.get_capabilities()
         if not bool(getattr(capabilities, spec.support_name)):
-            return f"{spec.label} export is not supported by the detected KiCad CLI."
+            raise ExportNotSupportedError(
+                f"{spec.label} export is not supported by the detected KiCad CLI."
+            )
 
         try:
             out_file = self.resolve_output_file(
@@ -133,7 +142,7 @@ class ExportPcbManufacturingOutputsService:
                 default_name=spec.default_name,
             )
         except ValueError as exc:
-            return f"Invalid output path: {exc}"
+            raise ToolFailedError(f"Invalid output path: {exc}") from exc
 
         variant_args = self.active_variant_args(variant_name)
         prefix = ["pcb", "export", spec.command, *variant_args, *spec.extra_args]
@@ -144,7 +153,9 @@ class ExportPcbManufacturingOutputsService:
             ]
         )
         if code != 0:
-            return f"{spec.label} export failed: {stderr or 'unknown error'}"
+            raise ToolFailedError(
+                f"{spec.label} export failed: {stderr or 'unknown error'}", exit_code=code
+            )
         result = f"{spec.label} exported to {out_file}"
         warning = stderr.strip()
         if spec.report_success_stderr and warning:

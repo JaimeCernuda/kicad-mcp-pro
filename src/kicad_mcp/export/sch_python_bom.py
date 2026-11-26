@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ..errors import ToolFailedError
+
 type GetSchFile = Callable[[], Path]
 
 
@@ -36,7 +38,7 @@ class ExportSchPythonBomService:
         try:
             out_file = self.resolve_output_file("bom", output_file, default_name="bom.xml")
         except ValueError as exc:
-            return f"Invalid output path: {exc}"
+            raise ToolFailedError(f"Invalid output path: {exc}") from exc
 
         code, stdout, stderr = self.run_cli(
             "sch",
@@ -47,5 +49,8 @@ class ExportSchPythonBomService:
             str(sch_file),
         )
         if code != 0:
-            return f"Legacy Python BOM export failed: {stderr or stdout or 'unknown error'}"
+            raise ToolFailedError(
+                f"Legacy Python BOM export failed: {stderr or stdout or 'unknown error'}",
+                exit_code=code,
+            )
         return f"Legacy Python BOM exported to {out_file}"

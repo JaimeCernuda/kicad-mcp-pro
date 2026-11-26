@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..errors import ToolFailedError
+
 type GetSchFile = Callable[[], Path]
 type EnsureOutputDir = Callable[[], Path]
 type ActiveVariantArgs = Callable[[], list[str]]
@@ -43,5 +45,8 @@ class ExportSchPdfService:
             ]
         )
         if code != 0:
-            return f"Schematic PDF export failed: {stderr or stdout or 'unknown error'}"
+            raise ToolFailedError(
+                f"Schematic PDF export failed: {stderr or stdout or 'unknown error'}",
+                exit_code=code,
+            )
         return f"Schematic PDF exported to {out_file}"

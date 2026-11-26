@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ..errors import ToolFailedError
+
 type GetPcbFile = Callable[[], Path]
 type EnsureOutputDir = Callable[[str], Path]
 type ActiveVariantArgs = Callable[[], list[str]]
@@ -42,7 +44,7 @@ class ExportPcbVectorService:
         """Export a board layer to SVG while preserving the legacy CLI contract."""
         pcb_file = self.get_pcb_file()
         if not self.get_capabilities().supports_svg:
-            return "SVG export is not supported by the detected KiCad CLI."
+            raise ToolFailedError("SVG export is not supported by the detected KiCad CLI.")
 
         out_dir = self.ensure_output_dir("svg")
         variant_args = self.active_variant_args()
@@ -63,7 +65,7 @@ class ExportPcbVectorService:
             ]
         )
         if code != 0:
-            return f"SVG export failed: {stderr or 'unknown error'}"
+            raise ToolFailedError(f"SVG export failed: {stderr or 'unknown error'}", exit_code=code)
         files = sorted(out_dir.glob("*.svg"))
         return self.format_file_list(files, f"SVG export completed in {out_dir}:")
 
@@ -71,7 +73,7 @@ class ExportPcbVectorService:
         """Export a board layer to DXF while preserving the legacy CLI fallbacks."""
         pcb_file = self.get_pcb_file()
         if not self.get_capabilities().supports_dxf:
-            return "DXF export is not supported by the detected KiCad CLI."
+            raise ToolFailedError("DXF export is not supported by the detected KiCad CLI.")
 
         out_dir = self.ensure_output_dir("dxf")
         variant_args = self.active_variant_args()
@@ -103,6 +105,6 @@ class ExportPcbVectorService:
             ]
         )
         if code != 0:
-            return f"DXF export failed: {stderr or 'unknown error'}"
+            raise ToolFailedError(f"DXF export failed: {stderr or 'unknown error'}", exit_code=code)
         files = sorted(out_dir.glob("*.dxf"))
         return self.format_file_list(files, f"DXF export completed in {out_dir}:")
