@@ -605,12 +605,6 @@ class NexarClient:
                 message = errors[0].get("message", "unknown error")
             else:
                 message = str(errors)
-            lowered = message.casefold()
-            if "part limit" in lowered or "upgrade your plan" in lowered:
-                raise RuntimeError(
-                    f"Nexar part-lookup quota reached: {message} Use source='jlcsearch' "
-                    "(zero-auth) for local work, or upgrade/await reset of the Nexar plan."
-                )
             raise RuntimeError(f"Nexar GraphQL error: {message}")
         results = ((response.get("data") or {}).get("supSearchMpn") or {}).get("results") or []
         records = [_record_from_nexar(entry.get("part") or {}) for entry in results]
