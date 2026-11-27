@@ -7,7 +7,8 @@
   "license": "MIT",
   "scripts": {
     "build": "KICAD_VIEWS_OUT=../../src/kicad_mcp/data/views/kicad-views.html node build.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json > .tsc.log || true; node -e \"const l=require('fs').readFileSync('.tsc.log','utf8').split('\\\\n').filter((x)=>x.startsWith('src/'));if(l.length){console.log(l.join('\\\\n'));process.exit(1)}\""
+    "typecheck": "tsc --noEmit -p tsconfig.json > .tsc.log || true; node -e \"const l=require('fs').readFileSync('.tsc.log','utf8').split('\\\\n').filter((x)=>x.startsWith('src/'));if(l.length){console.log(l.join('\\\\n'));process.exit(1)}\"",
+    "check:parse": "node dev/check_parse.mjs"
   },
   "dependencies": {
     "comlink": "4.4.2",

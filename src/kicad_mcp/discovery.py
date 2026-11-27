@@ -9,11 +9,12 @@ import platform
 import random
 import re
 import shutil
-import subprocess
+import subprocess  # noqa: F401  # nosec B404 - tests replace subprocess.run through this module
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Any, cast
 
 import structlog
@@ -217,18 +218,17 @@ def discover_kicad_cli() -> Path:
     return _candidate_cli_paths()[0]
 
 
+def _run_to_end() -> ModuleType:  # imported late: kicad_mcp.utils imports this module
+    from .utils import run_to_end  # noqa: PLC0415
+
+    return run_to_end
+
+
 def find_kicad_version(cli_path: Path) -> str | None:
     """Return the KiCad CLI version string."""
     try:
-        result = subprocess.run(
-            [str(cli_path), "--version"],
-            capture_output=True,
-            text=True,
-            errors="replace",
-            timeout=10,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        result = _run_to_end().run([str(cli_path), "--version"])
+    except OSError:
         return None
     text = (result.stdout or result.stderr).strip()
     return text or None
@@ -245,15 +245,8 @@ def _collect_cli_help_outputs(cli_path: Path) -> list[str]:
     )
     for command in commands:
         try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=10,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
+            result = _run_to_end().run(command)
+        except OSError:
             continue
         help_outputs.append(f"{result.stdout}\n{result.stderr}")
     return help_outputs
@@ -622,6 +615,7 @@ def ensure_studio_project_watcher(watch_dir: Path, poll_interval_seconds: float 
 
         _WATCHER_STOP.set()
         if _WATCHER_STATE.thread is not None and _WATCHER_STATE.thread.is_alive():
+            # limit-ok: joining the watcher at shutdown
             _WATCHER_STATE.thread.join(timeout=0.5)
         _WATCHER_STATE.thread = None
         _WATCHER_STATE.root = None
@@ -663,6 +657,7 @@ def stop_studio_project_watcher() -> None:
     """Stop the background studio watch thread if it is running."""
     with _WATCHER_LOCK:
         _WATCHER_STOP.set()
+        # limit-ok: joining the watcher at shutdown
         if _WATCHER_STATE.thread is not None and _WATCHER_STATE.thread.is_alive():
             _WATCHER_STATE.thread.join(timeout=0.5)
         _WATCHER_STATE.thread = None

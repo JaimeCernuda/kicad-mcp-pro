@@ -303,6 +303,8 @@ def test_macos_keychain_missing_record_and_failed_writes(monkeypatch: pytest.Mon
         return _FakeProcessResult(44, b"")
 
     monkeypatch.setattr(macos, "subprocess", SimpleNamespace(run=missing))
+    # The Keychain write runs with no time limit (run_to_end); reads use subprocess.
+    monkeypatch.setattr(macos.run_to_end, "run", missing)
     store = macos.MacOSKeychainCredentialStore()
     assert store.load_binding(RECORD_ID) is None
     assert store.delete_credentials(RECORD_ID) is False

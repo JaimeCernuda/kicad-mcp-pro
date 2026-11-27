@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer as FastMCP
 
@@ -21,6 +22,15 @@ class RoutingSpecctraStagingDependencies:
     service: RoutingSpecctraStagingService
 
 
+def _apply_ses(ses_path: Path) -> tuple[Path, int, int]:
+    """Apply a staged SES to the active board with KiCad's Python (as the autorouter does)."""
+    from ..routing.autorouter import apply_ses_now  # noqa: PLC0415
+    from .pcb import _transactional_board_write  # noqa: PLC0415
+
+    board, route = apply_ses_now(ses_path, _transactional_board_write)
+    return board, len(route.segments), len(route.vias)
+
+
 def _default_dependencies() -> RoutingSpecctraStagingDependencies:
     return RoutingSpecctraStagingDependencies(
         service=RoutingSpecctraStagingService(
@@ -28,6 +38,7 @@ def _default_dependencies() -> RoutingSpecctraStagingDependencies:
             get_pcb_file=_get_pcb_file,
             resolve_within_project=lambda path: get_config().resolve_within_project(path),
             get_project_root=lambda: get_config().project_root,
+            apply_ses=_apply_ses,
         )
     )
 
@@ -53,11 +64,12 @@ def register(
     @mcp.tool()
     @headless_compatible
     def route_import_ses(ses_path: str = "output/routing/board.ses") -> ToolResult:
-        """Stage a routed Specctra SES and surface the required KiCad GUI import step.
+        """Apply a routed Specctra SES (e.g. from FreeRouting) to the board, headlessly.
 
-        KiCad has no headless SES import, so this stages the session and returns a
-        human-gated result: the routing is applied by running File > Import > Specctra
-        Session in the PCB Editor. It never reports the board as routed when it is not
-        (``changed=False``, ``human_gate_required=True``).
+        KiCad's own Python module imports the session and saves the board (the same step
+        ``route_autoroute_freerouting`` uses); the result names the segments and vias applied.
+        Only when that cannot run does it stage the session and return a human-gated result
+        naming the reason and the File > Import > Specctra Session step. It never reports
+        the board as routed when it is not.
         """
         return deps.service.import_ses(ses_path)

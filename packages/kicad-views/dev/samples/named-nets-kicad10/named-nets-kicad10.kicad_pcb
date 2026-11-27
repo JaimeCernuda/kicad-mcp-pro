@@ -1,0 +1,313 @@
+(kicad_pcb
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(general
+		(thickness 1.7)
+		(legacy_teardrops no)
+	)
+	(paper "A4")
+	(layers
+		(0 "F.Cu" signal)
+		(2 "B.Cu" signal)
+		(25 "Edge.Cuts" user)
+		(27 "Margin" user)
+		(31 "F.CrtYd" user "F.Courtyard")
+		(29 "B.CrtYd" user "B.Courtyard")
+	)
+	(setup
+		(stackup
+			(layer "F.Cu"
+				(type "copper")
+				(thickness 0.035)
+			)
+			(layer "dielectric 1"
+				(type "core")
+				(thickness 1.63)
+				(material "FR4")
+				(epsilon_r 4.5)
+				(loss_tangent 0.02)
+			)
+			(layer "B.Cu"
+				(type "copper")
+				(thickness 0.035)
+			)
+			(copper_finish "None")
+			(dielectric_constraints no)
+		)
+		(pad_to_mask_clearance 0)
+		(allow_soldermask_bridges_in_footprints no)
+		(tenting
+			(front yes)
+			(back yes)
+		)
+		(covering
+			(front no)
+			(back no)
+		)
+		(plugging
+			(front no)
+			(back no)
+		)
+		(capping no)
+		(filling no)
+		(pcbplotparams
+			(layerselection 0x00000000_00000000_55555555_5755f5ff)
+			(plot_on_all_layers_selection 0x00000000_00000000_00000000_00000000)
+			(disableapertmacros no)
+			(usegerberextensions no)
+			(usegerberattributes yes)
+			(usegerberadvancedattributes yes)
+			(creategerberjobfile yes)
+			(dashed_line_dash_ratio 12)
+			(dashed_line_gap_ratio 3)
+			(svgprecision 4)
+			(plotframeref no)
+			(mode 1)
+			(useauxorigin no)
+			(pdf_front_fp_property_popups yes)
+			(pdf_back_fp_property_popups yes)
+			(pdf_metadata yes)
+			(pdf_single_document no)
+			(dxfpolygonmode yes)
+			(dxfimperialunits yes)
+			(dxfusepcbnewfont yes)
+			(psnegative no)
+			(psa4output no)
+			(plot_black_and_white yes)
+			(sketchpadsonfab no)
+			(plotpadnumbers no)
+			(hidednponfab no)
+			(sketchdnponfab yes)
+			(crossoutdnponfab yes)
+			(subtractmaskfromsilk no)
+			(outputformat 1)
+			(mirror no)
+			(drillshape 1)
+			(scaleselection 1)
+			(outputdirectory "")
+		)
+	)
+	(footprint "Resistor_SMD:R_0603_1608Metric"
+		(layer "F.Cu")
+		(uuid "617e8d96-7e27-4dd8-a500-896589ac8418")
+		(at 10 10)
+		(property "Reference" "R1"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(uuid "515e8be0-a798-4260-889e-c635ae1d334a")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "1k"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(uuid "e7766606-2d86-4abb-94c1-72a035db7501")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1603f32b-b1bf-4e01-a106-bbd7b0c5a8ee")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4a74b008-8d4c-4e87-8a33-f3f109942750")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(duplicate_pad_numbers_are_jumpers no)
+		(pad "1" smd rect
+			(at -0.5 0)
+			(size 0.5 0.6)
+			(layers "F.Cu" "F.Mask")
+			(net "LED_A")
+			(uuid "5253db60-5598-4002-9ea9-38a26a41ac8d")
+		)
+		(pad "2" smd rect
+			(at 0.5 0)
+			(size 0.5 0.6)
+			(layers "F.Cu" "F.Mask")
+			(uuid "a1361145-5e92-4f89-92c1-3924491e01ab")
+		)
+		(embedded_fonts no)
+	)
+	(footprint "LED_SMD:LED_0603_1608Metric"
+		(layer "F.Cu")
+		(uuid "f398798e-96b2-4a04-bb9f-f30ec7166a39")
+		(at 15 10)
+		(property "Reference" "LED1"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(uuid "61034f86-c996-41a4-b6aa-7406896bfc38")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "red"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(uuid "3426379b-5827-457b-8725-b7dc4df58348")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7913486d-caa0-4c28-bbe0-6c50f1062c81")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "cbccbe8e-00c0-4a58-a9ae-f30539aed66e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(duplicate_pad_numbers_are_jumpers no)
+		(pad "1" smd rect
+			(at -0.5 0)
+			(size 0.5 0.6)
+			(layers "F.Cu" "F.Mask")
+			(net "LED_A")
+			(uuid "9c04ea66-d3bc-4c6b-a24e-488c3b961307")
+		)
+		(pad "2" smd rect
+			(at 0.5 0)
+			(size 0.5 0.6)
+			(layers "F.Cu" "F.Mask")
+			(uuid "942812c0-485e-4b1f-9059-f0b95e0058d1")
+		)
+		(embedded_fonts no)
+	)
+	(footprint "Capacitor_SMD:C_0603_1608Metric"
+		(layer "F.Cu")
+		(uuid "fe179fd6-0a9f-440e-af9f-a15699ade115")
+		(at 20 10)
+		(property "Reference" "C1"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(uuid "7f54575d-45a2-4927-850c-31a5a5b740ef")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100n"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(uuid "8c129dbd-290c-4d20-be73-32a5814fda9d")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "844058ae-ac34-494c-b4d7-dc35d1d2068e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "aba2aea1-17b3-4e3a-8dfe-aa47928b6a30")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(duplicate_pad_numbers_are_jumpers no)
+		(pad "1" smd rect
+			(at -0.5 0)
+			(size 0.5 0.6)
+			(layers "F.Cu" "F.Mask")
+			(net "GND")
+			(uuid "aa584b7f-4b46-46c9-8fb7-177dab17f08e")
+		)
+		(pad "2" smd rect
+			(at 0.5 0)
+			(size 0.5 0.6)
+			(layers "F.Cu" "F.Mask")
+			(uuid "2dbdca5f-9e49-4b93-a8ce-b098e0db71d7")
+		)
+		(embedded_fonts no)
+	)
+	(gr_rect
+		(start 0 0)
+		(end 100 60)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "Edge.Cuts")
+		(uuid "16985ccf-4654-44c0-bb8a-c54070f5b1bd")
+	)
+	(segment
+		(start 15 10)
+		(end 17 10)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "LED_A")
+		(uuid "726fe305-7544-4665-9892-4b82656d45a5")
+	)
+	(segment
+		(start 10 10)
+		(end 12 10)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "LED_A")
+		(uuid "f9b6317b-f8c6-4e92-b4a2-1de014aea564")
+	)
+	(segment
+		(start 20 10)
+		(end 22 10)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "GND")
+		(uuid "c0363f21-7514-453f-b93f-b5fa8c292f06")
+	)
+	(embedded_fonts no)
+)

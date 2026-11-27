@@ -42,7 +42,9 @@ export async function stackupView(bridge: Bridge, root: HTMLElement, project: Re
                 value: String(edits.get(index) ?? layer.thickness_mm ?? ""),
                 style: "width:7em",
                 "aria-label": `Thickness of ${layer.name}`,
-                onChange: (event: Event) => {
+                // On every keystroke: a "change" event only comes when the field loses focus,
+                // so a click on Save right after typing found the button still disabled.
+                onInput: (event: Event) => {
                     edits.set(index, Number((event.target as HTMLInputElement).value));
                     save.disabled = false;
                 },
@@ -54,7 +56,7 @@ export async function stackupView(bridge: Bridge, root: HTMLElement, project: Re
                     h("td", {}, layer.name),
                     h("td", { class: "kv-muted" }, layer.type),
                     h("td", {}, layer.material),
-                    h("td", {}, layer.type === "copper" || layer.thickness_mm === null ? String(layer.thickness_mm ?? "") : input),
+                    h("td", {}, isCopper(layer) || layer.thickness_mm === null ? String(layer.thickness_mm ?? "") : input),
                     h("td", {}, layer.epsilon_r === null ? "" : String(layer.epsilon_r)),
                     h("td", {}, layer.loss_tangent === null ? "" : String(layer.loss_tangent)),
                 ),
@@ -111,6 +113,11 @@ export async function stackupView(bridge: Bridge, root: HTMLElement, project: Re
     frame.say("Reading the stackup…", "busy");
     await load();
     followRevisions(bridge, project, () => shown, async () => load());
+}
+
+/** Copper is set by the board's layers, not here: by its type, or a ``*.Cu``/``*_Cu`` name. */
+function isCopper(layer: StackupLayer): boolean {
+    return ["copper", "signal"].includes(String(layer.type).toLowerCase()) || /[._]Cu$/.test(layer.name);
 }
 
 function mm(value: number | null): string {

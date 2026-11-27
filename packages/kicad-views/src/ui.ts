@@ -1,7 +1,7 @@
 // Small DOM helpers and the views' shared style. No framework: the views are tables,
 // toolbars and one viewer element.
 
-import type { Bridge } from "./bridge";
+import { SAY_WAITING_AFTER_MS, type Bridge } from "./bridge";
 
 export const STYLE = `
 :root {
@@ -131,6 +131,33 @@ export class Frame {
     }
 }
 
+/**
+ * Wait for ecad-viewer to finish building a document, however long it takes (a large board
+ * parsed while KiCad starts beside it). The status line says it is still drawing and for
+ * how long. The wait ends only when the viewer is ready or the element was replaced.
+ */
+export async function waitForViewer<T>(
+    probe: () => T | undefined,
+    what: string,
+    frame: Frame,
+    element: HTMLElement,
+): Promise<T> {
+    const started = Date.now();
+    let said = -1;
+    for (;;) {
+        const found = probe();
+        if (found) return found;
+        if (!element.isConnected) throw new Error(`The ${what} was replaced before it finished drawing.`);
+        const waited = Date.now() - started;
+        const seconds = Math.floor(waited / 1000);
+        if (waited >= SAY_WAITING_AFTER_MS && seconds !== said) {
+            said = seconds;
+            frame.say(`Drawing the ${what}\u2026 (${seconds} s)`, "busy");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+}
+
 /** Follow the board's revision: call ``onChange`` whenever it moves past the one shown. */
 export function followRevisions(
     bridge: Bridge,
@@ -145,6 +172,7 @@ export function followRevisions(
                 const answer = await bridge.callData<{ revision: number; changed: boolean }>(
                     "view_wait_revision",
                     { ...project, since: getShown(), timeout_s: 25 },
+                    { watch: true },
                 );
                 if (!stopped && answer.changed && answer.revision > getShown()) await onChange(answer.revision);
             } catch {

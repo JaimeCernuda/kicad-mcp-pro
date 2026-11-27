@@ -17,6 +17,7 @@ from html.parser import HTMLParser
 from http.client import HTTPMessage
 from typing import IO, Any, Protocol, cast
 
+from kicad_mcp.utils import http_to_end
 from kicad_mcp.utils.part_specs import (
     PartSpec,
     specs_from_description,
@@ -179,12 +180,21 @@ def _validate_safe_url(
 def _open_safe_request(
     request: urllib.request.Request,
     *,
-    timeout: int = 20,
+    timeout: float | None = None,
     allowed_hosts: frozenset[str] | None = None,
 ) -> IO[bytes]:
-    """Install redirect validation on the actual urllib transport."""
+    """Install redirect validation on the actual urllib transport (no time limit by default)."""
     handler = SafeSearchRedirectHandler(allowed_hosts)
+    # timeout=None is a blocking socket: no time limit (the wait is shown by http_to_end).
     return cast(IO[bytes], urllib.request.build_opener(handler).open(request, timeout=timeout))
+
+
+def _json_from(
+    request: urllib.request.Request, open_fn: Callable[..., Any], what: str
+) -> dict[str, Any]:
+    """The JSON answer, waited for however long the source takes (http_to_end)."""
+    body = http_to_end.fetch(request, what=what, opener=lambda req: open_fn(req, timeout=None))
+    return cast(dict[str, Any], json.loads(body))
 
 
 def _request_json(
@@ -201,9 +211,9 @@ def _request_json(
         f"{url}?{query}",
         headers={"User-Agent": DEFAULT_USER_AGENT},
     )
-    open_fn = opener or _open_safe_request
-    with open_fn(request, timeout=20) as response:  # noqa: S310  # nosec B310
-        return cast(dict[str, Any], json.load(response))
+    return _json_from(
+        request, opener or _open_safe_request, f"Searching {urllib.parse.urlsplit(url).netloc}"
+    )
 
 
 def _record_from_jlcsearch(item: dict[str, Any]) -> ComponentRecord:
@@ -297,11 +307,13 @@ class JLCSearchClient:
             target,
             headers={"User-Agent": DEFAULT_USER_AGENT},
         )
-        with _open_safe_request(
+        jlcpcb = frozenset({"jlcpcb.com", "www.jlcpcb.com"})
+        body = http_to_end.fetch(
             request,
-            allowed_hosts=frozenset({"jlcpcb.com", "www.jlcpcb.com"}),
-        ) as response:
-            return response.read().decode("utf-8", errors="replace")
+            what="Searching jlcpcb.com",
+            opener=lambda req: _open_safe_request(req, timeout=None, allowed_hosts=jlcpcb),
+        )
+        return body.decode("utf-8", errors="replace")
 
     def _search_jlcpcb_public(self, keyword: str, *, limit: int) -> list[ComponentRecord]:
         if not keyword.strip():
@@ -443,9 +455,9 @@ def _https_post_json(
     _validate_safe_url(url)
     merged = {"User-Agent": DEFAULT_USER_AGENT, **headers}
     request = urllib.request.Request(url, data=body, headers=merged, method="POST")  # noqa: S310
-    open_fn = opener or _open_safe_request
-    with open_fn(request, timeout=20) as response:  # noqa: S310  # nosec B310
-        return cast(dict[str, Any], json.load(response))
+    return _json_from(
+        request, opener or _open_safe_request, f"Asking {urllib.parse.urlsplit(url).netloc}"
+    )
 
 
 _NEXAR_SEARCH_QUERY = (

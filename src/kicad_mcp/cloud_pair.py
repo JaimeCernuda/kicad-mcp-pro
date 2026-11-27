@@ -116,7 +116,8 @@ def _post(
     pool = urllib3.HTTPSConnectionPool(
         origin[0],
         origin[1],
-        timeout=urllib3.Timeout(connect=10, read=10),
+        # No time limit: the request waits for the cloud's answer however long.
+        timeout=urllib3.Timeout(connect=None, read=None),
         retries=False,
         cert_reqs=ssl.CERT_REQUIRED,
         assert_hostname=origin[0],
@@ -333,6 +334,7 @@ def _wait_for_owner_approval(
     polling_started = time.monotonic()
     while True:
         remaining = expiry_ms - time.time_ns() // 1_000_000
+        # Kept: the cloud's own expiry of this pairing challenge, not a connector wait.
         if remaining <= 0:
             raise CloudPairingTimeoutError("Device pairing approval expired.")
         response = _post(origin, "/api/v1/pairing/device/status", body, 200)

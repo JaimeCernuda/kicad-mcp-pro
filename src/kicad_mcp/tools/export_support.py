@@ -12,10 +12,9 @@ import time
 from pathlib import Path
 
 from ..config import get_config
+from ..utils import run_to_end
 from ..utils import telemetry as otel
 
-_CLI_RETRY_ATTEMPTS = 3
-_CLI_RETRY_BASE_DELAY_SEC = 0.1
 __all__ = ["_run_cli", "_run_cli_variants", "subprocess", "time"]
 
 
@@ -27,24 +26,17 @@ def _sanitize_cli_text(text: str) -> str:
     return sanitized.strip()
 
 
-def _timeout_output(value: str | bytes | None) -> str:
-    if isinstance(value, bytes):
-        return value.decode(errors="replace")
-    return value or ""
+def _run_cli(*args: str) -> tuple[int, str, str]:
+    """Run kicad-cli with the supplied arguments, however long it takes (run_to_end).
 
-
-def _run_cli(*args: str, timeout: float | None = None) -> tuple[int, str, str]:
-    """Run kicad-cli with the supplied arguments.
-
-    Only a run that exceeded its timeout is tried again; any other failure returns
-    kicad-cli's own exit code and output on the first attempt.
+    A failure returns kicad-cli's own exit code and output from its one run; it is not
+    tried again on the strength of words in its output.
     """
     cfg = get_config()
     command = otel.safe_cli_command(args)
     started = time.perf_counter()
     status = "error"
     return_code: int | None = None
-    last_result = (1, "", "The kicad-cli command did not run.")
     with otel.cli_span(command) as span:
         try:
             if not cfg.kicad_cli.exists():
@@ -53,41 +45,19 @@ def _run_cli(*args: str, timeout: float | None = None) -> tuple[int, str, str]:
                     "folders. If it is installed elsewhere, set kicad_cli; otherwise see "
                     "install-kicad."
                 )
-
-            for attempt in range(_CLI_RETRY_ATTEMPTS):
-                timed_out = False
-                try:
-                    result = subprocess.run(
-                        [str(cfg.kicad_cli), *args],
-                        capture_output=True,
-                        text=True,
-                        errors="replace",
-                        timeout=timeout or cfg.cli_timeout,
-                        check=False,
-                    )
-                    last_result = (
-                        result.returncode,
-                        _sanitize_cli_text(result.stdout),
-                        _sanitize_cli_text(result.stderr),
-                    )
-                except subprocess.TimeoutExpired as exc:
-                    timed_out = True
-                    output = _sanitize_cli_text(_timeout_output(exc.stderr))
-                    last_result = (
-                        124,
-                        _sanitize_cli_text(_timeout_output(exc.stdout)),
-                        f"The kicad-cli command timed out after {exc.timeout:g} s."
-                        + (f"\n{output}" if output else ""),
-                    )
-                except OSError as exc:
-                    last_result = (1, "", _sanitize_cli_text(str(exc)))
-
-                code = last_result[0]
-                return_code = code
-                status = {0: "ok", 124: "timeout"}.get(code, "error")
-                if not timed_out or attempt == _CLI_RETRY_ATTEMPTS - 1:
-                    return last_result
-                time.sleep(_CLI_RETRY_BASE_DELAY_SEC * (2**attempt))
+            try:
+                result = run_to_end.run(
+                    [str(cfg.kicad_cli), *args], what=f"kicad-cli {' '.join(args[:2])}"
+                )
+                last_result = (
+                    result.returncode,
+                    _sanitize_cli_text(result.stdout),
+                    _sanitize_cli_text(result.stderr),
+                )
+            except OSError as exc:
+                last_result = (1, "", _sanitize_cli_text(str(exc)))
+            return_code = last_result[0]
+            status = "ok" if return_code == 0 else "error"
             return last_result
         finally:
             otel.record_cli_invocation(command, status, time.perf_counter() - started)
@@ -103,12 +73,7 @@ def _run_cli_variants(variants: list[list[str]]) -> tuple[int, str, str]:
     """
     failures: list[tuple[list[str], tuple[int, str, str]]] = []
     for variant in variants:
-        try:
-            result = _run_cli(*variant)
-        except FileNotFoundError:
-            raise
-        except subprocess.TimeoutExpired:
-            result = (124, "", "The kicad-cli command timed out.")
+        result = _run_cli(*variant)
         if result[0] == 0:
             return result
         failures.append((variant, result))

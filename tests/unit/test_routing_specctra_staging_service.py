@@ -116,11 +116,54 @@ def test_import_ses_preserves_staging_and_human_gate_contract(tmp_path: Path) ->
     ]
     relative_ses = str(Path("output") / "routing" / "board.ses")
     assert result.state_delta.summary == (
-        f"Specctra SES session staged at {relative_ses}. "
-        "KiCad has no headless SES import: open the PCB Editor and run "
+        f"Specctra SES session staged at {relative_ses}, but it could not be applied "
+        "headlessly (no headless applier is configured): open the PCB Editor and run "
         "File > Import > Specctra Session to apply the routing, then save."
     )
     assert result.state_delta.changed_files == [str(staged)]
+
+
+def test_import_ses_applies_the_session_headlessly(tmp_path: Path) -> None:
+    """Found live (KQ32 fork): "KiCad has no headless SES import" made an agent abandon
+    FreeRouting and write its own router; KiCad's Python applies the session."""
+    staged = tmp_path / "output" / "routing" / "board.ses"
+    board = tmp_path / "demo.kicad_pcb"
+    applied: list[Path] = []
+
+    def apply(path: Path) -> tuple[Path, int, int]:
+        applied.append(path)
+        return board, 231, 12
+
+    service = _service(tmp_path, FakeRunner(staged=staged))
+    service = RoutingSpecctraStagingService(
+        runner_factory=service.runner_factory,
+        get_pcb_file=service.get_pcb_file,
+        resolve_within_project=service.resolve_within_project,
+        get_project_root=service.get_project_root,
+        apply_ses=apply,
+    )
+    result = service.import_ses()
+    assert applied == [staged]
+    assert result.ok and result.changed and not result.human_gate_required
+    assert "231 track segments and 12 vias" in result.state_delta.summary
+    assert result.state_delta.changed_files == [str(board)]
+
+
+def test_import_ses_names_why_it_could_not_apply(tmp_path: Path) -> None:
+    def apply(_path: Path) -> tuple[Path, int, int]:
+        raise ValueError("KiCad's Python module could not import the SES (no KiCad Python)")
+
+    base = _service(tmp_path, FakeRunner(staged=tmp_path / "board.ses"))
+    service = RoutingSpecctraStagingService(
+        runner_factory=base.runner_factory,
+        get_pcb_file=base.get_pcb_file,
+        resolve_within_project=base.resolve_within_project,
+        get_project_root=base.get_project_root,
+        apply_ses=apply,
+    )
+    result = service.import_ses()
+    assert result.human_gate_required and not result.changed
+    assert "no KiCad Python" in result.state_delta.summary
 
 
 @pytest.mark.parametrize(

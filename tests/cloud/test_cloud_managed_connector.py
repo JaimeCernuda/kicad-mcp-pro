@@ -491,11 +491,11 @@ def test_systemctl_uses_resolved_executable_and_user_scope(
 
     def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(argv)
-        assert kwargs["timeout"] == 8
+        assert "timeout" not in kwargs  # systemctl runs to the end, however long
         return subprocess.CompletedProcess(argv, 0, "active", "")
 
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/systemctl")
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(connector.run_to_end, "run", run)
     result = connector._systemctl("is-active", connector._SERVICE_NAME)
     assert result.returncode == 0
     assert calls == [["/usr/bin/systemctl", "--user", "is-active", connector._SERVICE_NAME]]

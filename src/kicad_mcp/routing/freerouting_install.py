@@ -28,6 +28,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..utils import http_to_end, run_to_end
+
 VERSION = "2.1.0"
 JAR_URL = (
     f"https://github.com/freerouting/freerouting/releases/download/v{VERSION}/"
@@ -98,8 +100,13 @@ def _ensure_jar(notes: list[str]) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(".part")
     try:
-        with urllib.request.urlopen(JAR_URL, timeout=120) as response, partial.open("wb") as out:  # noqa: S310  # nosec B310 - fixed https URL
-            shutil.copyfileobj(response, out)
+        with partial.open("wb") as out:  # the download takes as long as it takes (http_to_end)
+            http_to_end.fetch(
+                JAR_URL,
+                what="Downloading FreeRouting",
+                opener=lambda req: urllib.request.urlopen(req, timeout=None),  # noqa: S310  # nosec B310 - fixed https URL
+                sink=out.write,
+            )
     except OSError as exc:
         partial.unlink(missing_ok=True)
         raise FreeRoutingInstallError(
@@ -116,9 +123,7 @@ def _ensure_jar(notes: list[str]) -> Path:
 def java_major(java: Path | str) -> int:
     """The major version a ``java`` reports, or 0 when it cannot run."""
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            [str(java), "-version"], capture_output=True, text=True, timeout=30, check=False
-        )
+        result = run_to_end.run([str(java), "-version"], what="java -version")
     except (OSError, subprocess.SubprocessError):
         return 0
     match = re.search(r'version "(\d+)(?:\.(\d+))?', result.stderr + result.stdout)

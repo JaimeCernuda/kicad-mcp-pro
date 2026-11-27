@@ -12,24 +12,24 @@ check.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import secrets
 import shutil
-import subprocess  # nosec B404 - argv-only Library Tools scripts, shell=False
+import subprocess  # noqa: F401  # nosec B404 - tests replace subprocess.run through this module
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from ..utils import run_to_end
 from .install import Installed
 
 RECORDS = "footprint-records.json"
 # KLC rules about a library's naming and its model folder: they bind KiCad's own library,
 # not a project library, so they are reported as notes.
 NAMING_RULES = frozenset({"G1.1", "F9.1", "F9.3"})
-_GENERATE_TIMEOUT_S = 900
-_CHECK_TIMEOUT_S = 120
 
 
 class LibraryToolsError(RuntimeError):
@@ -101,12 +101,15 @@ def families(tools: Installed) -> list[Family]:
     return found
 
 
-def family_example(tools: Installed, family: str, max_lines: int = 60) -> str:
-    """The head of the family's first data file and its first entry, verbatim."""
+def family_example(tools: Installed, family: str, max_lines: int = 60, prefer: str = "") -> str:
+    """The head of one of the family's data files, verbatim: the first whose name holds
+    ``prefer`` (e.g. a maker, "jst"), else the first."""
     data = tools.root / "data" / family
     files = sorted(data.glob("*.yaml")) if data.is_dir() else []
     if not files:
         return ""
+    wanted = [f for f in files if prefer and prefer.lower() in f.stem.lower()]
+    files = wanted or files
     lines = files[0].read_text(encoding="utf-8", errors="replace").splitlines()
     return f"# {files[0].relative_to(tools.root).as_posix()}\n" + "\n".join(lines[:max_lines])
 
@@ -153,7 +156,7 @@ def generate(tools: Installed, family: str, entry: str, *, models: bool) -> Gene
         ]
         if models:
             argv[4:4] = ["-m", str(out / "3d")]
-        code, text = _run(argv, cwd=tools.generators, timeout=_GENERATE_TIMEOUT_S)
+        code, text = _run(argv, cwd=tools.generators)
         result = _collect(out)
         result.messages = _tail(text)
         if code != 0 or not result.footprints:
@@ -181,7 +184,7 @@ def generate_custom(tools: Installed, script: str) -> Generated:
         "KICAD_MCP_MODEL_DIR": str(out / "3d"),
         "PYTHONPATH": os.pathsep.join([str(tools.root / "src"), str(tools.root)]),
     }
-    code, text = _run([str(tools.python), str(path)], cwd=out, timeout=_GENERATE_TIMEOUT_S, env=env)
+    code, text = _run([str(tools.python), str(path)], cwd=out, env=env)
     result = _collect(out)
     result.messages = _tail(text)
     if code != 0 or not result.footprints:
@@ -264,13 +267,13 @@ def check(
 ) -> CheckResult:
     """KLC on the file, and every datasheet pad against the footprint's."""
     argv = [str(tools.python), "check_footprint.py", "-vv", "--nocolor", str(footprint)]
-    code, text = _run(argv, cwd=tools.klc_check, timeout=_CHECK_TIMEOUT_S)
+    code, text = _run(argv, cwd=tools.klc_check)
     if code == 1:
         raise LibraryToolsError(f"The KLC checker could not read {footprint.name}: {_tail(text)}")
     error_rules: set[str] = set()
     if code == 3:
         # ``-w`` hides warnings, so the rules it still prints are the ones with errors.
-        _, errors_only = _run([*argv, "-w"], cwd=tools.klc_check, timeout=_CHECK_TIMEOUT_S)
+        _, errors_only = _run([*argv, "-w"], cwd=tools.klc_check)
         error_rules = {rule for rule, _ in _violations(errors_only)}
     result = CheckResult(footprint=footprint.stem)
     for rule, detail in _violations(text):
@@ -333,14 +336,28 @@ def parse_pads(text: str) -> list[Pad]:
 
 
 def compare_pads(expected: list[Pad], actual: list[Pad], tolerance_mm: float) -> list[str]:
-    """Each datasheet pad against the footprint's largest pad with that number."""
+    """Each datasheet pad against the footprint's nearest unpaired pad with that number.
+
+    Pads may share a number (two mounting tabs ``MP``, an exposed pad with its thermal
+    vias): each datasheet pad takes the closest footprint pad of its number not already
+    taken, the larger on a tie, so two tabs are compared with two tabs.
+    """
     mismatches: list[str] = []
+    taken: set[int] = set()
     for want in expected:
-        same = [p for p in actual if p.number == want.number]
+        same = [i for i, p in enumerate(actual) if p.number == want.number and i not in taken]
         if not same:
             mismatches.append(f"pad {want.number}: not in the footprint")
             continue
-        got = max(same, key=lambda p: p.w * p.h)
+        index = min(
+            same,
+            key=lambda i: (
+                round(math.hypot(actual[i].x - want.x, actual[i].y - want.y), 6),
+                -actual[i].w * actual[i].h,
+            ),
+        )
+        taken.add(index)
+        got = actual[index]
         w, h = (got.h, got.w) if round(got.rotation) % 180 == 90 else (got.w, got.h)
         problems = []
         if abs(got.x - want.x) > tolerance_mm or abs(got.y - want.y) > tolerance_mm:
@@ -378,6 +395,28 @@ def update_record(project_dir: Path, name: str, **fields: object) -> dict[str, o
     return record
 
 
+def mark_assigned(project_dir: Path, name: str, reference: str) -> bool:
+    """Record that a footprint with a record was assigned (``accepted``: assigning a custom
+    footprint is what follows the person's acceptance). Library footprints have no record and
+    get none. Found live (FQ4): the record kept ``accepted: false`` after the person accepted
+    the module's footprint and it was assigned."""
+    path = project_dir / "libs" / RECORDS
+    try:
+        records = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except ValueError:
+        return False
+    if name not in records:
+        return False
+    assigned = list(records[name].get("assigned_to") or [])
+    update_record(
+        project_dir,
+        name,
+        accepted=True,
+        assigned_to=sorted({*assigned, reference}),
+    )
+    return True
+
+
 def check_record(result: CheckResult, datasheet: str, tolerance_mm: float) -> dict[str, object]:
     return {
         "passed": result.passed,
@@ -391,22 +430,12 @@ def check_record(result: CheckResult, datasheet: str, tolerance_mm: float) -> di
 # --- process ----------------------------------------------------------------------------
 
 
-def _run(
-    argv: list[str], *, cwd: Path, timeout: int, env: dict[str, str] | None = None
-) -> tuple[int, str]:
+def _run(argv: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> tuple[int, str]:
     full_env = {**os.environ, **(env or {})}
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            argv,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-            env=full_env,
+        result = run_to_end.run(
+            argv, cwd=cwd, env=full_env, what=f"Library Tools {Path(argv[-1]).name}"
         )
-    except subprocess.TimeoutExpired as exc:
-        raise LibraryToolsError(f"Library Tools did not finish in {timeout} s.") from exc
     except OSError as exc:
         raise LibraryToolsError(f"Library Tools could not start ({exc}).") from exc
     return result.returncode, (result.stdout or "") + (result.stderr or "")

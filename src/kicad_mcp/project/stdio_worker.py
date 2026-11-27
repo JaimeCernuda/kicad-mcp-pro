@@ -7,7 +7,6 @@ this module. It does not expose a network endpoint or authorize remote calls.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import sys
 from collections.abc import AsyncIterator, Callable, Mapping
@@ -48,18 +47,15 @@ def project_worker_parameters(project_directory: Path) -> StdioServerParameters:
 
 
 @asynccontextmanager
-async def project_stdio_worker(
-    project_directory: Path, *, timeout_seconds: float = 40
-) -> AsyncIterator[ClientSession]:
+async def project_stdio_worker(project_directory: Path) -> AsyncIterator[ClientSession]:
     """Launch and close a project-specific MCP process without global switching."""
     params = project_worker_parameters(project_directory)
     async with (
         stdio_client(params) as streams,
         ClientSession(*streams) as session,
     ):
-        # Timeout applies to initialization, not the engineering session.
-        async with asyncio.timeout(timeout_seconds):
-            await session.initialize()
+        # No time limit: the worker starts however long it takes; the caller stops it.
+        await session.initialize()
         yield session
 
 
@@ -90,11 +86,7 @@ class ProjectInspectionSession:
         session: ClientSession,
         project_id: str,
         current_authorization: Callable[[str], bool],
-        timeout_seconds: float = 12,
     ) -> None:
-        if not isinstance(timeout_seconds, (int, float)) or not 0 < timeout_seconds <= 30:
-            raise ValueError("Invalid project inspection timeout")
-        self._timeout_seconds = timeout_seconds
         self._session = session
         self._project_id = project_id
         self._authorized = current_authorization
@@ -112,8 +104,8 @@ class ProjectInspectionSession:
         if name not in _SCOPED_INSPECTION_TOOLS:
             raise ProjectWorkerDeniedError("tool not authorized")
         self._check_grant()
-        async with asyncio.timeout(self._timeout_seconds):
-            response = await self._session.call_tool(name, arguments={})
+        # No time limit: the inspection runs to the end; a stopped caller cancels it.
+        response = await self._session.call_tool(name, arguments={})
         self._check_grant()
         return response
 

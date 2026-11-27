@@ -134,7 +134,6 @@ async def test_xl4015_16_nets_match_native_pin_graph(
         "-o",
         str(xml),
         str(sample_project / "demo.kicad_sch"),
-        timeout=45,
     )
     assert code == 0, f"KiCad XML export failed: {stdout} {stderr}"
 

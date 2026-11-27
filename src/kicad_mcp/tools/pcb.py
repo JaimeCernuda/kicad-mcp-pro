@@ -7,7 +7,7 @@ import math
 import re
 import threading
 import uuid
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Any, Protocol, cast
@@ -68,6 +68,7 @@ from ..models.pcb import (
 )
 from ..models.verdict import Finding, SuggestedFix, VerdictReport, stable_finding_id
 from ..operating_modes import OperatingMode, active_operating_mode
+from ..pcb import live_file_sync
 from ..pcb.basic_inspection import PcbBasicInspectionService
 from ..pcb.board_access import (
     BoardAccessError,
@@ -91,6 +92,7 @@ from ..pcb.live_edit_runtime import (
     get_live_edit_service,
 )
 from ..pcb.origin_management import PcbOriginService
+from ..pcb.pad_mapping import pad_references, reference_of
 from ..pcb.session_inspection import PcbSessionInspectionService
 from ..pcb.stackup_management import PcbStackupManagementService
 from ..pcb.title_block_management import PcbTitleBlockService
@@ -634,6 +636,17 @@ def _stackup_layer_material(normalized_name: str, raw_material: object) -> str:
 
 
 def _stackup_layer_type(normalized_name: str, raw_type: object) -> str:
+    if isinstance(raw_type, int) and not isinstance(raw_type, bool):
+        # A live KiCad reports the layer type as its API enum (1 copper, 2 dielectric...).
+        from kipy.proto.board import board_pb2  # noqa: PLC0415
+
+        try:
+            enum_name = board_pb2.BoardStackupLayerType.Name(raw_type)
+        except ValueError:
+            enum_name = ""
+        raw_type = enum_name.removeprefix("BSLT_").casefold()
+        if raw_type in ("unknown", "undefined"):
+            raw_type = ""
     layer_type = str(raw_type or "")
     if layer_type:
         return layer_type
@@ -643,6 +656,9 @@ def _stackup_layer_type(normalized_name: str, raw_type: object) -> str:
 def _stackup_layer_name(index: int, raw_layer: object) -> tuple[str, str]:
     if isinstance(raw_layer, int):
         name = BoardLayer.Name(raw_layer).removeprefix("BL_")
+        if name in ("UNDEFINED", "UNKNOWN"):
+            # A dielectric has no board layer of its own; KiCad names it by its position.
+            name = f"dielectric_{index}"
     else:
         name = str(raw_layer or f"dielectric_{index}")
     normalized_name = name.replace(".", "_")
@@ -1125,7 +1141,13 @@ def run_auto_refill_zones() -> str:
 def _transactional_board_write(mutator: Callable[[str], str]) -> str:
     with _BOARD_FILE_WRITE_LOCK:
         board_file = _get_pcb_file_for_sync()
-        current = _normalize_board_content(board_file.read_text(encoding="utf-8"))
+        # An open KiCad holds the board: the edit starts from what it holds and KiCad reloads
+        # the result, so the two never disagree (pcb/live_file_sync.py).
+        open_board = live_file_sync.open_board_for(board_file)
+        if open_board is not None:
+            live_file_sync.refuse_during_open_commit(_native_live_transaction_active())
+        base = open_board.text() if open_board is not None else board_file.read_text("utf-8")
+        current = _normalize_board_content(base)
         updated = mutator(current)
         _validate_board_text(updated)
         temp_path: Path | None = None
@@ -1148,6 +1170,9 @@ def _transactional_board_write(mutator: Callable[[str], str]) -> str:
                 path=str(board_file),
                 detail=format_upgrade.detail,
             )
+        if open_board is not None:
+            _run_queued_ipc_mutation("pcb_reload_after_file_edit", open_board.reload)
+            logger.info("board_file_edit_reloaded_in_kicad", path=str(board_file))
         clear_ttl_cache()
         return str(board_file)
 
@@ -2862,6 +2887,7 @@ def _creepage_candidate_for_pad_pair(
     left_y_mm: float,
     left_ref: str,
     left_pin: str,
+    references: Mapping[str, str] | None = None,
 ) -> tuple[float, str, str, str, str] | None:
     right_net = str(getattr(getattr(right_pad, "net", None), "name", "") or "")
     if not right_net or right_net == left_net:
@@ -2872,7 +2898,7 @@ def _creepage_candidate_for_pad_pair(
     right_y_mm = nm_to_mm(_coord_nm(right_pad.position, "y"))
     center_distance_mm = math.hypot(left_x_mm - right_x_mm, left_y_mm - right_y_mm)
     edge_distance_mm = max(0.0, center_distance_mm - left_radius_mm - right_radius_mm)
-    right_ref = str(right_pad.parent.reference_field.text.value)
+    right_ref = reference_of(right_pad, references) or "?"
     right_pin = str(right_pad.number)
     return (
         edge_distance_mm,
@@ -2883,7 +2909,9 @@ def _creepage_candidate_for_pad_pair(
     )
 
 
-def _closest_named_net_pad_pair(pads: list[_PadLike]) -> tuple[float, str, str, str, str] | None:
+def _closest_named_net_pad_pair(
+    pads: list[_PadLike], references: Mapping[str, str] | None = None
+) -> tuple[float, str, str, str, str] | None:
     worst_pair: tuple[float, str, str, str, str] | None = None
     for left_index, left_pad in enumerate(pads):
         left_net = str(getattr(getattr(left_pad, "net", None), "name", "") or "")
@@ -2893,7 +2921,7 @@ def _closest_named_net_pad_pair(pads: list[_PadLike]) -> tuple[float, str, str, 
         left_radius_mm = nm_to_mm(max(_coord_nm(left_size, "x"), _coord_nm(left_size, "y"))) / 2
         left_x_mm = nm_to_mm(_coord_nm(left_pad.position, "x"))
         left_y_mm = nm_to_mm(_coord_nm(left_pad.position, "y"))
-        left_ref = str(left_pad.parent.reference_field.text.value)
+        left_ref = reference_of(left_pad, references) or "?"
         left_pin = str(left_pad.number)
         for right_pad in pads[left_index + 1 :]:
             candidate = _creepage_candidate_for_pad_pair(
@@ -2962,7 +2990,9 @@ def _register_impedance_and_creepage_tools(mcp: FastMCP) -> None:
                 "Open the board in KiCad and rerun this tool."
             )
 
-        pads = cast(list[_PadLike], list(board_pads(get_board())))
+        creepage_board = get_board()
+        pads = cast(list[_PadLike], list(board_pads(creepage_board)))
+        references = pad_references(pads, board_footprints(creepage_board))
         if len(pads) < 2:
             raise ToolFailedError("At least two pads are required to evaluate creepage clearance.")
 
@@ -2971,7 +3001,7 @@ def _register_impedance_and_creepage_tools(mcp: FastMCP) -> None:
             payload.pollution_degree,
             payload.material_group,
         )
-        worst_pair = _closest_named_net_pad_pair(pads)
+        worst_pair = _closest_named_net_pad_pair(pads, references)
 
         if worst_pair is None:
             return "No pad pairs on different named nets were available for creepage analysis."
@@ -5089,6 +5119,7 @@ def _teardrop_zone_for_track(
     pad_y_nm: int,
     pad_radius_nm: float,
     track_net_name: str,
+    references: Mapping[str, str] | None = None,
 ) -> Zone | None:
     start_dx = _coord_nm(track.start, "x") - pad_x_nm
     start_dy = _coord_nm(track.start, "y") - pad_y_nm
@@ -5155,7 +5186,7 @@ def _teardrop_zone_for_track(
         ]
     )
     zone = Zone()
-    zone.name = f"MCP_Teardrop_{getattr(pad.parent.reference_field.text, 'value', 'PAD')}"
+    zone.name = f"MCP_Teardrop_{reference_of(pad, references) or 'PAD'}"
     zone.layers = [track.layer]
     zone.net = track.net if hasattr(track.net, "proto") else _find_net(track_net_name)
     zone.outline = polygon
@@ -5167,6 +5198,7 @@ def _teardrop_zones_for_pad(
     tracks: list[Track],
     payload: AddTeardropsInput,
     remaining: int,
+    references: Mapping[str, str] | None = None,
 ) -> list[Zone]:
     net_name = str(getattr(getattr(pad, "net", None), "name", ""))
     net_class_name = str(
@@ -5186,7 +5218,7 @@ def _teardrop_zones_for_pad(
         if track_net_name != net_name:
             continue
         zone = _teardrop_zone_for_track(
-            pad, track, payload, pad_x_nm, pad_y_nm, pad_radius_nm, track_net_name
+            pad, track, payload, pad_x_nm, pad_y_nm, pad_radius_nm, track_net_name, references
         )
         if zone is not None:
             found.append(zone)
@@ -5196,11 +5228,18 @@ def _teardrop_zones_for_pad(
 
 
 def _collect_teardrop_zones(
-    pads: list[_PadLike], tracks: list[Track], payload: AddTeardropsInput
+    pads: list[_PadLike],
+    tracks: list[Track],
+    payload: AddTeardropsInput,
+    references: Mapping[str, str] | None = None,
 ) -> list[Zone]:
     zones: list[Zone] = []
     for pad in pads:
-        zones.extend(_teardrop_zones_for_pad(pad, tracks, payload, payload.max_count - len(zones)))
+        zones.extend(
+            _teardrop_zones_for_pad(
+                pad, tracks, payload, payload.max_count - len(zones), references
+            )
+        )
         if len(zones) >= payload.max_count and zones:
             break
     return zones
@@ -5233,7 +5272,9 @@ def _register_teardrop_tools(mcp: FastMCP) -> None:
         board = get_board()
         pads = cast(list[_PadLike], board_pads(board))
         tracks = cast(list[Track], board_tracks(board))
-        zones = _collect_teardrop_zones(pads, tracks, payload)
+        zones = _collect_teardrop_zones(
+            pads, tracks, payload, pad_references(pads, board_footprints(board))
+        )
 
         if not zones:
             return "No simple pad-to-track teardrop candidates were found on the active board."

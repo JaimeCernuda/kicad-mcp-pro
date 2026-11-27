@@ -63,7 +63,6 @@ class KiCadMCPConfig(BaseSettings):
     freerouting_image: str = Field(default="ghcr.io/freerouting/freerouting:2.1.0")
     docker_executable: str = Field(default="docker")
     java_executable: str = Field(default="java")
-    freerouting_timeout_sec: float = Field(default=900.0, gt=1.0, le=7200.0)
     ngspice_cli: Path | None = Field(default=None)
     kicad_socket_path: str | Path | None = Field(default=None)
     kicad_token: str | None = Field(default=None)
@@ -164,11 +163,9 @@ class KiCadMCPConfig(BaseSettings):
         default=True,
         description="Filter out tools requiring live KiCad IPC if the connection is down.",
     )
-    ipc_connection_timeout: float = Field(default=10.0, gt=0.1, le=120.0)
     ipc_retries: int = Field(default=2, ge=0, le=10)
     ipc_cache_ttl: float = Field(default=5.0, gt=0.5, le=60.0)
     headless: bool = Field(default=False)
-    cli_timeout: float = Field(default=120.0, gt=0.1, le=600.0)
     max_items_per_response: int = Field(default=200, ge=1, le=2000)
     max_text_response_chars: int = Field(default=50000, ge=1000, le=500000)
     _project_dir_explicit: bool = False
@@ -222,14 +219,6 @@ class KiCadMCPConfig(BaseSettings):
                 if raw not in (None, ""):
                     updated[field_name] = raw
                     break
-
-        if "ipc_connection_timeout" not in updated or updated["ipc_connection_timeout"] in (
-            None,
-            "",
-        ):
-            timeout_ms = os.environ.get("KICAD_MCP_TIMEOUT_MS")
-            if timeout_ms not in (None, ""):
-                updated["ipc_connection_timeout"] = float(str(timeout_ms)) / 1000.0
 
         if updated.get("otel_endpoint") not in (None, ""):
             updated["telemetry_enabled"] = True
@@ -578,8 +567,8 @@ class KiCadMCPConfig(BaseSettings):
 
     @property
     def timeout_ms(self) -> int:
-        """Return the IPC timeout in milliseconds for diagnostics."""
-        return int(self.ipc_connection_timeout * 1000)
+        """The IPC request time limit for diagnostics: -1, none (a request waits for KiCad)."""
+        return -1
 
     def ensure_output_dir(self, subdir: str | None = None) -> Path:
         """Create and return the output directory."""

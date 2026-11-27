@@ -103,7 +103,7 @@ def test_export_support_returns_cli_failure_without_retry(
     assert len(attempts) == 1
 
 
-def test_export_support_reports_missing_files_and_variant_timeouts(
+def test_export_support_reports_missing_files_and_a_variant_failure(
     fake_cli: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -114,15 +114,15 @@ def test_export_support_reports_missing_files_and_variant_timeouts(
     with pytest.raises(ValueError, match="No schematic file"):
         export_support._get_sch_file()
 
-    def fake_cli_run(*_args: str) -> tuple[int, str, str]:
-        raise subprocess.TimeoutExpired(cmd=["kicad-cli"], timeout=1.0)
+    def fake_cli_run(*args: str) -> tuple[int, str, str]:
+        return 1, "", f"no {args[-1]}"
 
     monkeypatch.setattr(export_support, "_run_cli", fake_cli_run)
 
     assert export_support._run_cli_variants([["sch", "export", "netlist"]]) == (
-        124,
+        1,
         "",
-        "The kicad-cli command timed out.",
+        "no netlist",
     )
 
 

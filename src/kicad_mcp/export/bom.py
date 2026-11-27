@@ -27,6 +27,7 @@ BOM_FIELDNAMES = [
     "mpn",
     "manufacturer",
     "populate",
+    "datasheet",
 ]
 
 

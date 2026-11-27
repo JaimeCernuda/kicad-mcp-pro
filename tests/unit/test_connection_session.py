@@ -48,7 +48,6 @@ def test_kicad_session_builds_supported_kwargs_and_resets(tmp_path: Path, fake_c
         kicad_cli=fake_cli,
         kicad_socket_path=tmp_path / "api.sock",
         kicad_token=credential,
-        ipc_connection_timeout=2.5,
     )
 
     class FakeClient:
@@ -76,7 +75,7 @@ def test_kicad_session_builds_supported_kwargs_and_resets(tmp_path: Path, fake_c
     assert client.socket_path == str(tmp_path / "api.sock")
     assert client.kicad_token == credential
     assert client.client_name == "kicad-mcp"
-    assert client.timeout_ms == 2500
+    assert client.timeout_ms == -1  # a request waits for KiCad (ipc_watch)
     assert session.client() is client
 
     session.reset()

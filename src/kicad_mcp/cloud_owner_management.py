@@ -28,6 +28,7 @@ from kicad_mcp.cloud_pair_keys import (
     _read_private_json,
     _write_private_json,
 )
+from kicad_mcp.utils import run_to_end
 
 _TOKEN = re.compile(r"kmpc1_[A-Za-z0-9_-]{43}\Z", re.ASCII)
 _REQUEST_ID = re.compile(r"[A-Za-z0-9_-]{43}\Z", re.ASCII)
@@ -166,7 +167,8 @@ class CloudOwnerApi:
         # preserving its standard hostname check (no custom context override).
         pool = urllib3.PoolManager(
             cert_reqs="CERT_REQUIRED",
-            timeout=urllib3.Timeout(connect=5, read=9),
+            # No time limit: the request waits for the cloud's answer however long.
+            timeout=urllib3.Timeout(connect=None, read=None),
             retries=False,
         )
         try:
@@ -223,9 +225,11 @@ def _open_owner_approval(url: str, no_browser: bool) -> None:
     print("Open the link above to continue.")
 
 
-def _await_owner_cli_approval(api: CloudOwnerApi, request_id: str, timeout_seconds: int) -> None:
-    deadline = time.monotonic() + min(600, max(1, timeout_seconds))
-    while time.monotonic() < deadline:
+def _await_owner_cli_approval(api: CloudOwnerApi, request_id: str) -> None:
+    # No time limit: wait for the owner's answer; the cloud says when a request expired.
+    ticker = run_to_end.Ticker("Waiting for the owner's approval in the browser")
+    while True:
+        ticker.tick()
         state = api.request("POST", "/api/owner/cli/poll", payload={"requestId": request_id})
         status = state.get("status")
         if status == "approved":
@@ -240,7 +244,6 @@ def _await_owner_cli_approval(api: CloudOwnerApi, request_id: str, timeout_secon
         if status != "pending":
             raise CloudManagementError("Unexpected Cloud approval state.")
         time.sleep(2)
-    raise CloudManagementError("Cloud approval timed out. Start a new login.")
 
 
 def _verify_existing_owner_access(api: CloudOwnerApi, token: str) -> None:
@@ -259,7 +262,6 @@ def authorize(
     *,
     no_browser: bool = False,
     label: str | None = None,
-    timeout_seconds: int = 600,
 ) -> None:
     """One human-approved browser journey, then reusable private CLI access."""
     api = CloudOwnerApi(origin)
@@ -279,4 +281,4 @@ def authorize(
     if started.get("status") != "pending" or started.get("approveUrl") != expected_url:
         raise CloudManagementError("Cloud returned an untrusted approval destination.")
     _open_owner_approval(expected_url, no_browser)
-    _await_owner_cli_approval(api, request_id, timeout_seconds)
+    _await_owner_cli_approval(api, request_id)

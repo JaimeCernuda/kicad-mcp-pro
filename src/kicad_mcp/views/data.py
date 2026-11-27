@@ -9,12 +9,12 @@ from __future__ import annotations
 import base64
 import json
 import re
-import subprocess  # nosec B404 - argv-only kicad-cli export, shell=False
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from ..config import get_config
+from ..utils import run_to_end
 
 #: Larger GLB files are not sent to a view.
 MAX_GLB_BYTES = 40 * 1024 * 1024
@@ -59,8 +59,15 @@ def board_data() -> dict[str, Any]:
     text = live_board_text()
     if text is not None:
         return {"board_name": board.name, "text": text, "source": "live"}
-    from ..instance import get_instance_manager  # noqa: PLC0415
 
+    from ..instance import get_instance_manager  # noqa: PLC0415
+    from ..instance.board_file import file_problem  # noqa: PLC0415
+
+    problem = file_problem(board)
+    if problem:  # ecad-viewer would draw a cut-short file as an empty board
+        raise ValueError(
+            f"{problem} Restore it from the project's -backups folder or version control."
+        )
     status = get_instance_manager().status()
     reason = status.problem or "no KiCad instance serves this board"
     return {
@@ -76,6 +83,11 @@ def schematic_data() -> dict[str, Any]:
     paths = schematic_paths()
     if not paths:
         raise ValueError("The project has no schematic (.kicad_sch).")
+    from ..instance.board_file import file_problem  # noqa: PLC0415
+
+    problems = [problem for path in paths if (problem := file_problem(path))]
+    if problems:
+        raise ValueError(" ".join(problems))
     files = [
         {
             "name": str(path.relative_to(root)) if path.is_relative_to(root) else path.name,
@@ -116,9 +128,7 @@ def glb_data() -> dict[str, Any]:
             "--subst-models",
             str(source),
         ]
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            argv, capture_output=True, text=True, timeout=180, check=False
-        )
+        result = run_to_end.run(argv, what="Exporting the board's 3D model")
         if result.returncode != 0 or not out.is_file():
             detail = (result.stderr or result.stdout).strip()[:400]
             raise ValueError(f"kicad-cli could not export the 3D model: {detail}")
@@ -165,7 +175,8 @@ def bom_data(quantity: int = 1, sourcing: bool = True) -> dict[str, Any]:
                 "price": (record.price * 1.0) if record and record.price is not None else None,
                 "currency": record.currency if record else "",
                 "lifecycle": record.lifecycle if record else "",
-                "datasheet": record.datasheet_url if record else "",
+                # The distributor's link when it has one, else the symbol's own field.
+                "datasheet": (record.datasheet_url if record else "") or row.get("datasheet", ""),
                 "specs": [
                     {"name": spec.name, "display": spec.display, "source": spec.source}
                     for spec in specs

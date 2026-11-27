@@ -33,5 +33,6 @@ class KiCadIpcTimeoutError(KiCadIpcError):
     """Raised when an IPC command does not complete within its deadline."""
 
     code = "KICAD_IPC_TIMEOUT"
+    # limit-ok: describes a transport's own timeout, none of ours
     hint = "The command timed out; the queue may retry transient timeouts."
     retryable = True

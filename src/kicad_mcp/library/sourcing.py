@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
@@ -338,6 +338,8 @@ class LibrarySourcingService:
     group_bom_rows: Callable[[list[dict[str, str]]], list[dict[str, Any]]]
     lookup_component: Callable[..., ComponentRecord | None]
     update_symbol_property: Callable[[str, str, str], object]
+    #: The placed symbol's properties as written (empty when they cannot be read).
+    symbol_properties: Callable[[str], dict[str, str]] = lambda _reference: {}
 
     def _ordered_search_results(
         self,
@@ -796,8 +798,9 @@ class LibrarySourcingService:
             raise ToolFailedError(f"No part found for '{lcsc_code_or_mpn}' on {source}.")
 
         try:
-            self.update_symbol_property(sym_ref, "LCSC", part.lcsc_code)
-            self.update_symbol_property(sym_ref, "MPN", part.mpn or "")
+            before = self.symbol_properties(sym_ref)
+            for field_name, value in _part_fields(part, before).items():
+                self.update_symbol_property(sym_ref, field_name, value)
         except Exception as exc:
             raise ToolFailedError(
                 f"Could not update schematic properties for '{sym_ref}': {exc}"
@@ -817,3 +820,22 @@ class LibrarySourcingService:
             )
 
         return "\n".join(lines)
+
+
+def _part_fields(part: ComponentRecord, before: Mapping[str, str]) -> dict[str, str]:
+    """The fields a bound part sets: its codes, and every field that described the part it
+    replaces, so none is left naming the old part (Manufacturer, Datasheet, and a Value
+    that was the old part number; a passive's Value such as 10uF is kept)."""
+    manufacturer = next((spec.display for spec in part.specs if spec.name == "manufacturer"), "")
+    fields = {
+        "LCSC": part.lcsc_code,
+        "MPN": part.mpn or "",
+        "Manufacturer": str(manufacturer),
+        "Datasheet": part.datasheet_url or "~",
+    }
+    old_mpn = before.get("MPN", "").strip()
+    if old_mpn and before.get("Value", "").strip() == old_mpn and part.mpn:
+        fields["Value"] = part.mpn
+    if not before:  # unreadable: only the codes, as before
+        return {"LCSC": fields["LCSC"], "MPN": fields["MPN"]}
+    return {name: value for name, value in fields.items() if before.get(name, "") != value}

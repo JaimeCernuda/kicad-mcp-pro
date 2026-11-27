@@ -15,6 +15,7 @@ import structlog
 from ..config import get_config
 from ..discovery import get_cli_capabilities
 from ..errors import ManualStepRequiredError
+from . import run_to_end
 
 logger = structlog.get_logger(__name__)
 
@@ -30,7 +31,7 @@ class FreeRoutingResult:
     returncode: int
     stdout: str
     stderr: str
-    routed_pct: float
+    routed_pct: float | None  # None: FreeRouting did not say how complete the routing is
     total_nets: int
     unrouted_nets: list[str]
     pass_count: int
@@ -38,6 +39,24 @@ class FreeRoutingResult:
     stdout_tail: str
     ses_path: Path
     notes: tuple[str, ...] = ()  # what was installed to run FreeRouting here
+    open_connections: int | None = None  # connections FreeRouting left unrouted
+    total_connections: int | None = None
+
+    def routed_line(self) -> str:
+        """How complete the routing is, as FreeRouting reported it (never assumed)."""
+        if self.open_connections is not None and self.total_connections:
+            return (
+                f"Routed: {self.routed_pct:.2f}% of connections "
+                f"({self.open_connections} of {self.total_connections} still open)"
+            )
+        if self.open_connections is not None:
+            return f"Routed: {self.open_connections} connection(s) still open"
+        if self.routed_pct is not None:
+            return (
+                f"Routed: {self.routed_pct:.2f}% ({self.total_nets} net(s), "
+                f"{len(self.unrouted_nets)} unrouted)"
+            )
+        return "Routed: FreeRouting did not report how complete it is; run run_drc() to see"
 
 
 def _sanitize_text(text: str) -> str:
@@ -60,14 +79,6 @@ def _container_relpath(base: Path, target: Path) -> str:
 
 def _tail(text: str, limit: int = 4096) -> str:
     return text[-limit:]
-
-
-def _coerce_process_output(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return value
 
 
 def _count_dsn_nets(dsn_path: Path) -> int:
@@ -99,7 +110,29 @@ def _parse_pass_count(text: str) -> int:
     return max(passes) if passes else 0
 
 
-def _parse_routed_pct(text: str, total_nets: int, unrouted_nets: list[str], ses_ok: bool) -> float:
+def _parse_connections(text: str) -> tuple[int | None, int | None]:
+    """Open and total connections from FreeRouting's own report: the final statistics
+    (``"connections": {"maximum_count": N, "incomplete_count": M}``), else the last pass
+    line's ``(M unrouted)``."""
+    totals = re.findall(r'"maximum_count"\s*:\s*(\d+)', text)
+    opens = re.findall(r'"incomplete_count"\s*:\s*(\d+)', text)
+    if opens:
+        return int(opens[-1]), int(totals[-1]) if totals else None
+    passes = re.findall(r"\((\d+) unrouted\)", text)
+    return (int(passes[-1]), None) if passes else (None, None)
+
+
+def _parse_routed_pct(
+    text: str,
+    total_nets: int,
+    unrouted_nets: list[str],
+    connections: tuple[int | None, int | None] = (None, None),
+) -> float | None:
+    """How complete the routing is, from what FreeRouting reported; None when it said
+    nothing (a written session file says nothing about completeness)."""
+    open_count, total = connections
+    if open_count is not None and total:
+        return round(((total - open_count) / total) * 100.0, 2)
     # Scan overlapping numeric starts and check the percent/label suffix literally.
     # Requiring the suffix within a regex permits super-linear backtracking.
     for number in re.finditer(r"(?=(?<!\d)(\d+(?:\.\d+)?))", text):
@@ -116,7 +149,9 @@ def _parse_routed_pct(text: str, total_nets: int, unrouted_nets: list[str], ses_
             return round(float(number.group(1)), 2)
     if total_nets > 0 and unrouted_nets:
         return round(((total_nets - len(unrouted_nets)) / total_nets) * 100.0, 2)
-    return 100.0 if ses_ok else 0.0
+    if open_count == 0:
+        return 100.0
+    return None
 
 
 def _docker_available(executable: str) -> bool:
@@ -124,12 +159,8 @@ def _docker_available(executable: str) -> bool:
     if shutil.which(executable) is None:
         return False
     try:
-        result = subprocess.run(  # noqa: S603
-            [executable, "info", "--format", "{{.ServerVersion}}"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
+        result = run_to_end.run(
+            [executable, "info", "--format", "{{.ServerVersion}}"], what="docker info"
         )
     except (OSError, subprocess.SubprocessError):
         return False
@@ -166,9 +197,7 @@ class FreeRoutingRunner:
         ]
         for cmd in variants:
             try:
-                result = subprocess.run(  # noqa: S603
-                    cmd, capture_output=True, text=True, timeout=120, check=False
-                )
+                result = run_to_end.run(cmd, what="kicad-cli pcb export specctra")
             except (OSError, subprocess.SubprocessError):
                 continue
             if result.returncode == 0 and target.exists() and target.stat().st_size > 0:
@@ -190,12 +219,9 @@ class FreeRoutingRunner:
         )
         for python in _kicad_pythons(kicad_cli):
             try:
-                result = subprocess.run(  # noqa: S603
+                result = run_to_end.run(
                     [str(python), "-c", script, str(pcb_path), str(target)],
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                    check=False,
+                    what="KiCad Python: export the DSN",
                 )
             except (OSError, subprocess.SubprocessError):
                 continue
@@ -382,35 +408,15 @@ class FreeRoutingRunner:
         command: list[str],
         mode: str,
         dsn_path: Path,
-        timeout: float,
     ) -> tuple[subprocess.CompletedProcess[str], float]:
         start_time = time.perf_counter()
         try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=timeout,
-                check=False,
-            )
+            result = run_to_end.run(command, what=f"FreeRouting on {dsn_path.name}")
         except FileNotFoundError as exc:
             missing = self._docker_executable if mode == "docker" else self._java_executable
             raise RuntimeError(
                 f"{missing} was not found. Install the required runtime or switch "
                 f"{'use_docker' if mode == 'docker' else 'to Docker mode'}."
-            ) from exc
-        except subprocess.TimeoutExpired as exc:
-            logger.warning(
-                "freerouting_timeout",
-                timeout_seconds=exc.timeout,
-                dsn=dsn_path.name,
-                stdout_tail=_tail(_sanitize_text(_coerce_process_output(exc.stdout))),
-                stderr_tail=_tail(_sanitize_text(_coerce_process_output(exc.stderr))),
-            )
-            raise RuntimeError(
-                f"FreeRouting timed out after {exc.timeout} seconds while "
-                f"processing {dsn_path.name}."
             ) from exc
         wall_seconds = time.perf_counter() - start_time
         return result, wall_seconds
@@ -427,7 +433,6 @@ class FreeRoutingRunner:
         net_classes_to_ignore: list[str] | None = None,
         exclude_nets: list[str] | None = None,
         drc_report_path: Path | None = None,
-        timeout: float | None = None,
     ) -> FreeRoutingResult:
         """Run FreeRouting via Docker or a local JAR and return the normalized result."""
         cfg = get_config()
@@ -454,16 +459,15 @@ class FreeRoutingRunner:
             ignore_arg=ignore_arg,
         )
 
-        effective_timeout = timeout or cfg.freerouting_timeout_sec
-        result, wall_seconds = self._execute_process(command, mode, dsn_path, effective_timeout)
+        result, wall_seconds = self._execute_process(command, mode, dsn_path)
 
         sanitized_stdout = _sanitize_text(result.stdout)
         sanitized_stderr = _sanitize_text(result.stderr)
         combined_output = f"{sanitized_stdout}\n{sanitized_stderr}"
         total_nets = _count_dsn_nets(dsn_path)
         unrouted_nets = _parse_unrouted_nets(combined_output)
-        ses_ok = output.exists() and output.stat().st_size > 0
-        routed_pct = _parse_routed_pct(combined_output, total_nets, unrouted_nets, ses_ok)
+        connections = _parse_connections(combined_output)
+        routed_pct = _parse_routed_pct(combined_output, total_nets, unrouted_nets, connections)
 
         return FreeRoutingResult(
             mode=mode,
@@ -481,6 +485,8 @@ class FreeRoutingRunner:
             stdout_tail=_tail(sanitized_stdout),
             ses_path=output,
             notes=self.install_notes,
+            open_connections=connections[0],
+            total_connections=connections[1],
         )
 
     def stage_ses(self, ses_path: Path) -> Path:
@@ -558,12 +564,9 @@ def import_ses_with_kicad(pcb_text: str, ses_path: Path, kicad_cli: str | Path) 
         errors: list[str] = []
         for python in _kicad_pythons(kicad_cli):
             try:
-                result = subprocess.run(  # noqa: S603
+                result = run_to_end.run(
                     [str(python), "-c", script, str(board), str(ses_path.resolve())],
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    check=False,
+                    what="KiCad Python: import the SES",
                 )
             except (OSError, subprocess.SubprocessError) as exc:
                 errors.append(f"{python}: {exc}")

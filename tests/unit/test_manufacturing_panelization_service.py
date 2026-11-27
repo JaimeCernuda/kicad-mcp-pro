@@ -170,18 +170,3 @@ def test_panelization_executes_variants_and_preserves_failures(tmp_path: Path) -
         ToolFailedError, match=re.escape("KiKit panelization failed (exit 2):\nbad panel")
     ):
         failing.panelize(dry_run=False, confirm=True)
-
-    def timeout(_cmd: list[str]):  # type: ignore[no-untyped-def]
-        raise module.PanelizationTimeoutError
-
-    timed = module.PanelizationService(
-        kikit_available=lambda: True,
-        get_pcb_file=lambda: pcb,
-        ensure_output_dir=lambda name: tmp_path / name,
-        resolve_output_path=lambda path_text: tmp_path / path_text,
-        run_command=timeout,
-    )
-    with pytest.raises(
-        ToolFailedError, match=re.escape("KiKit panelization timed out after 120 seconds.")
-    ):
-        timed.panelize(dry_run=False, confirm=True)

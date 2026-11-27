@@ -207,14 +207,79 @@ def test_routed_percent_parser_matches_freerouting_output_without_backtracking(
 ) -> None:
     from kicad_mcp.utils.freerouting import _parse_routed_pct
 
-    assert _parse_routed_pct(output, 0, [], False) == expected
+    assert _parse_routed_pct(output, 0, [], (None, None)) == expected
 
 
 def test_routed_percent_parser_retains_fallback_on_unrecognized_status() -> None:
     from kicad_mcp.utils.freerouting import _parse_routed_pct
 
-    assert _parse_routed_pct("25% negotiating", 8, ["N1", "N2"], False) == 75.0
-    assert _parse_routed_pct("no percent", 0, [], True) == 100.0
+    assert _parse_routed_pct("25% negotiating", 8, ["N1", "N2"]) == 75.0
+
+
+def test_a_written_session_alone_is_not_reported_as_fully_routed() -> None:
+    """Found live: the summary said "Routed: 100.00% (25 net(s), 0 unrouted)" because a
+    session file was written, while FreeRouting's own report said one connection was open."""
+    from kicad_mcp.utils.freerouting import _parse_routed_pct
+
+    assert _parse_routed_pct("no percent", 0, []) is None
+
+
+# FreeRouting 2.1's own report at the end of a run (abridged from the live sensor-board run).
+_FREEROUTING_2_TAIL = """\
+2026-11-15 23:31:45.013 INFO   [E986F7\\8E2213] Auto-router pass #806 on board '28634c' was \
+completed in 0.03 seconds with the score of 985.14 (1 unrouted), using 1013.73 CPU seconds.
+{
+  "connections": {
+    "maximum_count": 189,
+    "incomplete_count": 1
+  },
+  "clearance_violations": {"total_count": 0}
+}"""
+
+
+def test_freerouting_reports_the_connections_it_left_open() -> None:
+    from kicad_mcp.utils.freerouting import _parse_connections, _parse_routed_pct
+
+    connections = _parse_connections(_FREEROUTING_2_TAIL)
+    assert connections == (1, 189)
+    assert _parse_routed_pct(_FREEROUTING_2_TAIL, 25, [], connections) == 99.47
+
+
+def test_the_last_pass_line_counts_when_there_is_no_final_report() -> None:
+    from kicad_mcp.utils.freerouting import _parse_connections
+
+    text = "pass #1 ... (7 unrouted)\npass #2 ... (2 unrouted)\n"
+    assert _parse_connections(text) == (2, None)
+
+
+def test_the_routed_line_says_what_is_still_open(tmp_path: Path) -> None:
+    from kicad_mcp.utils.freerouting import FreeRoutingResult
+
+    def result(**kw: object) -> FreeRoutingResult:
+        base: dict[str, object] = {
+            "mode": "jar",
+            "command": (),
+            "input_dsn": tmp_path,
+            "output_ses": tmp_path,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "routed_pct": None,
+            "total_nets": 25,
+            "unrouted_nets": [],
+            "pass_count": 1,
+            "wall_seconds": 1.0,
+            "stdout_tail": "",
+            "ses_path": tmp_path,
+        }
+        base.update(kw)
+        return FreeRoutingResult(**base)  # type: ignore[arg-type]
+
+    assert result(routed_pct=99.47, open_connections=1, total_connections=189).routed_line() == (
+        "Routed: 99.47% of connections (1 of 189 still open)"
+    )
+    assert "did not report" in result().routed_line()
+    assert "0 unrouted" not in result().routed_line()
 
 
 def test_the_docker_run_names_the_jar_the_image_runs() -> None:

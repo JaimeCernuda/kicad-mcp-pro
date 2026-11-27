@@ -804,15 +804,10 @@ def test_cloud_native_zenity_folder_picker(
         argv_seen.append(argv)
         assert argv[0] == "/usr/bin/zenity"
         assert "--directory" in argv
-        assert kwargs == {
-            "capture_output": True,
-            "text": True,
-            "check": False,
-            "timeout": 120,
-        }
+        assert "timeout" not in kwargs  # the person takes as long as they need
         return SimpleNamespace(returncode=status, stdout=path_text)
 
-    monkeypatch.setattr(cloud_user_cli.subprocess, "run", dialog_command)
+    monkeypatch.setattr(cloud_user_cli.run_to_end, "run", dialog_command)
     if expected is None:
         with pytest.raises(cloud_user_cli.typer.BadParameter, match="No project folder"):
             cloud_user_cli._browse_local_project_folder()
@@ -821,8 +816,7 @@ def test_cloud_native_zenity_folder_picker(
     assert len(argv_seen) == 1
 
 
-@pytest.mark.parametrize("reason", ["timeout", "unavailable"])
-def test_cloud_native_zenity_picker_launch_failure(monkeypatch, reason: str) -> None:
+def test_cloud_native_zenity_picker_launch_failure(monkeypatch) -> None:
     from types import SimpleNamespace
 
     from kicad_mcp import cloud_user_cli
@@ -831,11 +825,9 @@ def test_cloud_native_zenity_picker_launch_failure(monkeypatch, reason: str) -> 
     monkeypatch.setattr(cloud_user_cli.shutil, "which", lambda _name: "/usr/bin/zenity")
 
     def error_command(_argv, **_kwargs: object):
-        if reason == "timeout":
-            raise cloud_user_cli.subprocess.TimeoutExpired("/usr/bin/zenity", 120)
         raise OSError("display backend unavailable")
 
-    monkeypatch.setattr(cloud_user_cli.subprocess, "run", error_command)
+    monkeypatch.setattr(cloud_user_cli.run_to_end, "run", error_command)
     with pytest.raises(cloud_user_cli.typer.BadParameter, match="Folder picker unavailable"):
         cloud_user_cli._browse_local_project_folder()
 

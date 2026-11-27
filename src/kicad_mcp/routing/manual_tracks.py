@@ -10,7 +10,11 @@ from ..models.common import _PadLike
 from ..models.pcb import AddTrackInput
 from ..pcb.geometry import point_xy_mm
 
-PadProvider = Callable[[], Iterable[_PadLike]]
+#: Each board pad with the reference of the footprint it belongs to. A KiCad 10 pad names its
+#: footprint only by ID (``pad.parent`` is a KIID), so the reference comes from the footprints
+#: (``pcb/pad_mapping.py``).
+ReferencedPad = tuple[str | None, _PadLike]
+PadProvider = Callable[[], Iterable[ReferencedPad]]
 
 
 @dataclass(frozen=True)
@@ -30,14 +34,12 @@ TrackWriter = Callable[[str, list[TrackSpec]], None]
 
 
 def _find_pad(
-    pads: Iterable[_PadLike],
+    pads: Iterable[ReferencedPad],
     reference: str,
     pad_number: str,
 ) -> _PadLike | None:
-    for pad in pads:
-        if pad.parent.reference_field.text.value == reference and str(pad.number) == str(
-            pad_number
-        ):
+    for owner, pad in pads:
+        if owner == reference and str(pad.number) == str(pad_number):
             return pad
     return None
 

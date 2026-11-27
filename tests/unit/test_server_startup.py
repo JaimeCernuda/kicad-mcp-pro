@@ -5,6 +5,7 @@ import sys
 import threading
 from pathlib import Path
 
+import anyio
 import pytest
 
 from kicad_mcp.config import get_config
@@ -305,26 +306,30 @@ async def test_sync_tool_execution_does_not_block_event_loop() -> None:
     assert events == ["tool-start", "heartbeat", "tool-end"]
 
 
-async def test_ensure_registered_async_times_out_on_hung_registration() -> None:
-    # P5-T5: a registration that hangs must not block requests forever — the
-    # awaiting handler gets a retryable timeout error and the thread is abandoned.
-    from kicad_mcp.errors import ToolRegistrationTimeoutError
-
+async def test_a_slow_registration_is_waited_for_and_a_stopped_call_stops_waiting() -> None:
+    # No time limit: a call waits for registration however long it takes, and a call
+    # that is stopped stops waiting at once (the registration thread carries on).
     server = KiCadFastMCP(name="kicad-mcp-pro-test")
-    server._lazy_registration_timeout_s = 0.1
     release = threading.Event()
+    registered: list[bool] = []
 
     def register() -> None:
-        release.wait(timeout=5)  # blocks well past the 0.1s budget
+        release.wait()
+        registered.append(True)
 
     server.set_lazy_registration(register)
     try:
-        with pytest.raises(ToolRegistrationTimeoutError) as exc_info:
+        with anyio.move_on_after(0.3) as scope:  # the person stops the call
             await server._ensure_registered_async()
-        assert exc_info.value.code == "SERVER_INITIALIZING"
-        assert exc_info.value.retryable is True
+        assert scope.cancelled_caught and not registered
     finally:
-        release.set()  # let the abandoned worker thread finish cleanly
+        release.set()
+    server2 = KiCadFastMCP(name="kicad-mcp-pro-test")
+    slow = threading.Event()
+    threading.Timer(1.5, slow.set).start()  # longer than the old budget's test value
+    server2.set_lazy_registration(lambda: slow.wait())
+    await server2._ensure_registered_async()
+    assert server2._lazy_registration_complete
 
 
 def test_deferred_build_registers_tools_on_first_discovery(sample_project: Path) -> None:

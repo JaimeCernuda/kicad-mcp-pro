@@ -117,6 +117,8 @@ async def _sse_log_generator() -> AsyncGenerator[str]:
         yield f"data: {json.dumps({'event': 'connected'})}\n\n"
         while True:
             try:
+                # A keep-alive tick for the stream, not a limit: it loops forever.
+                # limit-ok: keep-alive tick of the log stream
                 entry = await asyncio.wait_for(q.get(), timeout=30.0)
                 yield f"data: {entry}\n\n"
             except TimeoutError:

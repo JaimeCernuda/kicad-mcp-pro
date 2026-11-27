@@ -74,10 +74,33 @@ def _use_project(project: str) -> None:
         return
     cfg = get_config()
     target = Path(project).expanduser()
+    # A project, board or schematic file names its folder; the folder is the project.
+    if target.suffix in (".kicad_pro", ".kicad_pcb", ".kicad_sch"):
+        target = target.parent
+    if not target.is_dir():
+        raise ValueError(f"The project folder {target} does not exist.")
     current = Path(cfg.project_dir) if cfg.project_dir is not None else None
     if current is not None and target.resolve() == current.resolve():
         return
     cfg.apply_project(target)
+
+
+def _projects_here(limit: int = 5) -> str:
+    """The KiCad projects in this server's workspace (its working folder), named so the
+    agent can pass one; the server picks none itself."""
+    root = Path.cwd()
+    found = sorted(
+        path.parent
+        for depth in ("*.kicad_pro", "*/*.kicad_pro", "*/*/*.kicad_pro")
+        for path in root.glob(depth)
+        if not any(part.startswith(".") or part.endswith("-backups") for part in path.parts)
+    )
+    if not found:
+        return "."
+    shown = ", ".join(str(folder) for folder in found[:limit])
+    more = f" and {len(found) - limit} more" if len(found) > limit else ""
+    noun = "project" if len(found) == 1 else "projects"
+    return f"; this workspace has the KiCad {noun} {shown}{more}."
 
 
 def _meta(view: str, *, app_only: bool = False) -> dict[str, Any] | None:
@@ -172,7 +195,8 @@ def register(mcp: FastMCP) -> None:
         """Open the bill of materials with stock, price, lifecycle, datasheets and key specs.
 
         From the view the person can see alternates, choose one, mark parts not fitted and
-        reprice at ``quantity`` boards.
+        reprice at ``quantity`` boards. A row the person selects highlights its footprints on
+        a board view only when the views share a selection, as in a workbench dashboard.
         """
         _use_project(project)
         rows = data.bom_data(quantity=quantity, sourcing=False)["rows"]
@@ -180,7 +204,13 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(meta=_meta("checks"))
     def view_checks(project: str = "", kind: str = "both") -> CallToolResult:
-        """Open DRC and ERC results grouped by rule (``kind``: drc, erc or both)."""
+        """Open DRC and ERC results grouped by rule (``kind``: drc, erc or both).
+
+        A violation the person selects reaches you as context with its position. It moves a
+        board view only when the two views share a selection, as in a workbench dashboard
+        that holds both; a board view in its own tab does not follow it, so show the place
+        with that view's ``focus`` (the violation's position) when you discuss it.
+        """
         _use_project(project)
         if kind not in ("drc", "erc", "both"):
             return CallToolResult(
@@ -208,20 +238,28 @@ def register(mcp: FastMCP) -> None:
         candidates: list[str] | None = None,
         package: str = "",
         symbol: str = "",
+        project: str = "",
     ) -> CallToolResult:
         """Open a parts table with specs, filters, column choice and side-by-side compare.
 
         Give ``category`` (and ``filters`` as for lib_search_parametric) to search, or your
         shortlist in ``candidates`` (MPNs or LCSC codes). ``symbol`` (U2) is where the
-        person's pick is bound.
+        person's pick is bound, in ``project``'s schematic (the project folder).
         """
-        _ = query, filters, package, symbol
+        _ = query, filters, package
+        _use_project(project)
         shown = (
             f"{len(candidates)} candidates"
             if candidates
             else f"category {category or query or '(none yet)'}"
         )
-        return opened("parts", f"{shown}.")
+        unbound = ""
+        if symbol and get_config().sch_file is None:
+            unbound = (
+                f" The person's pick cannot be bound to {symbol} yet: no project is set. "
+                "Open the view again with project (the project folder)" + _projects_here()
+            )
+        return opened("parts", f"{shown}.{unbound}")
 
     # ------------------------------------------------------------ data tools
 

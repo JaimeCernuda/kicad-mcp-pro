@@ -183,3 +183,120 @@ def test_the_four_tools_are_registered() -> None:
         "lib_generate_footprint_custom",
         "lib_check_footprint",
     }
+
+
+def test_two_mounting_tabs_with_one_number_are_compared_with_two_tabs() -> None:
+    """Found live (FQ3): a JST SMD footprint's two tabs are both pad "MP"; the check compared
+    both datasheet tabs with one footprint tab and reported a tab that was in place."""
+    footprint = [
+        runner.Pad("1", -0.5, 0.0, 0.6, 1.55),
+        runner.Pad("2", 0.5, 0.0, 0.6, 1.55),
+        runner.Pad("MP", -2.1, -2.0, 1.0, 2.8),
+        runner.Pad("MP", 2.1, -2.0, 1.0, 2.8),
+    ]
+    sheet = [runner.Pad(p.number, p.x, p.y, p.w, p.h) for p in footprint]
+    assert runner.compare_pads(sheet, footprint, 0.05) == []
+    moved = [*sheet[:3], runner.Pad("MP", 2.4, -2.0, 1.0, 2.8)]
+    assert runner.compare_pads(moved, footprint, 0.05) == [
+        "pad MP: at (2.1, -2) mm, the datasheet (2.4, -2) mm"
+    ]
+
+
+def test_an_exposed_pad_is_compared_with_itself_not_its_vias() -> None:
+    footprint = [
+        runner.Pad("9", 0.0, 0.0, 1.6, 1.6),
+        runner.Pad("9", -0.5, -0.5, 0.3, 0.3),
+        runner.Pad("9", 0.5, 0.5, 0.3, 0.3),
+    ]
+    assert runner.compare_pads([runner.Pad("9", 0.0, 0.0, 1.6, 1.6)], footprint, 0.05) == []
+
+
+def test_assigning_a_recorded_footprint_records_its_acceptance(tmp_path: Path) -> None:
+    """Found live (FQ4): the record kept accepted false after the person accepted the
+    module's custom footprint and it was assigned."""
+    runner.update_record(tmp_path, "E22-900M22S", rung="custom", accepted=False)
+    assert runner.mark_assigned(tmp_path, "E22-900M22S", "U4")
+    record = json.loads((tmp_path / "libs" / runner.RECORDS).read_text())["E22-900M22S"]
+    assert record["accepted"] is True and record["assigned_to"] == ["U4"]
+    assert not runner.mark_assigned(tmp_path, "SOT-23-5", "U2")  # a library footprint
+    assert "SOT-23-5" not in json.loads((tmp_path / "libs" / runner.RECORDS).read_text())
+
+
+def test_the_family_list_names_each_familys_data_files(tools: install.Installed) -> None:
+    """Found live (FQ3): the list said "4 data files", not that JST's SMD series are
+    entries in ``conn_jst``, and the agent wrote a one-off script for a JST connector."""
+    from kicad_mcp.tools.library_footprints_klt import _data_files
+
+    assert _data_files(("conn_hirose.yaml", "conn_jst.yaml")) == "data files: conn_hirose, conn_jst"
+    many = tuple(f"f{i}.yaml" for i in range(10))
+    assert _data_files(many).endswith("f7, ... (10 in all)")
+    data = tools.root / "data" / "package" / "no_lead"
+    (data / "jst.yaml").write_text("Part:\n  pitch: 1\n")
+    assert runner.family_example(tools, "package/no_lead", prefer="JST").startswith(
+        "# data/package/no_lead/jst.yaml"
+    )
+    assert runner.family_example(tools, "package/no_lead", prefer="none").startswith(
+        "# data/package/no_lead/jst.yaml"  # no match: the first file
+    )
+
+
+def test_the_family_list_names_library_tools_python_for_cadquery_scripts(
+    tools: install.Installed, tmp_path: Path
+) -> None:
+    """Found live (FQ7): each conversation installed CadQuery again (about 1.7 GB in its
+    scratch) to run the enclosure scripts, while Library Tools' environment has it."""
+    from kicad_mcp.tools.library_footprints_klt import _python_line
+
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin" / "python").write_text("")
+    with_cq = install.Installed(tools.root, venv / "bin" / "python", tools.pin, models=True)
+    assert _python_line(with_cq).endswith(
+        "with KicadModTree (no CadQuery yet): " + str(venv / "bin" / "python")
+    )
+    (venv / "lib" / "python3.13" / "site-packages" / "cadquery").mkdir(parents=True)
+    assert "with KicadModTree and CadQuery: " in _python_line(with_cq)
+
+
+def test_a_footprint_file_is_checked_with_no_project_set(
+    tools: install.Installed, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Found live (FQ5): the check ran, then failed with "No project is set" while recording
+    its result, and the agent compared the pads by hand."""
+    import asyncio
+
+    from fastmcp import FastMCP
+
+    from kicad_mcp.config import get_config
+    from kicad_mcp.tools import library_footprints_klt
+
+    project = tmp_path / "board"
+    library = project / "libs" / "board.pretty"
+    library.mkdir(parents=True)
+    (project / "board.kicad_pro").write_text("{}")
+    footprint = library / "U3.kicad_mod"
+    footprint.write_text('(footprint "U3" (pad "1" smd rect (at -1.4125 -0.75) (size 0.625 0.25)))')
+    for name in ("project_dir", "project_file", "pcb_file", "sch_file"):
+        monkeypatch.setattr(get_config(), name, None)
+    monkeypatch.setattr(get_config(), "workspace_root", None)
+    monkeypatch.chdir(tmp_path)  # the server runs in its workspace folder
+    monkeypatch.setattr(
+        runner,
+        "check",
+        lambda _tools, target, pads, tol: runner.CheckResult(
+            footprint=target.stem,
+            compared=len(pads),
+            mismatches=runner.compare_pads(pads, runner.parse_pads(target.read_text()), tol),
+        ),
+    )
+    mcp = FastMCP("t")
+    library_footprints_klt.register(mcp)
+    shifted = [{"number": "1", "x": -1.1125, "y": -0.75, "w": 0.625, "h": 0.25}]
+    result = asyncio.run(
+        mcp.call_tool("lib_check_footprint", {"path": str(footprint), "land_pattern": shifted})
+    )
+    text = result.content[0].text
+    assert "FAIL: U3" in text
+    assert "pad 1: at (-1.4125, -0.75) mm, the datasheet (-1.1125, -0.75) mm" in text
+    records = json.loads((project / "libs" / "footprint-records.json").read_text())
+    assert records["U3"]["check"]["passed"] is False

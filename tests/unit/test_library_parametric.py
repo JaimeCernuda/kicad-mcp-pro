@@ -321,3 +321,32 @@ def test_a_filter_name_no_part_has_is_named_with_the_names_they_do_have() -> Non
     assert "voltage" in answer.unmatched and "voltage_rating" in answer.unmatched["voltage"]
     text = library_parametric.format_search("capacitors", answer)
     assert "No part returned has a spec named 'voltage'" in text and "voltage_rating" in text
+
+
+def test_a_full_jlcsearch_page_says_the_parts_beyond_it_were_not_examined() -> None:
+    """Found live (KQ37): jlcsearch answers at most 100 rows a query and does not page past
+    them; "0 parts meet every filter" read as "no such part exists"."""
+    from kicad_mcp.library import parametric
+
+    full = [dict(CAP_ROWS[0], lcsc=1000 + i, stock=None, in_stock=False) for i in range(100)]
+    service = ParametricService(
+        lambda source: _Client([]),
+        categories=JLCSearchCategories(lambda url, params: {"capacitors": full}),
+        env={},
+    )
+    answer = service.search(
+        "capacitors",
+        [{"name": "capacitance", "op": "=", "value": "10", "unit": "uF"}],
+        min_stock=1,
+    )
+    assert answer.partial == {"jlcsearch": parametric._JLC_PAGE_LIMIT}
+    text = library_parametric.format_search("capacitors", answer)
+    assert "returned only its first 100 parts" in text
+    assert "may still exist" in text
+
+
+def test_a_short_page_is_not_called_partial() -> None:
+    service, _ = _service()
+    answer = service.search("capacitors", [])
+    assert answer.partial == {}
+    assert "first 100" not in library_parametric.format_search("capacitors", answer)

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import subprocess
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -588,21 +587,20 @@ async def test_manufacturing_gate_block_returns_structured_validation_error(
     assert "hard-blocked" in text
 
 
-def test_run_cli_retries_transient_timeout(fake_cli: Path, monkeypatch) -> None:
+def test_run_cli_retries_a_busy_kicad(fake_cli: Path, monkeypatch) -> None:
     from kicad_mcp.tools import export
 
     attempts = 0
 
-    def fake_run(*_args: object, **_kwargs: object):
+    def fake_run(*_args: object, **kwargs: object):
         nonlocal attempts
         attempts += 1
-        if attempts < 3:
-            raise subprocess.TimeoutExpired(cmd="kicad-cli", timeout=0.1)
+        assert kwargs.get("timeout") is None  # no time limit on kicad-cli
 
         class Result:
-            returncode = 0
-            stdout = "ok"
-            stderr = ""
+            returncode = 0 if attempts >= 3 else 1
+            stdout = "ok" if attempts >= 3 else ""
+            stderr = "" if attempts >= 3 else "KiCad is busy"
 
         return Result()
 

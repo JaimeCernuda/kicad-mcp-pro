@@ -10,10 +10,6 @@ from typing import Protocol
 from ..errors import ToolFailedError
 
 
-class PanelizationTimeoutError(TimeoutError):
-    """Raised when KiKit panelization exceeds the runner timeout."""
-
-
 class PanelizationProcessResult(Protocol):
     @property
     def returncode(self) -> int: ...
@@ -108,9 +104,7 @@ class PanelizationService:
             )
 
         try:
-            result = self.run_command(cmd)
-        except PanelizationTimeoutError as exc:
-            raise ToolFailedError("KiKit panelization timed out after 120 seconds.") from exc
+            result = self.run_command(cmd)  # however long KiKit takes (run_to_end)
         except OSError as exc:
             raise ToolFailedError(f"Failed to run KiKit: {exc}") from exc
 

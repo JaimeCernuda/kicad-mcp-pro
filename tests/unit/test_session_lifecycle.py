@@ -24,7 +24,6 @@ class FakeConfig:
 
     kicad_socket_path: Path | None = None
     kicad_token: str | None = None
-    ipc_connection_timeout: float = 10.0
     ipc_retries: int = 2
     ipc_cache_ttl: float = 5.0
 

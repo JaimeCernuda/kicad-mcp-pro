@@ -42,7 +42,6 @@ _FOLDER_SESSION_MAX_PAYLOAD = 8192
 _DEVICE_UUID = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
 )
-HANDSHAKE_TIMEOUT_SECONDS = 9
 
 
 class CloudHandshakeDeniedError(ValueError):
@@ -444,7 +443,10 @@ async def _complete_authorized_inspection(
     if remaining_seconds <= 0:
         raise CloudHandshakeDeniedError(_HANDSHAKE_DENIED)
     try:
+        # Kept: the cloud signed this read with deadlineUnixMs, a security expiry on the
+        # message (a later answer is refused), not a wait the connector chose.
         async with (
+            # limit-ok: the cloud's signed expiry on this read
             asyncio.timeout(remaining_seconds),
             inspector.connect(
                 device_id=device_id, project_id=project_id, session_id=receipt.session_id
@@ -652,14 +654,6 @@ def _catalog_hello_metadata(options: OutboundSessionOptions) -> dict[str, object
     }
 
 
-def _outbound_session_timeout(options: OutboundSessionOptions) -> int:
-    if options.owner_managed_read:
-        return 299
-    if options.dispatcher_factory is None and options.inspection_factory is None:
-        return HANDSHAKE_TIMEOUT_SECONDS
-    return 40
-
-
 async def _complete_outbound_operation(
     socket: ClientConnection, receipt: HandshakeReceipt, options: OutboundSessionOptions
 ) -> HandshakeReceipt:
@@ -743,8 +737,8 @@ async def _perform_outbound_session(
         return int(datetime.now(UTC).timestamp() * 1000)
 
     try:
+        # No session time limit: it lasts until the cloud closes it or it is stopped.
         async with (
-            asyncio.timeout(_outbound_session_timeout(session_options)),
             connect(
                 endpoint,
                 ssl=context,
@@ -756,8 +750,8 @@ async def _perform_outbound_session(
                     else 1024
                 ),
                 max_queue=2,
-                open_timeout=3,
-                close_timeout=2,
+                open_timeout=None,
+                close_timeout=2,  # shutdown grace for the closing handshake, not a limit
             ) as socket,
         ):
             if socket.transport.get_extra_info("ssl_object") is None:

@@ -437,3 +437,25 @@ def test_a_private_temp_someone_else_planted_is_refused(tmp_path: Path) -> None:
     mine = tmp_path / "kmcp-mine"
     assert manager._own_private_temp(mine) is True
     assert (mine.stat().st_mode & 0o777) == 0o700
+
+
+def test_status_names_the_persons_running_kicad_before_any_project(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Found live (KQ6): with the person's KiCad open and no project set yet, the status
+    said "no KiCad instance yet" while IPC was already talking to that KiCad."""
+    monkeypatch.setattr(
+        instance_manager,
+        "probe",
+        lambda url: instance_manager.Probe(True, True, "10.0.8", ("led.kicad_pcb",)),
+    )
+    status = InstanceManager().status()
+    assert status.case == "attached"
+    assert status.version == "10.0.8"
+    assert status.board == "led.kicad_pcb"
+    assert status.started_by_server is False
+
+
+def test_status_with_no_kicad_running_still_says_none(monkeypatch) -> None:
+    monkeypatch.setattr(instance_manager, "probe", lambda url: instance_manager.Probe(False))
+    assert InstanceManager().status().case == "none"

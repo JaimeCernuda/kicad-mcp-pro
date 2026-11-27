@@ -21,15 +21,20 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+import structlog
+
+from ..kicad import ipc_watch
+from ..utils import run_to_end
 from . import config_home, processes
+from .board_file import file_problem
+
+logger = structlog.get_logger(__name__)
 
 #: ``attach`` (the default): only connect to a KiCad the user started.
 #: ``auto``: attach, or start KiCad when none serves the board.
 INSTANCE_ENV = "KICAD_MCP_KICAD_INSTANCE"
 #: Where the server keeps its private KiCad settings and sockets.
 HOME_ENV = "KICAD_MCP_INSTANCE_HOME"
-#: Seconds to wait for a started KiCad to answer.
-START_TIMEOUT_ENV = "KICAD_MCP_INSTANCE_START_TIMEOUT"
 
 ATTACHED = "attached"
 HEADLESS = "headless"
@@ -112,13 +117,6 @@ def _user() -> str:
         return str(os.getuid()) if hasattr(os, "getuid") else "user"
 
 
-def _start_timeout() -> float:
-    try:
-        return max(5.0, float(os.environ.get(START_TIMEOUT_ENV, "90")))
-    except ValueError:
-        return 90.0
-
-
 def default_socket() -> str:
     """kipy's default socket URL on this platform."""
     if platform.system() == "Windows":
@@ -192,15 +190,20 @@ class Probe:
     error: str = ""
 
 
-def probe(socket_url: str, timeout_ms: int = 3000) -> Probe:
-    """Ask a KiCad API socket for its version and open boards."""
+def probe(socket_url: str, timeout_ms: int = ipc_watch.NO_LIMIT_MS) -> Probe:
+    """Ask a KiCad API socket for its version and open boards.
+
+    A socket nobody listens on refuses at once; a KiCad that listens is waited for however
+    long it takes to answer (a busy KiCad is still this board's KiCad, not an absent one),
+    and the wait ends if that KiCad goes away (ipc_watch).
+    """
     try:
         from kipy import KiCad  # noqa: PLC0415
         from kipy.proto.common.types import DocumentType  # noqa: PLC0415
     except ImportError as exc:  # pragma: no cover - kipy is a dependency
         return Probe(False, error=f"kicad-python is not installed: {exc}")
     try:
-        client = KiCad(socket_path=socket_url, timeout_ms=timeout_ms)
+        client = ipc_watch.watch(KiCad(socket_path=socket_url, timeout_ms=timeout_ms), socket_url)
         version = client.get_version()
     except Exception as exc:  # noqa: BLE001 - kipy raises its own and transport errors
         text = str(exc)
@@ -251,22 +254,18 @@ def _is_development(cli: Path) -> bool:
 
 def _supports_api_server(cli: Path) -> bool:
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            [str(cli), "--help"], capture_output=True, text=True, timeout=15, check=False
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        result = run_to_end.run([str(cli), "--help"])
+    except OSError:
         return False
     return "api-server" in (result.stdout + result.stderr)
 
 
 def _version(cli: Path) -> str:
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            [str(cli), "version"], capture_output=True, text=True, timeout=15, check=False
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        result = run_to_end.run([str(cli), "version"])
+    except OSError:
         return ""
-    return (result.stdout or result.stderr).strip()
+    return str(result.stdout or result.stderr).strip()
 
 
 def _pcbnew_for(cli: Path | None) -> Path | None:
@@ -313,10 +312,8 @@ def _kicad_has_open(board: Path) -> bool:
     if platform.system() == "Windows" or ps is None:
         return False
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603
-            [ps, "-eo", "args"], capture_output=True, text=True, timeout=10, check=False
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        result = run_to_end.run([ps, "-eo", "args"])
+    except OSError:
         return False
     return any(
         str(board) in line and ("pcbnew" in line or "kicad" in line)
@@ -373,6 +370,16 @@ class InstanceManager:
                 self._started = None
                 self._status.case = NONE
                 self._status.pid = None
+            if self._status.case == NONE and self._started is None:
+                # Nothing recorded yet (no project set, nothing started): the person's own
+                # KiCad may already be serving, and IPC talks to it. Say so; start nothing.
+                for url in self._attach_candidates():
+                    found = probe(url)
+                    if found.ready:
+                        self._status.case, self._status.version = ATTACHED, found.version
+                        self._status.socket = url
+                        self._status.board = ", ".join(found.boards)
+                        break
             return self._status
 
     # ------------------------------------------------------------------ acting
@@ -411,6 +418,15 @@ class InstanceManager:
                 status.next_step = (
                     "Open the board in KiCad with Preferences > Plugins > Enable KiCad API on, "
                     f"or set {INSTANCE_ENV}=auto to let the server start KiCad."
+                )
+                self._status = status
+                return status
+            problem = file_problem(board)
+            if problem:  # KiCad would stop on a dialog nobody sees; say what is wrong
+                status.problem = f"KiCad was not started: {problem}"
+                status.next_step = (
+                    "Restore the board from the project's -backups folder or from version "
+                    "control; KiCad cannot open it as it is."
                 )
                 self._status = status
                 return status
@@ -538,9 +554,11 @@ class InstanceManager:
         _record_started(home, process.pid)
         self._watcher = _watch(process.pid)
         status.pid, status.started_by_server = process.pid, True
-        deadline = time.monotonic() + _start_timeout()
-        last = ""
-        while time.monotonic() < deadline:
+        # Wait as long as KiCad is starting: it either answers or exits (a dialog nobody
+        # sees is caught before the start, board_file). The wait is logged as it goes.
+        started_at = time.monotonic()
+        said = 0.0
+        while True:
             if process.poll() is not None:
                 status.case = NONE
                 status.problem = f"KiCad exited with code {process.returncode} while starting."
@@ -552,14 +570,16 @@ class InstanceManager:
                 status.socket = socket_url
                 status.version = found.version or version
                 return status
-            last = found.error or last
+            waited = time.monotonic() - started_at
+            if waited - said >= 10:
+                said = waited
+                logger.info(
+                    "kicad_instance_still_starting",
+                    seconds=round(waited),
+                    socket=socket_url,
+                    last_error=found.error,
+                )
             time.sleep(1.0)
-        status.problem = f"KiCad started but did not answer on {socket_url} in time ({last})."
-        status.next_step = (
-            f"Read {log}. A dialog may be open in KiCad's window; {START_TIMEOUT_ENV} sets "
-            "how long the server waits."
-        )
-        return status
 
     def stop(self) -> None:
         """Stop the KiCad this server started; never one it attached to."""
@@ -572,8 +592,9 @@ class InstanceManager:
             return
         _record_started(_home(), None)
         processes.stop_tree(started.process.pid)  # its group (POSIX) or tree (Windows)
+        # limit-ok: reaping after the forced stop
         with contextlib.suppress(OSError, subprocess.TimeoutExpired):
-            started.process.wait(timeout=5)
+            started.process.wait(timeout=5)  # reaping after the forced stop, not a limit
         temp = private_temp(_home())
         if not temp.is_symlink():  # KiCad's own temp files: nothing in it outlives KiCad
             shutil.rmtree(temp, ignore_errors=True)

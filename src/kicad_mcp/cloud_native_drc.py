@@ -12,7 +12,6 @@ import shutil
 import stat
 
 # Only KiCad CLI is permitted, with no shell and an immutable argument layout.
-import subprocess  # nosec B404
 import tempfile
 from pathlib import Path
 
@@ -22,6 +21,7 @@ from kicad_mcp.cloud_readonly_boundary import (
     OperatorProject,
     _open_operator_directory,
 )
+from kicad_mcp.utils import run_to_end
 
 _DENIED = "request denied"
 _MAX_PCB_BYTES = 32 * 1024 * 1024
@@ -122,8 +122,8 @@ def summarize_native_pcb_drc(policy: OperatorProject) -> dict[str, int]:
             # copied without symlinks/hardlinks into a private scratch folder.
             # Executable is found using trusted local KiCad discovery; shell=False,
             # arguments are fixed and not interpolated as a command string.
-            # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit  # noqa: E501
-            completed = subprocess.run(  # nosec B603
+            # No time limit: DRC runs to the end, says how long, and stops with the call.
+            completed = run_to_end.run(
                 [
                     executable,
                     "pcb",
@@ -134,11 +134,8 @@ def summarize_native_pcb_drc(policy: OperatorProject) -> dict[str, int]:
                     str(output),
                     str(board),
                 ],
+                what="kicad-cli pcb drc",
                 cwd=folder,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-                timeout=40,
             )
             # KiCad CLI returns 5 when the DRC report contains violations.
             # Treat only documented report-bearing exits as valid, then
@@ -156,7 +153,7 @@ def summarize_native_pcb_drc(policy: OperatorProject) -> dict[str, int]:
             if not isinstance(violations, list) or not isinstance(unconnected, list):
                 raise LocalReadDeniedError(_DENIED)
             return {"violations": len(violations), "unconnectedItems": len(unconnected)}
-    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+    except (OSError, ValueError) as exc:
         raise LocalReadDeniedError(_DENIED) from exc
     finally:
         if fd is not None:

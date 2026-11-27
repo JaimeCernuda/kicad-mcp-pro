@@ -83,7 +83,6 @@ async def test_lm358_three_units_preserve_pin_nets_in_native_export(
         "-o",
         str(output),
         str(sample_project / "demo.kicad_sch"),
-        timeout=30,
     )
     assert code == 0, f"native KiCad export failed: {stdout} {stderr}"
     tree = parse(output)

@@ -21,6 +21,7 @@ from .capabilities import AccessTier, RuntimeRequirement, all_records
 from .config import get_config
 from .connection import KiCadConnectionError, get_board
 from .discovery import find_kicad_version
+from .utils import run_to_end
 
 CheckStatus = Literal["ok", "warn", "error", "skipped"]
 OverallStatus = Literal["ok", "degraded", "error"]
@@ -281,13 +282,7 @@ def _git_value(repo: Path, *args: str) -> str | None:
     if git_executable is None:
         return None
     try:
-        result = subprocess.run(
-            [git_executable, "-C", str(repo), *args],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
+        result = run_to_end.run([git_executable, "-C", str(repo), *args])
     except (OSError, subprocess.SubprocessError):
         return None
     if result.returncode != 0:
@@ -347,13 +342,7 @@ def _development_tool_version(name: str, path: Path | None, arguments: list[str]
     if executable is None:
         return None
     try:
-        result = subprocess.run(
-            [executable, *arguments],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=3,
-        )
+        result = run_to_end.run([executable, *arguments])
     except (OSError, subprocess.SubprocessError):
         return None
     if result.returncode != 0:
@@ -631,13 +620,7 @@ def _detect_uv_version() -> tuple[str | None, str | None]:
     if uv_executable is None:
         return None, None
     try:
-        result = subprocess.run(
-            [uv_executable, "--version"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
+        result = run_to_end.run([uv_executable, "--version"])
     except (OSError, subprocess.SubprocessError):
         return None, uv_executable
     match = re.search(r"\buv\s+([^\s]+)", result.stdout.strip())

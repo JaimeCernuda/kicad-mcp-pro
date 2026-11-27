@@ -627,6 +627,20 @@ class PcbTransactionLifecycleService:
                 self.run_mutation("pcb_revert", command)
                 return (
                     "Board reverted to last saved state. All unsaved changes have been discarded."
+                    + _reloaded_contents(board)
                 )
             except self.connection_errors as exc:
                 raise ToolFailedError(f"Failed to revert board: {exc}") from exc
+
+
+def _reloaded_contents(board: Board) -> str:
+    """What KiCad shows once it has reloaded, read after the revert (not beside it)."""
+    try:
+        tracks = len(board.get_tracks())
+        vias = len(board.get_vias())
+        footprints = len(board.get_footprints())
+    except Exception:  # noqa: BLE001 - the revert itself succeeded; the count is extra
+        return ""
+    return (
+        f" KiCad now shows {tracks} track segment(s), {vias} via(s) and {footprints} footprint(s)."
+    )

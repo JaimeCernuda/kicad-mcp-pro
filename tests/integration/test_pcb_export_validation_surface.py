@@ -252,6 +252,10 @@ async def test_pcb_and_routing_surface(
                 stdout="gerbers positions ipc2581 svg dxf step stpz xao render spice",
                 stderr="",
             )
+        if "-do" not in cmd:
+            # KiCad's own Python DSN export (pcbnew): unavailable here, so the staged
+            # demo.dsn is used.
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="no pcbnew")
         ses_path = Path(cmd[cmd.index("-do") + 1])
         if "docker" in cmd[0]:
             ses_path = sample_project / "output" / "routing" / ses_path.name

@@ -31,12 +31,12 @@ from kicad_mcp.cloud_windows_connector import (
     local_state,
 )
 from kicad_mcp.cloud_windows_enrollment import WindowsRegisteredProject
+from kicad_mcp.utils import run_to_end
 
 _DENIED = "Windows Connector scheduled task could not be verified."
 _SID = re.compile(r"S-1-5-(?:\d+-){1,15}\d+\Z", re.ASCII)
 _TASK_NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 _TASK_ARGS = "-m kicad_mcp.cloud_windows_connector run"
-_EXEC_TIMEOUT = 15
 _WHOAMI_EXECUTABLE = "whoami.exe"
 
 
@@ -63,13 +63,9 @@ def _system_tool(name: str) -> str:
 
 
 def _current_sid() -> str:
-    result = subprocess.run(
+    result = run_to_end.run(
         [_system_tool(_WHOAMI_EXECUTABLE), "/user", "/fo", "csv", "/nh"],
-        capture_output=True,
-        text=True,
-        errors="replace",
-        timeout=_EXEC_TIMEOUT,
-        check=False,
+        what="Windows system command",
     )
     if result.returncode:
         raise LocalApprovalDeniedError(_DENIED)
@@ -93,13 +89,9 @@ def _same_logon_user(user: str | None, sid: str) -> bool:
         return True
     if not user:
         return False
-    result = subprocess.run(
+    result = run_to_end.run(
         [_system_tool(_WHOAMI_EXECUTABLE)],
-        capture_output=True,
-        text=True,
-        errors="replace",
-        timeout=_EXEC_TIMEOUT,
-        check=False,
+        what="Windows system command",
     )
     if result.returncode:
         return False
@@ -166,13 +158,9 @@ def _task_xml(sid: str, executable: str) -> str:
 
 
 def _run_schtasks(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return run_to_end.run(
         [_system_tool("schtasks.exe"), *args],
-        capture_output=True,
-        text=True,
-        errors="replace",
-        timeout=_EXEC_TIMEOUT,
-        check=False,
+        what="Windows system command",
     )
 
 

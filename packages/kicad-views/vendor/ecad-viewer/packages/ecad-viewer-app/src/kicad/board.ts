@@ -90,6 +90,46 @@ const DEFAULT_LAYERS: Partial<B.I_Layer>[] = [
     { canonical_name: LayerNames.eco2_user, type: "user" },
 ];
 
+/**
+ * KiCad 10 (file version 20260206) has no net table and names every net reference,
+ * (net "GND"), where older files wrote (net 3 "GND") and numbered tracks, vias and zones.
+ * Give each named net a number, keeping the file's own numbers, so the board's items and
+ * its nets agree as before: net 0 is "no net".
+ */
+export function numberNamedNets(data: B.I_KicadPCB): void {
+    const numbers = new Map<string, number>();
+    for (const net of data.nets ?? []) {
+        if (typeof net.number === "number" && typeof net.name === "string") numbers.set(net.name, net.number);
+    }
+    let next = Math.max(0, ...numbers.values()) + 1;
+    const id = (name: string): number => {
+        if (name === "") return 0;
+        let n = numbers.get(name);
+        if (n === undefined) {
+            n = next++;
+            numbers.set(name, n);
+        }
+        return n;
+    };
+    const named = (item: { net?: unknown; net_name?: string } | undefined) => {
+        if (item && typeof item.net === "string") {
+            item.net_name ??= item.net;
+            item.net = id(item.net);
+        }
+    };
+    for (const fp of data.footprints ?? []) {
+        for (const pad of fp.pads ?? []) {
+            const net = pad.net as { number?: number; name?: string } | undefined;
+            if (net && net.number === undefined && typeof net.name === "string") net.number = id(net.name);
+        }
+    }
+    for (const item of [...(data.segments ?? []), ...(data.vias ?? []), ...(data.zones ?? [])]) named(item as never);
+    const listed = new Set((data.nets ?? []).map((net) => net.number));
+    const added = [...numbers].filter(([, n]) => !listed.has(n)).map(([name, number]) => ({ number, name }));
+    if (!added.length) return;
+    data.nets = [...(listed.has(0) ? [] : [{ number: 0, name: "" }]), ...(data.nets ?? []), ...added] as B.I_Net[];
+}
+
 export class KicadPCB implements BoardNode {
     typeId: BoardNodeType = "KicadPCB";
     version: number;
@@ -160,6 +200,7 @@ export class KicadPCB implements BoardNode {
                 });
             },
         );
+        numberNamedNets(data);
         this.nets = data.nets?.map((n) => new Net(n)) ?? [];
         this.footprints =
             data.footprints?.map((f) => new Footprint(f, this)) ?? [];

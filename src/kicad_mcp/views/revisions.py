@@ -42,6 +42,7 @@ class RevisionTracker:
 
     def wait(self, since: int, timeout_s: float, interval_s: float = 1.0) -> tuple[int, bool]:
         """Return as soon as the revision passes ``since``, or at the timeout."""
+        # limit-ok: a long-poll window; the view asks again
         deadline = time.monotonic() + max(0.0, min(timeout_s, 25.0))
         revision = self.current()
         while revision <= since and time.monotonic() < deadline:

@@ -11,11 +11,9 @@ Phase 2 deliverables:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import shutil
-import subprocess  # nosec B404  # Fixed CLI argv, shell=False, bounded timeout.
 import sys
 import tempfile
 import tomllib
@@ -23,6 +21,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
+
+from .utils import run_to_end
 
 if TYPE_CHECKING:
     from mcp import StdioServerParameters
@@ -251,10 +251,8 @@ async def run_local_mcp_smoke(project_dir: Path, *, agent: str, scope: str) -> t
 
     try:
         params = configured_stdio_parameters(project_dir, agent=agent, scope=scope)
-        async with (
-            asyncio.timeout(35),
-            stdio_client(params) as streams,
-        ):
+        # No time limit: the saved launch is checked however long it takes to start.
+        async with stdio_client(params) as streams:
             read_stream, write_stream = streams
             async with ClientSession(
                 read_stream,
@@ -1065,18 +1063,12 @@ def _run_smoke_test(agent_key: str) -> str:
         claude_path = shutil.which("claude")
         if claude_path:
             try:
-                result = subprocess.run(
-                    [claude_path, "mcp", "list"],
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    timeout=15,
-                )
+                # No time limit: the check runs to the end (output decoded as UTF-8).
+                result = run_to_end.run([claude_path, "mcp", "list"], what="claude mcp list")
                 if "kicad" in result.stdout:
                     return "✓ Smoke test: 'claude mcp list' shows kicad server."
                 return "⚠ Smoke test: 'claude mcp list' ran but kicad not found."
-            except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            except FileNotFoundError as exc:
                 return f"⚠ Smoke test skipped: {exc}"
     return "✓ Config written (smoke test not available for this agent)."
 

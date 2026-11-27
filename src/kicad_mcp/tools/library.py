@@ -51,7 +51,12 @@ from . import (
     library_sourcing,
 )
 from .export_support import _run_cli
-from .schematic import get_schematic_backend, project_schematic_files, update_symbol_property
+from .schematic import (
+    get_schematic_backend,
+    project_schematic_files,
+    symbol_properties,
+    update_symbol_property,
+)
 
 # Compatibility alias retained for downstream/tests that historically imported it here.
 _parse_lib_table = _shared_parse_lib_table
@@ -397,6 +402,7 @@ def _init_component_rows(
                 "mpn": "",
                 "manufacturer": "",
                 "populate": "",
+                "datasheet": "",
             },
         )
 
@@ -422,6 +428,7 @@ def _update_component_row_properties(
     lcsc_code: str,
     mpn: str,
     manufacturer: str,
+    datasheet: str = "",
 ) -> None:
     if lcsc_code:
         row["lcsc"] = normalize_lcsc_code(lcsc_code)
@@ -429,6 +436,8 @@ def _update_component_row_properties(
         row["mpn"] = mpn
     if manufacturer:
         row["manufacturer"] = manufacturer
+    if datasheet:
+        row["datasheet"] = datasheet
     row["populate"] = _resolve_populate_property(block, row.get("populate", ""))
 
 
@@ -455,9 +464,13 @@ def _apply_symbol_block(block: str, rows_by_reference: dict[str, dict[str, str]]
     lcsc_code = _symbol_property(block, "LCSC") or _symbol_property(block, "LCSC Part")
     mpn = _symbol_property(block, "MPN") or _symbol_property(block, "Manufacturer Part Number")
     manufacturer = _symbol_property(block, "Manufacturer") or _symbol_property(block, "MFR")
+    # KiCad writes "~" for an empty Datasheet field.
+    datasheet = _symbol_property(block, "Datasheet").strip()
+    if datasheet == "~":
+        datasheet = ""
 
     for row in instance_rows:
-        _update_component_row_properties(row, block, lcsc_code, mpn, manufacturer)
+        _update_component_row_properties(row, block, lcsc_code, mpn, manufacturer, datasheet)
 
 
 def _parse_schematic_symbols_and_blocks(
@@ -468,6 +481,7 @@ def _parse_schematic_symbols_and_blocks(
     raw_content = sch_file.read_text(encoding="utf-8", errors="ignore")
     _init_component_rows(parsed["symbols"], rows_by_reference)
 
+    library_datasheets: dict[str, str] = {}
     search_start = 0
     while True:
         block_start = raw_content.find("(symbol", search_start)
@@ -476,6 +490,22 @@ def _parse_schematic_symbols_and_blocks(
         block, consumed = _extract_block(raw_content, block_start)
         search_start = block_start + max(consumed, 1)
         _apply_symbol_block(block, rows_by_reference)
+        _note_library_datasheet(block, library_datasheets)
+    # A placed symbol often leaves its Datasheet field empty; the library symbol the
+    # schematic embeds (lib_symbols) still has the link.
+    for row in rows_by_reference.values():
+        if not row.get("datasheet") and row.get("lib_id") in library_datasheets:
+            row["datasheet"] = library_datasheets[row["lib_id"]]
+
+
+def _note_library_datasheet(block: str, out: dict[str, str]) -> None:
+    """Record an embedded library symbol's Datasheet link by its name (its lib_id)."""
+    if '(lib_id "' in block:
+        return
+    name = re.match(r'\(symbol\s+"((?:\\.|[^"\\])*)"', block)
+    link = _symbol_property(block, "Datasheet").strip()
+    if name and link and link != "~":
+        out.setdefault(name.group(1), link)
 
 
 def _schematic_component_rows() -> list[dict[str, str]]:
@@ -518,9 +548,12 @@ def _group_bom_rows(symbol_rows: list[dict[str, str]]) -> list[dict[str, Any]]:
                 "populate": row.get("populate", ""),
                 "value": row["value"],
                 "footprint": row["footprint"],
+                "datasheet": row.get("datasheet", ""),
                 "references": [],
             },
         )
+        if not entry["datasheet"] and row.get("datasheet"):
+            entry["datasheet"] = row["datasheet"]
         cast(list[str], entry["references"]).append(row["reference"])
     return list(grouped.values())
 
@@ -602,6 +635,7 @@ def register(mcp: FastMCP) -> None:
         update_symbol_property=lambda reference, field, value: update_symbol_property(
             reference, field, value
         ),
+        symbol_properties=lambda reference: symbol_properties(reference),
     )
     sourcing_deps = library_sourcing.LibrarySourcingDependencies(service=sourcing_service)
     library_sourcing.register(mcp, sourcing_deps)

@@ -594,9 +594,11 @@ export class Project extends EventTarget implements IDisposable {
 
         for (const schematic of this.schematics()) {
             if (!seen_schematic_files.has(schematic.filename)) {
+                // kicad-views: ProjectPage takes no type argument here (KiCanvas's did); the
+                // extra "schematic" made every orphan sheet's file "schematic", which has no
+                // document, so a schematic without sheet instances never drew.
                 const page = new ProjectPage(
                     this,
-                    "schematic",
                     schematic.filename,
                     `/${schematic.uuid}`,
                     schematic.filename,

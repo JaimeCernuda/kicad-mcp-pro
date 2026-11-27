@@ -88,7 +88,7 @@ class SignalIntegrityHighSpeedChannelService:
         cfg = get_config()
         measured = simulate_channel_insertion_loss(
             spec,
-            NgspiceRunner(cfg.ngspice_cli, cfg.cli_timeout),
+            NgspiceRunner(cfg.ngspice_cli),
             _channel_output_dir(),
         )
         if measured is not None:

@@ -84,7 +84,15 @@ export async function bomView(bridge: Bridge, root: HTMLElement, project: Record
         for (const row of data?.rows ?? []) {
             const isSelected = row.references.some((ref) => selected.has(ref));
             const sheet = row.datasheet
-                ? h("button", { class: "kv", type: "button", onClick: (event: Event) => { event.stopPropagation(); void bridge.openLink(row.datasheet); } }, "Open")
+                ? h("button", { class: "kv", type: "button", onClick: (event: Event) => {
+                    event.stopPropagation();
+                    // The host may first have to set up its browser: say so, and say a failure.
+                    const which = row.references.join(",");
+                    void frame.run(`Opening the datasheet of ${which}`, async () => {
+                        await bridge.openLink(row.datasheet);
+                        return `Opened the datasheet of ${which} in a browser tab.`;
+                    });
+                } }, "Open")
                 : h("span", { class: "kv-muted" }, "none");
             const price = row.price === null ? "" : `${row.price.toFixed(4)} ${row.currency || ""}`.trim();
             body.append(

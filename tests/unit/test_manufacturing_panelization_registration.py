@@ -99,11 +99,10 @@ def test_runner_rejects_untrusted_command_shapes_and_uses_shell_free_argv(monkey
 
     assert result.returncode == 0
     assert captured["cmd"] == ["kikit", "panelize", "input.kicad_pcb", "output.kicad_pcb"]
+    # run_to_end.run hands a replaced subprocess.run argv only, and never a time limit.
     assert captured["kwargs"] == {
         "capture_output": True,
         "text": True,
-        "errors": "replace",
-        "timeout": 120,
-        "shell": False,
+        "timeout": None,
         "check": False,
     }

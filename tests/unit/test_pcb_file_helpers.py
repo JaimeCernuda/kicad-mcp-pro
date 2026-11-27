@@ -435,3 +435,36 @@ def test_stackup_direct_child_spans_ignore_quoted_parentheses_and_escaped_quotes
     spans = _direct_child_spans(parent)
     assert [name for name, _, _ in spans] == ["first", "second"]
     assert [parent[start:end] for _, start, end in spans] == ["(first 1)", "(second 2)"]
+
+
+def test_a_live_kicads_stackup_types_and_dielectric_names_are_readable() -> None:
+    """A live KiCad reports the layer type as its API enum and a dielectric's layer as
+    undefined; the stackup view showed "1"/"2" and "UNDEFINED" (KiCad ledger, KQ19)."""
+    from types import SimpleNamespace
+
+    from kipy.proto.board import board_pb2
+    from kipy.proto.board.board_types_pb2 import BoardLayer
+
+    from kicad_mcp.tools.pcb import _stackup_layer_from_kipy
+
+    types = board_pb2.BoardStackupLayerType
+    copper = SimpleNamespace(
+        layer=BoardLayer.Value("BL_F_Cu"),
+        thickness=35_000,
+        material_name="copper",
+        type=types.Value("BSLT_COPPER"),
+        epsilon_r=0,
+        loss_tangent=0,
+    )
+    core = SimpleNamespace(
+        layer=BoardLayer.Value("BL_UNDEFINED"),
+        thickness=1_530_000,
+        material_name="FR4",
+        type=types.Value("BSLT_DIELECTRIC"),
+        epsilon_r=4.5,
+        loss_tangent=0.02,
+    )
+    top = _stackup_layer_from_kipy(0, copper)
+    middle = _stackup_layer_from_kipy(1, core)
+    assert top is not None and top.type == "copper"
+    assert middle is not None and (middle.type, middle.name) == ("dielectric", "dielectric_1")

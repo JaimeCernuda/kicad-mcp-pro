@@ -200,9 +200,17 @@ async def test_export_paths_reject_traversal_and_absolute_outputs(
     assert render.startswith(LOW_LEVEL_EXPORT_NOTICE)
     assert render_backslash.startswith(LOW_LEVEL_EXPORT_NOTICE)
     assert "Invalid output path" in gerber
-    assert "Invalid output path" in step
+    # An absolute path outside the workspace keeps only its file name and is written in
+    # the output folder (some hosts turn a model's file name into a path in their own
+    # folder); nothing is written outside the project.
+    assert "Invalid output path" not in step
+    assert "Invalid output path" not in xao
+    assert "/output/3d/escape.step" in step.replace("\\", "/")
+    assert "/output/3d/escape.xao" in xao.replace("\\", "/")
+    assert not (sample_project.parent / "escape.step").exists()
+    assert not (sample_project.parent / "escape.xao").exists()
+    # Relative traversal is still refused.
     assert "Invalid output path" in stepz
-    assert "Invalid output path" in xao
     assert "Invalid output path" in render
     assert "Invalid output path" in render_backslash
 

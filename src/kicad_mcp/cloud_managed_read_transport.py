@@ -27,7 +27,6 @@ from kicad_mcp.cloud_read_dispatch import LocalReadDispatch
 
 _DENIED = "handshake denied"
 _MAX_MANAGED_READS = 16
-_SESSION_TIMEOUT_SECONDS = 295
 _FOLDER_REQUEST_KIND = "connector.local_browser_request"
 _WRITE_REQUEST_KIND = "connector.authorized_write"
 
@@ -362,21 +361,19 @@ async def serve_authenticated_reads(
         dispatcher.assert_transport_session(
             device_id=receipt.device_id, session_id=receipt.session_id
         )
-        try:
-            async with asyncio.timeout(_SESSION_TIMEOUT_SECONDS):
-                await _serve_signed_read_frames(
-                    socket,
-                    dispatcher,
-                    receipt,
-                    max_reads,
-                    folder_service,
-                    on_activity,
-                    allow_native_write=allow_native_write,
-                    revisions_preparer=revisions_preparer,
-                    write_executor=write_executor,
-                )
-        except TimeoutError as exc:
-            raise CloudHandshakeDeniedError(_DENIED) from exc
+        # No session time limit: the session ends when the cloud closes it, when the read
+        # cap is reached, or when it is stopped.
+        await _serve_signed_read_frames(
+            socket,
+            dispatcher,
+            receipt,
+            max_reads,
+            folder_service,
+            on_activity,
+            allow_native_write=allow_native_write,
+            revisions_preparer=revisions_preparer,
+            write_executor=write_executor,
+        )
         return receipt
     finally:
         dispatcher.close()

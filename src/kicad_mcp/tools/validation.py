@@ -49,6 +49,7 @@ from ..validation.drc_report import (
     report_entries,
     unconnected_nets,
 )
+from ..validation.live_board import board_as_it_is
 from ..validation.policy_state import ValidationPolicyStateService
 from ..validation.zone_fill import drc_outcome_changes, fill_geometry_changes, scan_zone_fill
 from . import validation_policy_state
@@ -580,8 +581,10 @@ def _drc_report_payload(
         for entry in courtyard_violations(validated_report)
         if entry.get("excluded") is not True
     ]
+    checked = validated_report.get("checked_board")
     lines = [
         "DRC summary:",
+        *([f"- Board checked: the {checked}"] if checked else []),
         f"- Violations: {len(actionable)}",
         f"- Excluded by KiCad: {len(excluded)}",
         f"- Unconnected items: {len(unconnected)}",
@@ -732,14 +735,19 @@ def _erc_report_payload(
 def _run_drc_report(report_name: str) -> tuple[Path, dict[str, object] | None, str | None]:
     pcb_file = _get_pcb_file()
     cfg = get_config()
-    result = drc_runner.run_drc_report(
-        report_name,
-        pcb_file=pcb_file,
-        output_dir=_ensure_output_dir(),
-        run_cli_variants=_run_cli_variants,
-        capabilities=get_cli_capabilities(cfg.kicad_cli),
-    )
-    return result.as_legacy_tuple()
+    # The board as it is now: a running KiCad's unsaved edits included (live_board).
+    with board_as_it_is(pcb_file) as (checked, source):
+        result = drc_runner.run_drc_report(
+            report_name,
+            pcb_file=checked,
+            output_dir=_ensure_output_dir(),
+            run_cli_variants=_run_cli_variants,
+            capabilities=get_cli_capabilities(cfg.kicad_cli),
+        )
+    path, report, error = result.as_legacy_tuple()
+    if isinstance(report, dict):
+        report["checked_board"] = source
+    return path, report, error
 
 
 def _run_erc_report(report_name: str) -> tuple[Path, dict[str, object] | None, str | None]:

@@ -602,10 +602,10 @@ def test_claude_smoke_test_decodes_cli_output_as_utf8(
         observed.update(kwargs)
         return SimpleNamespace(stdout="kicad")
 
-    monkeypatch.setattr("subprocess.run", fake_run)
+    # run_to_end decodes output as UTF-8 with replacement and never times out.
+    monkeypatch.setattr(setup_module.run_to_end, "run", fake_run)
 
     result = setup_module._run_smoke_test("claude-code")
 
-    assert observed["encoding"] == "utf-8"
-    assert observed["errors"] == "replace"
+    assert "timeout" not in observed
     assert "shows kicad" in result

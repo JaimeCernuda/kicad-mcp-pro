@@ -135,16 +135,15 @@ def _single_registered_identity(root: Path) -> dict[str, str]:
 async def _check_transport(origin: str) -> None:
     """Check only the TLS WebSocket upgrade; never send device identity or proof."""
     endpoint = _endpoint(origin=origin, trusted_origin=origin)
-    # Both connection setup and shutdown are individually bounded; no extra
-    # cancellation scope is needed for a handshake-only probe.
+    # No time limit on the connection: it waits for the cloud however long.
     async with connect(
         endpoint,
         origin=None,
         compression=None,
         max_size=1024,
         max_queue=2,
-        open_timeout=5,
-        close_timeout=2,
+        open_timeout=None,
+        close_timeout=2,  # shutdown grace for the closing handshake, not a limit
     ) as socket:
         if socket.transport.get_extra_info("ssl_object") is None:
             raise ValueError("unverified Cloud TLS")

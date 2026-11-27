@@ -54,7 +54,7 @@ def test_registration_preserves_order_signatures_metadata_and_delegation() -> No
         "(ses_path: 'str' = 'output/routing/board.ses') -> 'ToolResult'"
     )
     assert "Export a Specctra DSN for FreeRouting" in (export.fn.__doc__ or "")
-    assert "Stage a routed Specctra SES" in (import_ses.fn.__doc__ or "")
+    assert "Apply a routed Specctra SES" in (import_ses.fn.__doc__ or "")
 
     for tool_name in ("route_export_dsn", "route_import_ses"):
         metadata = get_tool_metadata(tool_name)

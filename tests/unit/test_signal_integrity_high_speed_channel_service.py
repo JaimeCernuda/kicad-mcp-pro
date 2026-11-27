@@ -26,7 +26,6 @@ def test_analyze_preserves_closed_form_output_contract(monkeypatch, tmp_path) ->
         "get_config",
         lambda: SimpleNamespace(
             ngspice_cli="ngspice",
-            cli_timeout=5.0,
             ensure_output_dir=lambda _name: tmp_path,
         ),
     )

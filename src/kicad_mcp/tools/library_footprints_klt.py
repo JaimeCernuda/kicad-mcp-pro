@@ -31,12 +31,45 @@ def _project() -> tuple[Path, str]:
     return project_dir, name
 
 
+def _record_project(footprint: Path) -> Path | None:
+    """The project whose footprint records take a check: the set project, else the nearest
+    folder above the footprint holding a .kicad_pro (a check needs no project of its own)."""
+    cfg = get_config()
+    if cfg.project_dir is not None:
+        return Path(cfg.project_dir)
+    for folder in footprint.resolve().parents:
+        if any(folder.glob("*.kicad_pro")):
+            return folder
+    return None
+
+
 def _tools(*, models: bool) -> install.Installed:
     return install.ensure(models=models)
 
 
 def _notes(tools: install.Installed) -> list[str]:
     return [f"Setup: {note}" for note in tools.notes]
+
+
+def _data_files(names: tuple[str, ...]) -> str:
+    """A family's data files by name (their entries are what a new part copies).
+
+    Found live (FQ3): "4 data files" did not say that the JST SMD series are entries in
+    ``conn_jst``, so the agent wrote a one-off script for a JST connector."""
+    stems = [Path(name).stem for name in names]
+    shown = ", ".join(stems[:8]) + (f", ... ({len(stems)} in all)" if len(stems) > 8 else "")
+    return f"data files: {shown}"
+
+
+def _python_line(tools: install.Installed) -> str:
+    """Library Tools' interpreter, so a CadQuery script (an enclosure, a body) runs in it
+    instead of installing CadQuery again for each conversation."""
+    venv = tools.python.parent.parent
+    has_cadquery = any(venv.glob("lib/python*/site-packages/cadquery")) or any(
+        venv.glob("Lib/site-packages/cadquery")
+    )
+    with_what = "KicadModTree and CadQuery" if has_cadquery else "KicadModTree (no CadQuery yet)"
+    return f"Library Tools' Python, with {with_what}: {tools.python}"
 
 
 def _pads(rows: list[dict[str, Any]]) -> list[runner.Pad]:
@@ -125,17 +158,19 @@ def register(mcp: FastMCP) -> None:
         """List KiCad Library Tools' footprint generator families, or show one family's format.
 
         Without ``family``: the families (filtered by ``query``, e.g. "no_lead", "gullwing",
-        "connector"), each marked with whether it makes footprints and 3D models and how
-        many data files it has. With ``family``: where its entry keys are read (the schema is
-        the code) and the head of a real data file, to copy the entry format from. The first
-        call may install Library Tools into the tools folder.
+        "connector"), each marked with whether it makes footprints and 3D models and its data
+        files by name (a connector family's are per maker, e.g. ``conn_jst``). With
+        ``family``: where its entry keys are read (the schema is the code) and the head of a
+        real data file to copy the entry format from, the one whose name holds ``query`` when
+        given (``family=..., query="jst"``). The first call may install Library Tools into the
+        tools folder.
         """
         try:
             tools = _tools(models=False)
         except install.LibraryToolsInstallError as exc:
             raise _failure(exc) from exc
         if family:
-            example = runner.family_example(tools, family)
+            example = runner.family_example(tools, family, prefer=query)
             if not example:
                 return (
                     f"The {family} family has no YAML data at this pin: it cannot take an "
@@ -155,10 +190,14 @@ def register(mcp: FastMCP) -> None:
                 ]
             )
         rows = [f for f in runner.families(tools) if query.lower() in f.name.lower()]
-        lines = [*_notes(tools), f"{len(rows)} generator families at {tools.pin[:10]}:"]
+        lines = [
+            *_notes(tools),
+            _python_line(tools),
+            f"{len(rows)} generator families at {tools.pin[:10]}:",
+        ]
         for row in rows[:_MAX_LISTED]:
             makes = "footprints" + (" + 3D" if row.models else "") if row.footprints else "3D"
-            data = f"{len(row.data)} data files" if row.data else "no entry format (script)"
+            data = _data_files(row.data) if row.data else "no entry format (script)"
             lines.append(f"- {row.name}: {makes}; {data}")
         if len(rows) > _MAX_LISTED:
             lines.append(f"... {len(rows) - _MAX_LISTED} more; narrow with query.")
@@ -258,14 +297,17 @@ def register(mcp: FastMCP) -> None:
             ValueError,
         ) as exc:
             raise _failure(exc) from exc
-        project_dir, _ = _project()
-        runner.update_record(
-            project_dir,
-            target.stem,
-            check=runner.check_record(result, datasheet_ref, tolerance_mm),
-        )
+        record_dir = _record_project(target)
+        if record_dir is not None:
+            runner.update_record(
+                record_dir,
+                target.stem,
+                check=runner.check_record(result, datasheet_ref, tolerance_mm),
+            )
         verdict = "PASS" if result.passed else "FAIL"
         lines = [*_notes(tools), f"{verdict}: {target.stem}"]
+        if record_dir is None:
+            lines.append("Not recorded: no project holds this footprint and none is set.")
         if pads:
             lines.append(
                 f"Datasheet pads compared: {result.compared} within {tolerance_mm:g} mm"
