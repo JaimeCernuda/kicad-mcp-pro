@@ -242,7 +242,29 @@ def _net_name(item: object) -> str:
     return str(getattr(getattr(item, "net", None), "name", ""))
 
 
-def _verify_created_track(board: Board, created: Iterable[object], expected: Track) -> bool:
+def _net_matches(actual: object, expected: object, assigned: list[str] | None) -> bool:
+    """Whether ``actual`` is on the requested net; any net when none was requested.
+
+    KiCad connects new items on Push: a via with no net inside a zone takes the zone's net and
+    a track touching a pad takes the pad's. The net KiCad gave the item goes into ``assigned``.
+    """
+    requested = _net_name(expected)
+    if requested and _net_name(actual) != requested:
+        return False
+    if assigned is not None:
+        assigned.append(_net_name(actual))
+    return True
+
+
+def _net_note(assigned: list[str]) -> str:
+    if not assigned:
+        return ""
+    return f" on net {assigned[-1]}" if assigned[-1] else " with no net"
+
+
+def _verify_created_track(
+    board: Board, created: Iterable[object], expected: Track, assigned: list[str] | None = None
+) -> bool:
     reloaded = _reload_created_items(board, created)
     if len(reloaded) != 1:
         return False
@@ -255,13 +277,15 @@ def _verify_created_track(board: Board, created: Iterable[object], expected: Tra
             and _coord_nm(actual.end, "y") == _coord_nm(expected.end, "y")
             and int(actual.layer) == int(expected.layer)
             and int(actual.width) == int(expected.width)
-            and _net_name(actual) == _net_name(expected)
+            and _net_matches(actual, expected, assigned)
         )
     except (AttributeError, TypeError, ValueError):
         return False
 
 
-def _verify_created_via(board: Board, created: Iterable[object], expected: Via) -> bool:
+def _verify_created_via(
+    board: Board, created: Iterable[object], expected: Via, assigned: list[str] | None = None
+) -> bool:
     reloaded = _reload_created_items(board, created)
     if len(reloaded) != 1:
         return False
@@ -273,7 +297,7 @@ def _verify_created_via(board: Board, created: Iterable[object], expected: Via) 
             and int(actual.diameter) == int(expected.diameter)
             and int(actual.drill_diameter) == int(expected.drill_diameter)
             and int(actual.type) == int(expected.type)
-            and _net_name(actual) == _net_name(expected)
+            and _net_matches(actual, expected, assigned)
         )
     except (AttributeError, TypeError, ValueError):
         return False
@@ -3120,14 +3144,15 @@ def _register_track_authoring_tools(mcp: FastMCP) -> None:
         track.width = mm_to_nm(payload.width_mm)
         if payload.net_name:
             track.net = _find_net(payload.net_name)
+        assigned: list[str] = []
         execute_live_board_mutation(
             "pcb_add_track",
             lambda board: list(board.create_items([track])),
-            verifier=lambda board, created: _verify_created_track(board, created, track),
+            verifier=lambda board, created: _verify_created_track(board, created, track, assigned),
         )
         if _native_live_transaction_active():
             return _staged_message("Track")
-        return "Track added successfully."
+        return f"Track added successfully{_net_note(assigned)}."
 
     @mcp.tool()
     @requires_kicad_running
@@ -3241,14 +3266,15 @@ def _register_standard_via_tools(mcp: FastMCP) -> None:
             _configure_layer_via(via, from_layer=from_layer, to_layer=to_layer)
         if payload.net_name:
             via.net = _find_net(payload.net_name)
+        assigned: list[str] = []
         execute_live_board_mutation(
             "pcb_add_via",
             lambda board: list(board.create_items([via])),
-            verifier=lambda board, created: _verify_created_via(board, created, via),
+            verifier=lambda board, created: _verify_created_via(board, created, via, assigned),
         )
         if _native_live_transaction_active():
             return _staged_message("Via")
-        return "Via added successfully."
+        return f"Via added successfully{_net_note(assigned)}."
 
 
 def _register_blind_via_tools(mcp: FastMCP) -> None:

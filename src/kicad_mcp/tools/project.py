@@ -23,7 +23,7 @@ from ..file_formats import upgrade_generated_file
 from ..ipc.runtime_probe import probe_project_runtime
 from ..operating_modes import OperatingMode, active_operating_mode
 from ..path_safety import assert_within
-from ..pcb.live_edit_runtime import reset_live_edit_service
+from ..pcb.live_edit_runtime import release_live_edit
 from ..project.context import ProjectContextService
 from ..project.creation import ProjectCreationService
 from ..project.design_spec import (
@@ -243,7 +243,8 @@ def register(mcp: FastMCP) -> None:
         ),
         clear_cache=clear_ttl_cache,
         reset_connection=reset_connection,
-        reset_live_edit=reset_live_edit_service,
+        current_pcb_file=lambda: get_config().pcb_file,
+        release_live_edit=release_live_edit,
         render_project_info=_render_project_info,
     )
     project_context.register(
@@ -337,7 +338,7 @@ def register(mcp: FastMCP) -> None:
             path, kind, _run_cli, allowed_root=allowed_root
         ),
         reset_connection=lambda: reset_connection(),
-        reset_live_edit=reset_live_edit_service,
+        release_live_edit=release_live_edit,
     )
     project_creation.register(
         mcp,

@@ -41,7 +41,7 @@ def _service(workspace: Path, *, project_files=None) -> ProjectCreationService:
         new_project_payload=lambda _cli, output: {"project": output.name},
         upgrade_file=lambda *_args: SimpleNamespace(upgraded=True, detail=""),
         reset_connection=lambda: None,
-        reset_live_edit=lambda: None,
+        release_live_edit=lambda _same: "",
     )
 
 

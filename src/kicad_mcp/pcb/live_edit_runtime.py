@@ -86,10 +86,28 @@ def refuse_board_reload(action: str) -> None:
         refuse_reload_with_open_groups(_BOARD, _BOARD.groups.get(current_caller()), action)
 
 
-def reset_live_edit_service() -> None:
-    """Reset native-live session state after project/session changes and in tests."""
+def release_live_edit(same_board: bool) -> str:
+    """Prepare for kicad_set_project or project creation; returns a note for the result.
+
+    Reselecting the same board ends only the caller's own edit group: a KiCad commit it may
+    still hold is dropped and its recovery state is cleared, while other sessions' groups stay
+    open. Selecting another board is refused while any session has a commit open.
+    """
+    caller = current_caller()
     with _BOARD.lock:
-        _BOARD.groups.clear()
+        own = _BOARD.groups.get(caller)
+        if not same_board:
+            refuse_reload_with_open_groups(
+                _BOARD,
+                own,
+                "Selecting another board",
+                "moves this server off this board, which would leave {whose} staged changes "
+                "out of reach in KiCad",
+            )
+        if own is None:
+            return ""
+        del _BOARD.groups[caller]
+        return own.end_own_group()
 
 
 def execute_live_board_mutation[T](
@@ -113,5 +131,5 @@ __all__ = [
     "execute_live_board_mutation",
     "get_live_edit_service",
     "refuse_board_reload",
-    "reset_live_edit_service",
+    "release_live_edit",
 ]

@@ -34,7 +34,7 @@ def test_create_refuses_nonempty_directory_without_confirmation(tmp_path: Path) 
         new_project_payload=lambda _cli, project_file: {"meta": {"filename": project_file.name}},
         upgrade_file=lambda _path, _kind, _root: SimpleNamespace(upgraded=True, detail=""),
         reset_connection=lambda: None,
-        reset_live_edit=lambda: None,
+        release_live_edit=lambda _same: "",
     )
 
     with pytest.raises(
@@ -67,7 +67,7 @@ def test_create_checks_workspace_boundary_before_refusing_existing_dir(tmp_path:
         new_project_payload=lambda _cli, project_file: {"meta": {"filename": project_file.name}},
         upgrade_file=lambda _path, _kind, _root: SimpleNamespace(upgraded=True, detail=""),
         reset_connection=lambda: None,
-        reset_live_edit=lambda: None,
+        release_live_edit=lambda _same: "",
     )
 
     service.create(str(tmp_path), "demo")
@@ -99,7 +99,7 @@ def test_create_reports_unavailable_format_migration(tmp_path: Path) -> None:
             upgraded=False, detail="cli unavailable"
         ),
         reset_connection=lambda: resets.append(True),
-        reset_live_edit=lambda: resets.append("live-edit"),
+        release_live_edit=lambda same: resets.append(f"live-edit:{same}") or "",
     )
 
     output = service.create(str(tmp_path), "fresh")
@@ -107,4 +107,4 @@ def test_create_reports_unavailable_format_migration(tmp_path: Path) -> None:
     assert "Format note (sch)" in output
     assert "cli unavailable" in output
     assert applied == [tmp_path / "fresh"]
-    assert resets == [True, "live-edit"]
+    assert resets == ["live-edit:False", True]

@@ -52,7 +52,7 @@ class ProjectCreationService:
     new_project_payload: Callable[[Path, Path], dict[str, object]]
     upgrade_file: Callable[[Path, Literal["pcb", "sch"], Path], FormatUpgradeResultProtocol]
     reset_connection: Callable[[], None]
-    reset_live_edit: Callable[[], None]
+    release_live_edit: Callable[[bool], str]
 
     def _checked_output_files(
         self, cfg: ProjectCreationConfigProtocol, project_dir: Path, name: str
@@ -106,6 +106,8 @@ class ProjectCreationService:
                 f"- Directory: {project_dir}\n"
                 "Choose a new name/path or rerun with confirm_overwrite=true."
             )
+        # A new project is another board: refused while any session has a commit open.
+        note = self.release_live_edit(False)
         project_dir.mkdir(parents=True, exist_ok=True)
         file_mode = "w" if confirm_overwrite else "x"
         project_payload = json.dumps(
@@ -143,7 +145,6 @@ class ProjectCreationService:
             output_dir=project_dir / "output",
         )
         self.reset_connection()
-        self.reset_live_edit()
 
         lines = [
             f"Created project '{name}' at {project_dir}.",
@@ -151,6 +152,8 @@ class ProjectCreationService:
             f"- PCB file: {pcb_file}",
             f"- Schematic file: {sch_file}",
         ]
+        if note:
+            lines.append(note.strip())
         for generated_file, kind, result in format_upgrades:
             if not result.upgraded:
                 lines.append(

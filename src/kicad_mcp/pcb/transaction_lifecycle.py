@@ -50,9 +50,17 @@ def _default_connection_epoch() -> object:
     return 0
 
 
+_RECOVERY_STEP = (
+    "Use KiCad Undo once to restore the operation, then call kicad_set_project on this "
+    "project: reselecting it clears this session's recovery state and drops this session's "
+    "own open KiCad commit, if any. Other sessions' commits are left as they are."
+)
+
 _AMBIGUOUS_TRANSACTION_MESSAGE = (
     "Transaction state is ambiguous after an IPC failure; reconcile the active KiCad board "
-    "before starting, committing, or discarding another native-live transaction."
+    "before starting, committing, or discarding another native-live transaction. Calling "
+    "kicad_set_project on this project clears this session's state and drops this session's "
+    "own open KiCad commit, if any; other sessions' commits are left as they are."
 )
 
 
@@ -92,17 +100,17 @@ class SharedBoard:
         default_factory=lambda: dict[str, PcbTransactionLifecycleService]()
     )
 
-    def open_groups(self, owner: PcbTransactionLifecycleService | None) -> tuple[bool, int]:
-        """Whether ``owner`` has an open group, and how many other callers have one."""
+    def open_groups(self, owner: PcbTransactionLifecycleService | None) -> tuple[bool, list[str]]:
+        """Whether ``owner`` has an open group, and which other callers have one."""
         with self.lock:
             own = False
-            others = 0
-            for service in self.groups.values():
+            others: list[str] = []
+            for caller, service in self.groups.items():
                 if service.has_open_group:
                     if service is owner:
                         own = True
                     else:
-                        others += 1
+                        others.append(caller)
             return own, others
 
     def changed_by(self, source: PcbTransactionLifecycleService) -> None:
@@ -413,8 +421,7 @@ class PcbTransactionLifecycleService:
                 raise RuntimeError(
                     f"Native-live commit was published as one KiCad undo step, but "
                     f"{pending.operation} live postcondition verification could not complete. "
-                    "Use KiCad Undo once to restore the operation, then reset or reselect the "
-                    "project before continuing."
+                    + _RECOVERY_STEP
                 ) from exc
             if not verified:
                 self._mark_published_verification_failure(
@@ -422,9 +429,7 @@ class PcbTransactionLifecycleService:
                 )
                 raise RuntimeError(
                     f"Native-live commit was published as one KiCad undo step, but "
-                    f"{pending.operation} live postcondition verification failed. "
-                    "Use KiCad Undo once to restore the operation, then reset or reselect the "
-                    "project before continuing."
+                    f"{pending.operation} live postcondition verification failed. " + _RECOVERY_STEP
                 )
             self._receipts[:] = [
                 replace(receipt, final_state_verified=True)
@@ -477,8 +482,7 @@ class PcbTransactionLifecycleService:
                     self._mark_published_verification_failure()
                     raise RuntimeError(
                         "Native-live commit was published as one KiCad undo step, but the live "
-                        "board could not be re-read safely. Use KiCad Undo once to restore the "
-                        "operation, then reset or reselect the project before continuing."
+                        "board could not be re-read safely. " + _RECOVERY_STEP
                     ) from exc
                 self._verify_published_mutations(fresh_board)
                 self._state_digest(fresh_board)
@@ -758,26 +762,82 @@ class PcbTransactionLifecycleService:
             except self.connection_errors as exc:
                 raise ToolFailedError(f"Failed to revert board: {exc}") from exc
 
+    def end_own_group(self) -> str:
+        """End this caller's edit group for kicad_set_project; other callers' groups stay open.
+
+        A commit KiCad may still hold for this caller is dropped by client name. KiCad checks
+        no commit id on a drop, so this also works when an IPC failure lost the handle.
+        Returns what happened, or "" when the caller had nothing open.
+        """
+        with self._lock:
+            if self._commit_handle is None and not self._recovery_required:
+                self._clear_active()
+                return ""
+            handle = self._commit_handle
+            changed_by_others = self._changed_by_others
+            try:
+                if handle is None:
+                    from kipy.common_types import Commit  # noqa: PLC0415
+                    from kipy.proto.common.types import KIID  # noqa: PLC0415
+
+                    handle = Commit(KIID())
+                board = self.get_board()
+                command = getattr(board, "drop_commit", None)
+                if not callable(command):
+                    raise RuntimeError("this KiCad cannot drop a commit over IPC")
+                lost = handle
+                self.run_mutation("pcb_drop_commit", lambda: command(lost))
+            except Exception as exc:  # noqa: BLE001 - KiCad's answer is the report
+                self._clear_active()
+                self._last_evidence = None
+                return (
+                    " This session's recovery state was cleared; dropping its KiCad commit "
+                    f"returned: {exc}"
+                )
+            self._published()
+            self._clear_active()
+            self._last_evidence = None
+            note = " This session's open KiCad commit was dropped with its staged changes."
+            if changed_by_others:
+                # As in drop(): another caller's save may have written this group's staged edits.
+                try:
+                    self._save_board_file("Dropping the commit", self.get_board())
+                except Exception as exc:  # noqa: BLE001
+                    note += f" Saving the board file afterwards failed: {exc}"
+            return note
+
+
+_RELOAD_CONSEQUENCE = "reloads the board file, which would drop {whose} staged changes"
+
+
+def _session_names(callers: list[str]) -> str:
+    names = [f"session {caller}" if caller else "the default session" for caller in callers]
+    text = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+    return text[:1].upper() + text[1:]
+
 
 def refuse_reload_with_open_groups(
     shared: SharedBoard,
     owner: PcbTransactionLifecycleService | None,
     action: str,
+    consequence: str = _RELOAD_CONSEQUENCE,
 ) -> None:
-    """Refuse an action that reloads the board file while any caller has a KiCad commit open:
-    the reload would drop that commit's staged changes."""
+    """Refuse ``action`` while any caller has a KiCad commit open, because of ``consequence``
+    for that commit (by default: the action reloads the board file and drops its changes)."""
     own, others = shared.open_groups(owner)
     if own:
         raise ToolValidationError(
             "Your KiCad commit is open (pcb_begin_commit). Push it with pcb_push_commit or drop "
-            f"it with pcb_drop_commit first. {action} reloads the board file, which would drop "
-            "the commit's staged changes. Nothing was changed."
+            f"it with pcb_drop_commit first. {action} "
+            f"{consequence.format(whose="the commit's")}. Nothing was changed."
         )
     if others:
+        one = len(others) == 1
         raise ToolValidationError(
-            f"{others} other session(s) have a KiCad commit open on this board. {action} "
-            "reloads the board file, which would drop their staged changes. Nothing was "
-            "changed; try again once they push or drop their commits."
+            f"{_session_names(others)} {'has' if one else 'have'} a KiCad commit open on this "
+            f"board. {action} {consequence.format(whose='its' if one else 'their')}. Nothing was "
+            "changed; try again once "
+            f"{'it pushes or drops its commit' if one else 'they push or drop their commits'}."
         )
 
 

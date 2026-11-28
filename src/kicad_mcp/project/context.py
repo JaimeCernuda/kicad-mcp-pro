@@ -31,7 +31,8 @@ class ProjectContextService:
     apply_project: ApplyProjectProtocol
     clear_cache: Callable[[], None]
     reset_connection: Callable[[], None]
-    reset_live_edit: Callable[[], None]
+    current_pcb_file: Callable[[], Path | None]
+    release_live_edit: Callable[[bool], str]
     render_project_info: Callable[[], str]
 
     def set_project(
@@ -62,6 +63,16 @@ class ProjectContextService:
             Path(output_dir).expanduser().resolve() if output_dir else project_path / "output"
         )
 
+        current_pcb = self.current_pcb_file()
+        same_board = (
+            selected_pcb is not None
+            and current_pcb is not None
+            and selected_pcb.resolve() == current_pcb.resolve()
+        )
+        # Reselecting the same board keeps the IPC connection and every other session's open
+        # commit; only this caller's own edit group ends. Another board is refused while any
+        # session has a commit open.
+        note = self.release_live_edit(same_board)
         self.apply_project(
             project_path,
             project_file=selected_project,
@@ -70,9 +81,9 @@ class ProjectContextService:
             output_dir=selected_output,
         )
         self.clear_cache()
-        self.reset_connection()
-        self.reset_live_edit()
-        return self.render_project_info()
+        if not same_board:
+            self.reset_connection()
+        return self.render_project_info() + (f"\n{note.strip()}" if note else "")
 
     def get_project_info(self) -> str:
         """Render the current project configuration."""

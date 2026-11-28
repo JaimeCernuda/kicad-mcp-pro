@@ -8,7 +8,6 @@ import pytest
 from kicad_mcp.pcb.live_edit_runtime import (
     REVIEWED_LIVE_MUTATIONS,
     execute_live_board_mutation,
-    reset_live_edit_service,
 )
 
 EXPECTED_REVIEWED = {
@@ -119,4 +118,3 @@ def test_non_participating_runtime_operation_is_rejected_before_side_effect(
 
     assert effects == []
     assert service.drop() == "Transaction group discarded successfully."
-    reset_live_edit_service()

@@ -42,7 +42,8 @@ def test_set_project_applies_scanned_paths_and_runtime_resets(tmp_path: Path) ->
         apply_project=lambda project_dir, **kwargs: applied.append((project_dir, kwargs)),
         clear_cache=lambda: events.append("cache"),
         reset_connection=lambda: events.append("connection"),
-        reset_live_edit=lambda: events.append("live-edit"),
+        current_pcb_file=lambda: None,
+        release_live_edit=lambda same: events.append(f"live-edit:{same}") or "",
         render_project_info=lambda: "project-info",
     )
 
@@ -60,7 +61,34 @@ def test_set_project_applies_scanned_paths_and_runtime_resets(tmp_path: Path) ->
             },
         )
     ]
-    assert events == ["cache", "connection", "live-edit"]
+    assert events == ["live-edit:False", "cache", "connection"]
+
+
+def test_reselecting_the_same_board_keeps_the_connection_and_reports_the_drop(
+    tmp_path: Path,
+) -> None:
+    pcb_file = tmp_path / "demo.kicad_pcb"
+    pcb_file.write_text("", encoding="utf-8")
+    events: list[str] = []
+    service = _service_type()(
+        scan_project_dir=lambda _path: {"project": None, "pcb": pcb_file, "schematic": None},
+        apply_project=lambda *_args, **_kwargs: None,
+        clear_cache=lambda: events.append("cache"),
+        reset_connection=lambda: events.append("connection"),
+        current_pcb_file=lambda: pcb_file,
+        release_live_edit=lambda same: (
+            events.append(f"live-edit:{same}")
+            or " This session's open KiCad commit was dropped with its staged changes."
+        ),
+        render_project_info=lambda: "project-info",
+    )
+
+    result = service.set_project(str(tmp_path))
+
+    assert events == ["live-edit:True", "cache"]
+    assert result == (
+        "project-info\nThis session's open KiCad commit was dropped with its staged changes."
+    )
 
 
 def test_set_project_preserves_explicit_file_and_output_overrides(tmp_path: Path) -> None:
@@ -78,7 +106,8 @@ def test_set_project_preserves_explicit_file_and_output_overrides(tmp_path: Path
         apply_project=lambda project_dir, **kwargs: applied.append((project_dir, kwargs)),
         clear_cache=lambda: None,
         reset_connection=lambda: None,
-        reset_live_edit=lambda: None,
+        current_pcb_file=lambda: None,
+        release_live_edit=lambda _same: "",
         render_project_info=lambda: "project-info",
     )
 
@@ -107,7 +136,8 @@ def test_set_project_rejects_missing_directory_without_side_effects(tmp_path: Pa
         apply_project=lambda *_args, **_kwargs: events.append("apply"),
         clear_cache=lambda: events.append("cache"),
         reset_connection=lambda: events.append("connection"),
-        reset_live_edit=lambda: events.append("live-edit"),
+        current_pcb_file=lambda: None,
+        release_live_edit=lambda same: events.append(f"live-edit:{same}") or "",
         render_project_info=lambda: "project-info",
     )
 
@@ -128,7 +158,8 @@ def test_set_project_preserves_incomplete_project_error(tmp_path: Path) -> None:
         apply_project=lambda *_args, **_kwargs: None,
         clear_cache=lambda: None,
         reset_connection=lambda: None,
-        reset_live_edit=lambda: None,
+        current_pcb_file=lambda: None,
+        release_live_edit=lambda _same: "",
         render_project_info=lambda: "project-info",
     )
 
@@ -150,7 +181,8 @@ def test_get_project_info_delegates_to_renderer() -> None:
         apply_project=lambda *_args, **_kwargs: None,
         clear_cache=lambda: None,
         reset_connection=lambda: None,
-        reset_live_edit=lambda: None,
+        current_pcb_file=lambda: None,
+        release_live_edit=lambda _same: "",
         render_project_info=lambda: "current-project-info",
     )
 
@@ -168,7 +200,8 @@ def test_relative_project_file_overrides_resolve_inside_selected_project(tmp_pat
         apply_project=lambda _project_dir, **kwargs: captured.append(kwargs),
         clear_cache=lambda: None,
         reset_connection=lambda: None,
-        reset_live_edit=lambda: None,
+        current_pcb_file=lambda: None,
+        release_live_edit=lambda _same: "",
         render_project_info=lambda: "ready",
     )
     assert (
@@ -194,7 +227,8 @@ def test_explicit_project_files_cannot_escape_into_other_project(tmp_path: Path)
         apply_project=lambda *_args, **_kwargs: changes.append("applied"),
         clear_cache=lambda: changes.append("cache"),
         reset_connection=lambda: changes.append("connection"),
-        reset_live_edit=lambda: changes.append("edit"),
+        current_pcb_file=lambda: None,
+        release_live_edit=lambda _same: changes.append("edit") or "",
         render_project_info=lambda: "ready",
     )
     for path in ("../board_b/board.kicad_pcb", str(second / "board.kicad_pcb")):
