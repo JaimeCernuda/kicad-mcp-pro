@@ -24,6 +24,10 @@ def _project(tmp_path: Path) -> Path:
     pcb.write_text("(kicad_pcb (footprint R1 (at 10 10)))", encoding="utf-8")
     (tmp_path / "led.kicad_pro").write_text("{}", encoding="utf-8")
     (tmp_path / "led.kicad_dru").write_text("(version 1)", encoding="utf-8")
+    (tmp_path / "fp-lib-table").write_text(
+        '(fp_lib_table (lib (name "Led")(type "KiCad")(uri "${KIPRJMOD}/libs/Led.pretty")))',
+        encoding="utf-8",
+    )
     return pcb
 
 
@@ -39,6 +43,9 @@ def test_a_live_board_is_checked_from_a_copy_beside_its_rules(
         assert checked.read_text(encoding="utf-8") == moved
         assert (checked.parent / "led.kicad_dru").read_text(encoding="utf-8") == "(version 1)"
         assert (checked.parent / "led.kicad_pro").is_file()
+        # The project's own libraries still resolve from the copy.
+        table = (checked.parent / "fp-lib-table").read_text(encoding="utf-8")
+        assert f'(uri "{tmp_path.as_posix()}/libs/Led.pretty")' in table
         folder = checked.parent
     assert not folder.exists()  # the copy is gone; the board file was never touched
     assert "(at 10 10)" in pcb.read_text(encoding="utf-8")

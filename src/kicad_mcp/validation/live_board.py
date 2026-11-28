@@ -5,7 +5,9 @@ board is saved; ``kicad-cli pcb drc`` reads the file. A DRC run straight after a
 checked the old placement and reported the board clean while the moved part's tracks no
 longer reached its pads. When a running KiCad serves this project's board, DRC runs on a
 copy of that board in a temporary folder, beside copies of the project and rule files so
-the same design rules apply. The file itself is not saved or touched.
+the same design rules apply, and of the project's library tables with ``${KIPRJMOD}`` kept
+on the project folder, so the project's own libraries still resolve. The file itself is not
+saved or touched.
 """
 
 from __future__ import annotations
@@ -48,4 +50,11 @@ def board_as_it_is(pcb_file: Path) -> Iterator[tuple[Path, str]]:
             rules = pcb_file.with_suffix(suffix)
             if rules.is_file():
                 shutil.copy2(rules, Path(tmp) / rules.name)
+        for name in ("fp-lib-table", "sym-lib-table"):
+            table = pcb_file.parent / name
+            if table.is_file():
+                text = table.read_text(encoding="utf-8", errors="ignore")
+                (Path(tmp) / name).write_text(
+                    text.replace("${KIPRJMOD}", pcb_file.parent.as_posix()), encoding="utf-8"
+                )
         yield copy, LIVE
