@@ -8,7 +8,7 @@ from typing import Final
 
 from kipy.board import Board
 
-from ..connection import KiCadConnectionError, get_board, get_connection_epoch
+from ..connection import KiCadConnectionError, get_board_to_edit, get_connection_epoch
 from ..ipc.command_queue import get_command_queue
 from .transaction_lifecycle import PcbTransactionLifecycleService, PostconditionVerifier
 
@@ -24,7 +24,6 @@ REVIEWED_LIVE_MUTATIONS: Final[dict[str, bool]] = {
     "pcb_set_board_outline": False,
     "pcb_add_text": False,
     "pcb_delete_items": True,
-    "pcb_save": False,
     "pcb_refill_zones": False,
     "pcb_move_footprint": True,
     "pcb_set_footprint_layer": True,
@@ -58,7 +57,7 @@ def get_live_edit_service() -> PcbTransactionLifecycleService:
         with _SERVICE_LOCK:
             if _SERVICE is None:
                 _SERVICE = PcbTransactionLifecycleService(
-                    get_board=get_board,
+                    get_board=get_board_to_edit,
                     run_mutation=_run_mutation,
                     connection_errors=(KiCadConnectionError, OSError),
                     get_connection_epoch=get_connection_epoch,

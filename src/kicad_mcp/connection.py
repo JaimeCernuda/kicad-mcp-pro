@@ -106,13 +106,8 @@ def _ensure_instance() -> bool:
 
 
 def get_kicad() -> KiCad:
-    """Return a thread-safe KiCad IPC connection."""
-    try:
-        return _get_kicad()
-    except KiCadConnectionError:
-        if not _ensure_instance():
-            raise
-        return _get_kicad()
+    """Return a thread-safe connection to a KiCad that is already running."""
+    return _get_kicad()
 
 
 def _get_kicad() -> KiCad:
@@ -128,7 +123,15 @@ def _get_kicad() -> KiCad:
 
 
 def get_board() -> Board:
-    """Return the active board from KiCad, starting KiCad when the server may."""
+    """Return the board of a KiCad that is already running; never starts KiCad.
+
+    Reads and checks use this, and fall back to the board file when no KiCad has it open.
+    """
+    return _get_board()
+
+
+def get_board_to_edit() -> Board:
+    """Return the board for a live edit, starting KiCad when the server may."""
     try:
         return _get_board()
     except KiCadConnectionError:

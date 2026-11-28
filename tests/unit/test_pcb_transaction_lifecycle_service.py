@@ -52,6 +52,7 @@ def test_transaction_operations_use_the_existing_queue_names() -> None:
             "drop" if received is commit else "drop-wrong-handle"
         ),
         revert=lambda: effects.append("revert"),
+        save=lambda: effects.append("save"),
     )
     service = _service(board, calls)
 
@@ -69,11 +70,12 @@ def test_transaction_operations_use_the_existing_queue_names() -> None:
     assert calls == [
         "pcb_begin_commit",
         "pcb_push_commit",
+        "pcb_save",
         "pcb_begin_commit",
         "pcb_drop_commit",
         "pcb_revert",
     ]
-    assert effects == ["begin", "push", "begin", "drop", "revert"]
+    assert effects == ["begin", "push", "save", "begin", "drop", "revert"]
 
 
 @pytest.mark.parametrize(
@@ -135,3 +137,50 @@ def test_unexpected_errors_are_not_hidden() -> None:
 
     with pytest.raises(RuntimeError, match="bug"):
         service.begin()
+
+
+def _immediate_board(save: Callable[[], None]) -> object:
+    return SimpleNamespace(
+        name="demo.kicad_pcb",
+        get_project=lambda: SimpleNamespace(path="/workspace/demo/demo.kicad_pro", name="demo"),
+        get_as_string=lambda: "(kicad_pcb)",
+        save=save,
+    )
+
+
+def test_a_live_edit_is_saved_to_the_board_file_before_it_returns() -> None:
+    calls: list[str] = []
+    effects: list[str] = []
+    service = _service(_immediate_board(lambda: effects.append("save")), calls)
+
+    result = service.execute_board_mutation(
+        "pcb_add_track",
+        lambda _board: effects.append("edit") or "added",
+        verifier=None,
+        participates_in_live_session=True,
+    )
+
+    assert result == "added"
+    assert calls == ["pcb_add_track", "pcb_save"]
+    assert effects == ["edit", "save"]
+
+
+def test_a_failed_save_reports_kicads_own_words() -> None:
+    def refuse() -> None:
+        raise OSError("Board file is read-only")
+
+    service = _service(_immediate_board(refuse), [])
+
+    with pytest.raises(
+        ToolFailedError,
+        match=re.escape(
+            "pcb_add_track changed the board in KiCad, but KiCad did not save it to the "
+            "board file: Board file is read-only"
+        ),
+    ):
+        service.execute_board_mutation(
+            "pcb_add_track",
+            lambda _board: None,
+            verifier=None,
+            participates_in_live_session=True,
+        )

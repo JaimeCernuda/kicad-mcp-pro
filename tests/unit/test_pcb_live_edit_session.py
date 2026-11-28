@@ -48,6 +48,9 @@ class FakeBoard:
     def revert(self) -> None:
         self.calls.append(("revert",))
 
+    def save(self) -> None:
+        self.calls.append(("save",))
+
 
 def _service(
     board_ref: list[FakeBoard],

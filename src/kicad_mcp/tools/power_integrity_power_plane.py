@@ -13,7 +13,7 @@ from kipy.geometry import PolyLineNode, Vector2
 from kipy.proto.board.board_types_pb2 import BoardLayer
 from mcp.server.mcpserver import MCPServer as FastMCP
 
-from ..connection import get_board
+from ..connection import get_board_to_edit
 from ..models.common import _FootprintLike
 from ..models.power_integrity import PowerPlaneInput
 from ..pcb.board_access import board_footprints, board_shapes, board_zones
@@ -123,7 +123,7 @@ BackendFactory = Callable[[], PowerPlaneBackend]
 
 
 def _default_backend() -> PowerPlaneBackend:
-    return _KiCadPowerPlaneBackend(get_board())
+    return _KiCadPowerPlaneBackend(get_board_to_edit())
 
 
 def register(

@@ -359,8 +359,12 @@ class PcbTransactionLifecycleService:
                 for receipt in self._receipts
             ]
 
-    def push(self) -> str:
-        """Publish one native undo unit, then re-read every staged mutation before success."""
+    def push(self, *, save_to_file: bool = True) -> str:
+        """Publish one native undo unit, then re-read every staged mutation before success.
+
+        The published board is saved to its file before success unless the caller owns its own
+        authorized save step (``save_to_file=False``).
+        """
         with self._lock:
             if self._recovery_required:
                 raise ToolFailedError(_AMBIGUOUS_TRANSACTION_MESSAGE)
@@ -404,6 +408,8 @@ class PcbTransactionLifecycleService:
                 self._state_digest(fresh_board)
                 self._last_evidence = self._terminal_evidence("committed")
                 self._clear_active()
+                if save_to_file:
+                    self._save_board_file("The committed transaction", fresh_board)
                 return "Transaction group committed successfully."
             except self.connection_errors as exc:
                 raise ToolFailedError(f"Failed to commit transaction: {exc}") from exc
@@ -478,6 +484,26 @@ class PcbTransactionLifecycleService:
         except Exception:  # noqa: BLE001 - original mutation failure remains primary
             self._recovery_required = True
             self._last_evidence = self._terminal_evidence("recovery_required")
+
+    def _save_board_file(self, operation: str, board: Board) -> None:
+        """Write a published live edit through to the board file, so the file stays the truth.
+
+        KiCad holds live edits only in its editor until it saves; a stopped or crashed editor
+        would otherwise lose them.
+        """
+        save = getattr(board, "save", None)
+        if not callable(save):
+            raise ToolFailedError(
+                f"{operation} changed the board in KiCad, but this KiCad cannot save the board "
+                "file through IPC, so the change is not on disk."
+            )
+        try:
+            self.run_mutation("pcb_save", save)
+        except Exception as exc:
+            raise ToolFailedError(
+                f"{operation} changed the board in KiCad, but KiCad did not save it to the "
+                f"board file: {exc}"
+            ) from exc
 
     def _verify_immediate_mutation[T](
         self,
@@ -598,18 +624,19 @@ class PcbTransactionLifecycleService:
                     )
                 raise
 
-            if verifier is None:
-                return result
-            if active:
+            if active and verifier is not None:
                 return self._stage_mutation_verification(
                     mutation_id=mutation_id,
                     operation=operation,
                     result=result,
                     verifier=verifier,
                 )
-            return self._verify_immediate_mutation(
-                operation=operation, result=result, verifier=verifier
-            )
+            if verifier is not None:
+                result = self._verify_immediate_mutation(
+                    operation=operation, result=result, verifier=verifier
+                )
+            self._save_board_file(operation, board)
+            return result
 
     def revert(self) -> str:
         """Revert the board to its last saved state when supported by KiCad."""

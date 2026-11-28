@@ -34,7 +34,7 @@ from mcp.server.mcpserver import MCPServer as FastMCP
 from pydantic import Field
 
 from ..config import get_config
-from ..connection import KiCadConnectionError, get_board
+from ..connection import KiCadConnectionError, get_board, get_board_to_edit
 from ..errors import ToolFailedError
 from ..file_formats import GENERATED_SEXPR_DIALECT_VERSION, upgrade_generated_file
 from ..library_resolution import footprint_file as _footprint_file
@@ -1035,7 +1035,7 @@ def _find_footprint_on_board(board: object, reference: str) -> _FootprintLike | 
 
 
 def _find_footprint_by_reference(reference: str) -> _FootprintLike | None:
-    return _find_footprint_on_board(get_board(), reference)
+    return _find_footprint_on_board(get_board_to_edit(), reference)
 
 
 def _verify_footprint_transform(
@@ -3773,17 +3773,6 @@ def _register_board_state_tools(mcp: FastMCP) -> None:
     """Register the board state tools."""
 
     @mcp.tool()
-    def pcb_save() -> str:
-        """Save the active board."""
-
-        def _save() -> None:
-            save = cast(Callable[[], None], get_board().save)
-            save()
-
-        _run_queued_ipc_mutation("pcb_save", _save)
-        return "Board saved."
-
-    @mcp.tool()
     def pcb_refill_zones() -> str:
         """Refill all copper zones."""
         _run_queued_ipc_mutation(
@@ -4821,7 +4810,7 @@ def _register_keepout_zone_tools(mcp: FastMCP) -> None:
         zone = Zone()
         zone.type = ZoneType.ZT_RULE_AREA
         zone.name = payload.name
-        board = get_board()
+        board = get_board_to_edit()
         copper_layers = [
             layer for layer in board.get_enabled_layers() if "_Cu" in BoardLayer.Name(layer)
         ]
@@ -5263,13 +5252,7 @@ def _register_teardrop_tools(mcp: FastMCP) -> None:
             width_ratio=width_ratio,
             max_count=max_count,
         )
-        if not _board_is_open():
-            raise ToolFailedError(
-                "Teardrop generation requires an active PCB opened through KiCad IPC. "
-                "Open the board in KiCad and rerun this tool."
-            )
-
-        board = get_board()
+        board = get_board_to_edit()
         pads = cast(list[_PadLike], board_pads(board))
         tracks = cast(list[Track], board_tracks(board))
         zones = _collect_teardrop_zones(

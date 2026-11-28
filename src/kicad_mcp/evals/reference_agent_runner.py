@@ -290,7 +290,6 @@ _PCB_EXECUTION_TOOLS = (
     "pcb_add_via",
     "pcb_add_copper_zone",
     "pcb_refill_zones",
-    "pcb_save",
     "pcb_begin_commit",
     "pcb_push_commit",
     "pcb_drop_commit",

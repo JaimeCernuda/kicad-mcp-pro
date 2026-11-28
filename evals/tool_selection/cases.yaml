@@ -23,7 +23,6 @@ cases:
   allowed_tools:
   - kicad_set_project
   forbidden_tools:
-  - pcb_save
   - pcb_delete_items
 - id: board_tracks
   category: inspection
@@ -239,7 +238,6 @@ cases:
   - kicad_set_project
   forbidden_tools:
   - drc_add_exclusion
-  - pcb_save
 - id: erc_report
   category: validation
   safety: read_only

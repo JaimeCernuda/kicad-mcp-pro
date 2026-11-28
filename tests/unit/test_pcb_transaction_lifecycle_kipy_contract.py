@@ -39,6 +39,9 @@ class _Board:
     def revert(self) -> None:
         self.calls.append(("revert",))
 
+    def save(self) -> None:
+        self.calls.append(("save",))
+
 
 def _run_direct[T](operation: str, command: Callable[[], T]) -> T:
     del operation
@@ -69,6 +72,7 @@ def test_service_retains_exact_commit_handle_for_push() -> None:
     assert board.calls == [
         ("begin",),
         ("push", board.commit, "KiCad MCP native live edit"),
+        ("save",),
     ]
 
 

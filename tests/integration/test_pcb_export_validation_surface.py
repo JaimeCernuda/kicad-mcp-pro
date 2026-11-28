@@ -349,7 +349,6 @@ async def test_pcb_and_routing_surface(
             {"text": "HELLO", "x_mm": 1.0, "y_mm": 1.0, "layer": "F_SilkS", "size_mm": 1.0},
         ),
         await call_tool_text(server, "pcb_delete_items", {"item_ids": ["abc-def"]}),
-        await call_tool_text(server, "pcb_save", {}),
         await call_tool_text(server, "pcb_refill_zones", {}),
         await call_tool_text(server, "pcb_highlight_net", {"net_name": "NET1"}),
         await call_tool_text(

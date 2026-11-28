@@ -310,7 +310,7 @@ def test_native_tool_policy_is_pinned_to_source_capabilities() -> None:
 
 def test_recomputed_hash_rejects_unknown_or_mutating_tool() -> None:
     report, raw = observation("linux")
-    for tool in ("unknown_tool", "pcb_save"):
+    for tool in ("unknown_tool", "pcb_refill_zones"):
         log = json.loads(raw)
         log["native_host_tool_names"][0] = tool
         changed_raw = (json.dumps(log, sort_keys=True) + "\n").encode()

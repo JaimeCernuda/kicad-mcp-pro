@@ -51,7 +51,6 @@ class _ToolCollector:
             [
                 "pcb_delete_items",
                 "pcb_delete_object",
-                "pcb_save",
                 "pcb_refill_zones",
                 "pcb_highlight_net",
                 "pcb_set_net_class",

@@ -23,7 +23,6 @@ EXPECTED_REVIEWED = {
     "pcb_set_board_outline",
     "pcb_add_text",
     "pcb_delete_items",
-    "pcb_save",
     "pcb_refill_zones",
     "pcb_move_footprint",
     "pcb_set_footprint_layer",

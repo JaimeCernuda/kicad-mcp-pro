@@ -61,7 +61,6 @@ _WRITE_PREFIXES = (
     "pcb_place_",
     "pcb_refill",
     "pcb_route",
-    "pcb_save",
     "pcb_set",
     "pcb_sync",
     "sch_add",

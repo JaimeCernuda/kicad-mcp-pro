@@ -11,7 +11,7 @@ The npm tarball **does not bundle** KiCad, Python, or the MCP server.
 - **Node.js >=22.14.0** to run this npm launcher.
 - **[uv](https://docs.astral.sh/uv/getting-started/installation/)** installed separately,
   with `uvx` on `PATH`.
-- **Python >=3.13** for the Python package; uv may provision the runtime.
+- **Python >=3.13,<3.15** for the Python package; uv may provision the runtime.
 - **KiCad 10.0.x** is the primary supported line; latest verified patch:
   **10.0.7**. Put the KiCad CLI on `PATH` for file-backed ERC/DRC and
   manufacturing exports.

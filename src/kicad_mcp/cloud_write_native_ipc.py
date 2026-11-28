@@ -160,7 +160,8 @@ class OfflineTrustedPcbIpcAdapter:
         if not self._started or not self._staged:
             return False
         self._current_board(compare_bytes=False)
-        response = self._service.push()
+        # A signed move saves only in its own re-authorized after-commit step.
+        response = self._service.push(save_to_file=False)
         evidence = self._service.last_evidence
         success = (
             response == _PUSH

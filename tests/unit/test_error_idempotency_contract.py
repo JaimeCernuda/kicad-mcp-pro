@@ -79,7 +79,6 @@ def test_additive_writes_are_not_idempotent() -> None:
 def test_converging_writes_are_idempotent() -> None:
     for name in (
         "pcb_set_stackup",
-        "pcb_save",
         "pcb_refill_zones",
         "export_gerber",
         "fp_upgrade",

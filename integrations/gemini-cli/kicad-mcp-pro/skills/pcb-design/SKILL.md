@@ -78,7 +78,8 @@ Use only after explaining the planned change and confirming that the workflow is
 - `pcb_delete_items`
 - `pcb_delete_object`
 - `pcb_refill_zones`
-- `pcb_save`
+
+A live edit that succeeds is already saved to the board file when the tool returns; there is no separate save step. A tool that could not save says so in KiCad's words.
 
 ### MCP-first mutation boundary
 

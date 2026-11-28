@@ -1,6 +1,6 @@
 Machine-maintained catalog. Refresh with `pnpm run docs:tools`.
 
-Total public tools: 413.
+Total public tools: 412.
 
 | Tool | Profile(s) | Read-Only | Destructive | Open-World | Idempotent | Headless | Requires KiCad Running | Summary |
 |---|---|---:|---:|---:|---:|---:|---:|---|
@@ -206,7 +206,6 @@ Total public tools: 413.
 | `pcb_revert` | agent_full, build, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | no | no | yes | Revert the board to the last saved state, discarding all unsaved changes. |
 | `pcb_route_corner_style_gate` | agent_full, analysis, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, pcb, pcb_layout, power, release_manager, schematic, schematic_authoring | no | yes | no | no | yes | no | Check whether routed tracks still contain non-professional 90-degree corners. |
 | `pcb_route_trace` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | no | no | yes | Legacy single straight segment alias; no routing, collision avoidance, or DRC. |
-| `pcb_save` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | no | no | yes | no | no | Save the active board. This KiCad MCP Pro tool supports production EDA automation workflows for MCP clients. |
 | `pcb_score_placement` | agent_full, analysis, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, pcb, pcb_layout, power, release_manager, schematic, schematic_authoring | no | no | no | no | yes | no | Score PCB placement quality and explain both hard failures and softer warnings. |
 | `pcb_set_board_outline` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | yes | no | no | Draw a rectangular board outline on Edge.Cuts. This KiCad MCP Pro tool supports production EDA automation workflows f... |
 | `pcb_set_board_outline_shape` | agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power | no | yes | no | yes | no | yes | Draw a closed board outline on Edge.Cuts from points, with optional arcs. |
@@ -622,7 +621,6 @@ Total public tools: 413.
 - `pcb_revert`: profiles=agent_full, build, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=no; headless=no; requiresKiCadRunning=yes.
 - `pcb_route_corner_style_gate`: profiles=agent_full, analysis, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, pcb, pcb_layout, power, release_manager, schematic, schematic_authoring; readOnly=no; destructive=yes; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `pcb_route_trace`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=no; headless=no; requiresKiCadRunning=yes.
-- `pcb_save`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=no; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
 - `pcb_score_placement`: profiles=agent_full, analysis, builder, critic, expert, full, high_speed, manufacturing, manufacturing_release, pcb, pcb_layout, power, release_manager, schematic, schematic_authoring; readOnly=no; destructive=no; openWorld=no; idempotent=no; headless=yes; requiresKiCadRunning=no.
 - `pcb_set_board_outline`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=no.
 - `pcb_set_board_outline_shape`: profiles=agent_full, builder, expert, full, high_speed, pcb, pcb_layout, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; idempotent=yes; headless=no; requiresKiCadRunning=yes.

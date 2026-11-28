@@ -83,7 +83,12 @@ def test_write_mode_allows_controlled_source_changes(sample_project) -> None:
 
     tool_names = _tool_names_for_mode("write")
 
-    assert {"kicad_get_version", "pcb_add_track", "pcb_save", "sch_add_symbol"} <= tool_names
+    assert {
+        "kicad_get_version",
+        "pcb_add_track",
+        "pcb_refill_zones",
+        "sch_add_symbol",
+    } <= tool_names
     assert "export_manufacturing_package" not in tool_names
     assert "route_tune_length" not in tool_names
     assert "sch_swap_pins" not in tool_names

@@ -146,7 +146,6 @@ Total public tools: 257.
 | `pcb_quality_gate` | agent_full, analysis, builder, critic, full, high_speed, manufacturing, pcb, power, release_manager, schematic | yes | no | no | yes | no | Evaluate whether the PCB is physically clean enough to proceed. |
 | `pcb_refill_zones` | agent_full, builder, full, high_speed, pcb, pcb_only, power | no | no | no | no | no | Refill all copper zones. This KiCad MCP Pro tool supports production EDA automation workflows for MCP clients. |
 | `pcb_route_trace` | agent_full, builder, full, high_speed, pcb, pcb_only, power | no | yes | no | no | yes | Route a trace segment through the KiCad IPC-backed track tool. |
-| `pcb_save` | agent_full, builder, full, high_speed, pcb, pcb_only, power | no | no | no | no | no | Save the active board. This KiCad MCP Pro tool supports production EDA automation workflows for MCP clients. |
 | `pcb_score_placement` | agent_full, analysis, builder, critic, full, high_speed, manufacturing, pcb, power, release_manager, schematic | no | no | no | yes | no | Score PCB placement quality and explain both hard failures and softer warnings. |
 | `pcb_set_board_outline` | agent_full, builder, full, high_speed, pcb, pcb_only, power | no | yes | no | no | no | Draw a rectangular board outline on Edge.Cuts. This KiCad MCP Pro tool supports production EDA automation workflows f... |
 | `pcb_set_design_rules` | agent_full, builder, full, high_speed, pcb, pcb_only, power | no | yes | no | yes | no | Write board-level manufacturing constraints into the active .kicad_dru file. |
@@ -406,7 +405,6 @@ Total public tools: 257.
 - `pcb_quality_gate`: profiles=agent_full, analysis, builder, critic, full, high_speed, manufacturing, pcb, power, release_manager, schematic; readOnly=yes; destructive=no; openWorld=no; headless=yes; requiresKiCadRunning=no.
 - `pcb_refill_zones`: profiles=agent_full, builder, full, high_speed, pcb, pcb_only, power; readOnly=no; destructive=no; openWorld=no; headless=no; requiresKiCadRunning=no.
 - `pcb_route_trace`: profiles=agent_full, builder, full, high_speed, pcb, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; headless=no; requiresKiCadRunning=yes.
-- `pcb_save`: profiles=agent_full, builder, full, high_speed, pcb, pcb_only, power; readOnly=no; destructive=no; openWorld=no; headless=no; requiresKiCadRunning=no.
 - `pcb_score_placement`: profiles=agent_full, analysis, builder, critic, full, high_speed, manufacturing, pcb, power, release_manager, schematic; readOnly=no; destructive=no; openWorld=no; headless=yes; requiresKiCadRunning=no.
 - `pcb_set_board_outline`: profiles=agent_full, builder, full, high_speed, pcb, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; headless=no; requiresKiCadRunning=no.
 - `pcb_set_design_rules`: profiles=agent_full, builder, full, high_speed, pcb, pcb_only, power; readOnly=no; destructive=yes; openWorld=no; headless=yes; requiresKiCadRunning=no.

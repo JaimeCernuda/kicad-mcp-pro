@@ -11,7 +11,7 @@ from kipy.board_types import Net, Track
 from kipy.geometry import Vector2
 from mcp.server.mcpserver import MCPServer as FastMCP
 
-from ..connection import get_board
+from ..connection import get_board_to_edit
 from ..models.common import _PadLike
 from ..pcb.board_access import board_footprints, board_pads
 from ..pcb.live_edit_runtime import execute_live_board_mutation
@@ -59,7 +59,7 @@ def _referenced_pads(board: object) -> list[ReferencedPad]:
 def _default_dependencies() -> RoutingManualTrackDependencies:
     return RoutingManualTrackDependencies(
         service=RoutingManualTrackService(
-            list_pads=lambda: _referenced_pads(get_board()),
+            list_pads=lambda: _referenced_pads(get_board_to_edit()),
             write_tracks=_write_tracks,
         )
     )

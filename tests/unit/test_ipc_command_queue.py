@@ -245,10 +245,10 @@ def test_pcb_live_mutation_helper_routes_through_native_live_runtime(
 
     monkeypatch.setattr(pcb_mod, "execute_live_board_mutation", execute_live_board_mutation)
 
-    result = pcb_mod._run_queued_ipc_mutation("pcb_save", lambda: "ok")
+    result = pcb_mod._run_queued_ipc_mutation("pcb_refill_zones", lambda: "ok")
 
     assert result == "ok"
-    assert calls == [("pcb_save", None)]
+    assert calls == [("pcb_refill_zones", None)]
 
 
 def test_mutation_timeout_after_possible_side_effect_is_never_replayed() -> None:

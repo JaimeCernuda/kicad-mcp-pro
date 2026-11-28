@@ -262,7 +262,6 @@ TOOL_CATEGORIES: dict[str, ToolCategory] = {
             "pcb_bga_fanout",
             "pcb_delete_object",
             "pcb_delete_items",
-            "pcb_save",
             "pcb_refill_zones",
             "pcb_highlight_net",
             "pcb_set_net_class",
