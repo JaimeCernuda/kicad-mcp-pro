@@ -5,8 +5,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from kipy.board_types import Footprint3DModel, FootprintInstance
-from kipy.geometry import Angle
+from kipy.board_types import (
+    BoardPolygon,
+    BoardSegment,
+    Footprint3DModel,
+    FootprintInstance,
+    to_concrete_board_shape,
+)
+from kipy.geometry import Angle, PolygonWithHoles, PolyLineNode, Vector2
 
 from kicad_mcp.pcb.footprint_transform import (
     FootprintRotationError,
@@ -97,6 +103,44 @@ def test_kipy_orientation_preserves_stock_footprint_3d_models(degrees: float) ->
     assert (
         round_trip.definition.models[0].proto.SerializeToString() == model.proto.SerializeToString()
     )
+
+
+def test_kipy_quarter_turn_matches_kicad_rotation_exactly() -> None:
+    # kicad-python's Vector2.rotate truncates, leaving graphics 1 nm off the library footprint.
+    footprint = FootprintInstance()
+    footprint.position = Vector2.from_xy_mm(140, 60)
+    segment = BoardSegment()
+    segment.start = Vector2.from_xy_mm(138.15, 56.59)
+    segment.end = Vector2.from_xy_mm(141.91, 63.6)
+    polygon = BoardPolygon()
+    outline = PolygonWithHoles()
+    for x, y in [(136.87, 56.69), (136.63, 56.36), (137.11, 56.36), (136.87, 56.69)]:
+        outline.outline.append(PolyLineNode.from_point(Vector2.from_xy_mm(x, y)))
+    outline.outline.closed = True
+    polygon.polygons.append(outline)
+    model = Footprint3DModel()
+    model.filename = "Package_TO_SOT_SMD.3dshapes/SOT-223-3_TabPin2.step"
+    footprint.definition.items = [segment, polygon, model]
+    footprint = FootprintInstance(proto=footprint.proto)
+
+    apply_footprint_rotation(footprint, 90.0)
+
+    rotated = FootprintInstance(proto=footprint.proto).definition.items
+    assert len(rotated) == 3
+    rotated_segment = to_concrete_board_shape(rotated[0])
+    rotated_polygon = to_concrete_board_shape(rotated[1])
+    assert isinstance(rotated_segment, BoardSegment)
+    assert isinstance(rotated_polygon, BoardPolygon)
+    assert (rotated_segment.start.x, rotated_segment.start.y) == (136_590_000, 61_850_000)
+    assert (rotated_segment.end.x, rotated_segment.end.y) == (143_600_000, 58_090_000)
+    assert [(node.point.x, node.point.y) for node in rotated_polygon.polygons[0].outline] == [
+        (136_690_000, 63_130_000),
+        (136_360_000, 63_370_000),
+        (136_360_000, 62_890_000),
+        (136_690_000, 63_130_000),
+    ]
+    assert isinstance(rotated[2], Footprint3DModel)
+    assert rotated[2].filename == model.filename
 
 
 def test_unchanged_rotation_does_not_call_orientation_setter() -> None:

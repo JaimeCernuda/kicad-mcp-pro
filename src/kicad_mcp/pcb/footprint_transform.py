@@ -3,16 +3,121 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
-from kipy.geometry import Angle
+from google.protobuf.descriptor import FieldDescriptor
+from kipy.board_types import (
+    BoardPolygon,
+    BoardRectangle,
+    BoardShape,
+    BoardText,
+    Field,
+    Footprint3DModel,
+    FootprintInstance,
+    Group,
+    Pad,
+    Zone,
+    to_concrete_board_shape,
+)
+from kipy.geometry import Angle, Vector2
 
 RotationAttribute = Literal["angle", "orientation"]
 _SUPPORTED_ROTATION_ATTRIBUTES: tuple[RotationAttribute, ...] = ("angle", "orientation")
+_VECTOR2 = "kiapi.common.types.Vector2"
 
 
 class FootprintRotationError(RuntimeError):
     """Raised when a requested footprint rotation cannot be applied or verified."""
+
+
+def _kiround(value: float) -> int:
+    return int(math.copysign(math.floor(abs(value) + 0.5), value))
+
+
+class _Rotation:
+    """KiCad's RotatePoint: exact for multiples of 90 degrees, rounded to nearest otherwise.
+
+    kicad-python's ``Vector2.rotate`` truncates with ``int()``, which leaves graphics 1 nm off
+    the library footprint after a quarter turn.
+    """
+
+    def __init__(self, degrees: float, center: Vector2) -> None:
+        quarter = round(degrees / 90.0)
+        self.cardinal = math.isclose(degrees, 90.0 * quarter, abs_tol=1e-9)
+        if self.cardinal:
+            self.cos, self.sin = ((1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0))[quarter % 4]
+        else:
+            self.cos, self.sin = math.cos(math.radians(degrees)), math.sin(math.radians(degrees))
+        self.cx, self.cy = center.x, center.y
+
+    def xy(self, x: int, y: int) -> tuple[int, int]:
+        dx, dy = x - self.cx, y - self.cy
+        return (
+            _kiround(dy * self.sin + dx * self.cos) + self.cx,
+            _kiround(dy * self.cos - dx * self.sin) + self.cy,
+        )
+
+    def point(self, value: Vector2) -> Vector2:
+        return Vector2.from_xy(*self.xy(value.x, value.y))
+
+    def geometry(self, message: Any) -> None:  # noqa: ANN401 - any kiapi geometry message
+        """Rotate every point of a shape or polygon message; each Vector2 in one is a position."""
+        for field, value in message.ListFields():
+            if field.message_type is None:
+                continue
+            for item in value if field.label == FieldDescriptor.LABEL_REPEATED else [value]:
+                if field.message_type.full_name == _VECTOR2:
+                    item.x_nm, item.y_nm = self.xy(item.x_nm, item.y_nm)
+                else:
+                    self.geometry(item)
+
+
+def _rotate_footprint_instance(footprint: FootprintInstance, requested: Angle) -> None:
+    """Rotate a footprint and its children in place, keeping every child and its order."""
+    requested.normalize180()
+    delta = requested - footprint.orientation
+    items = list(footprint.definition.items)
+    unsupported = sorted(
+        {
+            type(item).__name__
+            for item in items
+            if not isinstance(
+                item, Field | Pad | BoardText | Zone | BoardShape | Footprint3DModel | Group
+            )
+        }
+    )
+    if unsupported:
+        raise FootprintRotationError(
+            f"Footprint contains items CLIO cannot rotate yet: {', '.join(unsupported)}."
+        )
+    rotation = _Rotation(delta.degrees, footprint.position)
+    footprint.proto.orientation.CopyFrom(requested.proto)
+    fields = [
+        footprint.reference_field,
+        footprint.value_field,
+        footprint.datasheet_field,
+        footprint.description_field,
+    ]
+    for field in [*fields, *(item for item in items if isinstance(item, Field))]:
+        field.text.position = rotation.point(field.text.position)
+        field.text.attributes.angle += delta.degrees
+    for index, item in enumerate(items):
+        if isinstance(item, Pad):
+            item.position = rotation.point(item.position)
+            item.padstack.angle += delta
+        elif isinstance(item, BoardText):
+            item.position = rotation.point(item.position)
+            item.attributes.angle += delta.degrees
+        elif isinstance(item, Zone):
+            rotation.geometry(item.proto.outline)
+            for filled in item.proto.filled_polygons:
+                rotation.geometry(filled.shapes)
+        elif isinstance(item, BoardShape):
+            shape = to_concrete_board_shape(item)
+            if isinstance(shape, BoardRectangle) and not rotation.cardinal:
+                shape = items[index] = BoardPolygon.from_rectangle(shape)
+            rotation.geometry(shape.proto.shape)
+    footprint.definition.items = items
 
 
 def _rotation_degrees(value: object) -> float:
@@ -24,17 +129,6 @@ def _rotation_degrees(value: object) -> float:
     if isinstance(degrees, int | float) and not isinstance(degrees, bool):
         return float(degrees)
     raise FootprintRotationError("Footprint rotation value does not expose numeric degrees.")
-
-
-def _restore_missing_3d_models(definition: object | None, original_models: list[object]) -> None:
-    """Work around kicad-python 0.7/0.8 orientation setter dropping 3D models."""
-    if definition is None or not original_models:
-        return
-    existing = getattr(definition, "models", ())
-    missing = [model for model in original_models if not any(model is item for item in existing)]
-    if missing:
-        preserved = cast(Any, definition)
-        preserved.items = [*preserved.items, *missing]
 
 
 def get_current_footprint_rotation(footprint: object) -> tuple[RotationAttribute, float]:
@@ -73,23 +167,22 @@ def apply_footprint_rotation(footprint: object, rotation_deg: float) -> Rotation
         except AttributeError:
             continue
         available.append(attribute)
-        # kicad-python <= 0.8.0 reconstructs definition.items when orientation
-        # is assigned and silently drops 3D models. Avoid a no-op assignment
-        # altogether, then restore only lost models after an actual rotation.
         try:
             current_deg = _rotation_degrees(getattr(footprint, attribute))
         except FootprintRotationError:
             current_deg = None
         if current_deg is not None and abs((current_deg - rotation_deg + 180) % 360 - 180) < 1e-9:
             return attribute
-        definition = getattr(footprint, "definition", None)
-        models_before = list(getattr(definition, "models", ()))
+        if isinstance(footprint, FootprintInstance) and attribute == "orientation":
+            # kicad-python's own orientation setter truncates every rotated point and
+            # rebuilds the children without 3D models, text boxes or dimensions.
+            _rotate_footprint_instance(footprint, requested)
+            return attribute
         try:
             setattr(footprint, attribute, requested)
         except Exception as exc:  # KiCad IPC surfaces raise generated transport/type errors.
             failures.append(f"{attribute}: {type(exc).__name__}")
             continue
-        _restore_missing_3d_models(definition, models_before)
         return attribute
 
     if not available:

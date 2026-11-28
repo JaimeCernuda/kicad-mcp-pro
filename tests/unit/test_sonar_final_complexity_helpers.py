@@ -76,10 +76,9 @@ def test_pcb_sync_write_and_reload_only_when_changes_exist(
     monkeypatch.setattr(
         pcb, "_replace_board_blocks", lambda current, replacements, additions: current + "+sync"
     )
-    monkeypatch.setattr(pcb, "_auto_place_force_directed_board_file", lambda **kwargs: "auto")
     monkeypatch.setattr(pcb, "_reload_board_after_file_sync", lambda: "reloaded")
     payload = SyncPcbFromSchematicInput(allow_open_board=True)
-    assert pcb._apply_pcb_sync_changes(payload, [], {}) == ("", "")
+    assert pcb._apply_pcb_sync_changes(payload, [], {}) == ""
     assert calls == []
-    assert pcb._apply_pcb_sync_changes(payload, ["add"], {}) == ("auto", "reloaded")
+    assert pcb._apply_pcb_sync_changes(payload, ["add"], {}) == "reloaded"
     assert calls == ["board+sync"]

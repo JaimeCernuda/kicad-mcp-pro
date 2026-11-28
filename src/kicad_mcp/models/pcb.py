@@ -181,7 +181,6 @@ class SyncPcbFromSchematicInput(BaseModel):
     use_net_names: bool = Field(default=True)
     replace_mismatched: bool = Field(default=False)
     force: bool = Field(default=False)
-    auto_place: bool = Field(default=True)
 
 
 class AutoPlaceBySchematicInput(BaseModel):

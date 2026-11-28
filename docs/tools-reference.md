@@ -93,14 +93,16 @@ Generated schematics should run these checks before PCB transfer:
 - `sch_route_wire_between_pins()` routes around symbol bodies with A*/Z-route fallback.
 - `schematic_connectivity_gate()` verifies the resulting schematic connectivity.
 
-`pcb_sync_from_schematic(force=False, auto_place=True)` now runs the pre-sync gate by
+`pcb_sync_from_schematic(force=False)` now runs the pre-sync gate by
 default. Use `force=True` only for debugging known-bad intermediate states.
 
 `pcb_sync_from_schematic()` is a file-based bring-up operation that adds missing
 footprint instances to the `.kicad_pcb` using schematic references, values,
-rotations, and assigned `Library:Footprint` names. Placement is controlled by
-`origin_x_mm` and `origin_y_mm` (default `20.0`), `grid_mm` (default `2.54`), and
-`auto_place` (default `True`). `replace_mismatched=True` replaces an existing
+rotations, and assigned `Library:Footprint` names. It places only the footprints it
+adds, clear of the ones already on the board, and never moves existing footprints;
+new placement starts at `origin_x_mm` and `origin_y_mm` (default `20.0`) on
+`grid_mm` (default `2.54`). Re-lay out the board explicitly with
+`pcb_auto_place_force_directed()` or `pcb_auto_place_by_schematic()`. `replace_mismatched=True` replaces an existing
 footprint whose reference no longer matches its assigned footprint name;
 `use_net_names` (default `True`) transfers schematic net names onto pads. It
 blocks a dirty schematic transfer unless `force=True`, and refuses an
@@ -110,7 +112,7 @@ unexpectedly open board unless `allow_open_board=True`.
 
 The default agent layout loop is:
 
-- `pcb_sync_from_schematic(auto_place=True)` to transfer and place footprints.
+- `pcb_sync_from_schematic()` to transfer and place new footprints.
 - `pcb_place_decoupling_caps()` to apply common 100n/1u/10u proximity rules.
 - `route_export_dsn()`, `route_autoroute_freerouting()`, and `route_import_ses()` for autorouting.
 - `check_power_integrity()` for lightweight PDN mesh voltage-drop screening.

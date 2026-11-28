@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from kicad_mcp.tools.design_intent_state import ProjectDesignIntent
-from kicad_mcp.tools.pcb import _placement_net_weight, _placement_nets_from_footprints
 from kicad_mcp.tools.validation import (
     PlacementAnalysis,
     _format_placement_score,
@@ -137,29 +136,6 @@ def test_force_directed_placement_respects_keepout_regions() -> None:
         or placed.y + 2.0 <= 8.0
         or placed.y - 2.0 >= 12.0
     )
-
-
-def test_board_placement_net_weights_prioritize_power_and_differential_pairs() -> None:
-    assert _placement_net_weight("GND") == 3.0
-    assert _placement_net_weight("+3V3") == 3.0
-    assert _placement_net_weight("USB_DP_P") == 5.0
-    assert _placement_net_weight("VIN") == 1.0
-    assert _placement_net_weight("NC") == 0.0
-
-
-def test_board_placement_nets_skip_single_footprint_nets() -> None:
-    nets = _placement_nets_from_footprints(
-        {
-            "U1": {"pad_nets": {"1": "+3V3", "2": "USB_DP_P"}},
-            "C1": {"pad_nets": {"1": "+3V3"}},
-            "J1": {"pad_nets": {"1": "USB_DP_P", "2": "VIN"}},
-        }
-    )
-
-    assert [(net.name, net.refs, net.weight) for net in nets] == [
-        ("+3V3", ["C1", "U1"], 3.0),
-        ("USB_DP_P", ["J1", "U1"], 5.0),
-    ]
 
 
 def test_placement_geometry_helpers_and_bga_fanout_strategies() -> None:

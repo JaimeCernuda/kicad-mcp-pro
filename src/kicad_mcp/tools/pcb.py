@@ -1991,131 +1991,12 @@ def _strategy_board_positions(
     return positions
 
 
-def _placement_net_weight(net_name: str) -> float:
-    normalized = net_name.upper()
-    if not normalized or normalized in {"NC", "NO_CONNECT", "N/C"}:
-        return 0.0
-    if normalized in {"GND", "GNDA", "GNDD", "VCC", "VDD", "VSS"} or normalized.startswith(
-        ("+", "-")
-    ):
-        return 3.0
-    if normalized.endswith(("_P", "_N", "+", "-")):
-        return 5.0
-    return 1.0
-
-
-def _placement_nets_from_footprints(
-    footprints: dict[str, dict[str, Any]],
-) -> list[PlacementNet]:
-    refs_by_net: dict[str, set[str]] = {}
-    for reference, entry in footprints.items():
-        pad_nets = cast(dict[str, str], entry.get("pad_nets", {}))
-        for net_name in pad_nets.values():
-            if net_name:
-                refs_by_net.setdefault(net_name, set()).add(reference)
-    return [
-        PlacementNet(
-            name=net_name,
-            refs=sorted(refs),
-            weight=_placement_net_weight(net_name),
-        )
-        for net_name, refs in sorted(refs_by_net.items())
-        if len(refs) >= 2 and _placement_net_weight(net_name) > 0.0
-    ]
-
-
 def _decoupling_rule_for_value(value: str, fallback_max_distance_mm: float) -> dict[str, object]:
     normalized = value.strip().lower().replace(" ", "")
     for key, rule in DECOUPLING_RULES.items():
         if normalized == key.lower():
             return dict(rule)
     return {"max_dist_mm": fallback_max_distance_mm, "prefer_side": "same"}
-
-
-def _auto_place_force_directed_board_file(
-    *,
-    grid_mm: float = 1.0,
-    max_seconds: float = 0.0,
-) -> str:
-    from .validation import _format_placement_score, _placement_analysis
-
-    board_file = _get_pcb_file_for_sync()
-    board_content = _normalize_board_content(
-        board_file.read_text(encoding="utf-8", errors="ignore")
-    )
-    footprints = _parse_board_footprint_blocks(board_content)
-    movable = [
-        (reference, entry)
-        for reference, entry in sorted(footprints.items())
-        if entry["x_mm"] is not None and entry["y_mm"] is not None
-    ]
-    if len(movable) < 2:
-        return "Auto-placement skipped: fewer than two placed footprints."
-
-    # Capture placement score before auto-placement for before/after comparison.
-    before_analysis, _ = _placement_analysis()
-    score_before = before_analysis.score if before_analysis is not None else None
-
-    x_min, y_min, x_max, y_max = _board_frame_mm(board_content, footprints)
-    components = [
-        PlacementComponent(
-            ref=reference,
-            x=float(entry["x_mm"]),
-            y=float(entry["y_mm"]),
-            w=float(entry["width_mm"]),
-            h=float(entry["height_mm"]),
-            fixed=False,
-        )
-        for reference, entry in movable
-    ]
-    nets = _placement_nets_from_footprints(footprints)
-    if not nets:
-        return "Auto-placement skipped: no multi-footprint named nets were found."
-
-    stats: dict[str, object] = {}
-    result = force_directed_placement(
-        components,
-        nets,
-        ForceDirectedConfig(
-            iterations=300,
-            k_spring=0.4,
-            k_repel=80.0,
-            board_w=max(1.0, x_max - x_min),
-            board_h=max(1.0, y_max - y_min),
-            seed=42,
-            grid_mm=grid_mm,
-            max_seconds=max_seconds,
-        ),
-        stats=stats,
-    )
-    replacements: dict[str, str] = {}
-    for placed in result:
-        entry = footprints[placed.ref]
-        replacements[placed.ref] = _replace_root_at(
-            str(entry["block"]),
-            x_mm=placed.x,
-            y_mm=placed.y,
-            rotation=int(entry["rotation"]),
-        )
-    _transactional_board_write(lambda current: _replace_board_blocks(current, replacements, []))
-    convergence = (
-        f"converged after {stats.get('iterations_run')} iterations"
-        if stats.get("converged")
-        else f"stopped after {stats.get('iterations_run')} iterations (iteration ceiling)"
-    )
-
-    # Capture placement score after auto-placement for before/after evidence.
-    after_analysis, _ = _placement_analysis()
-    score_lines = ""
-    if after_analysis is not None:
-        after_analysis.score_before = score_before
-        score_lines = "\n\n" + _format_placement_score(after_analysis)
-
-    return (
-        "Force-directed auto-placement completed after PCB sync: "
-        f"{len(replacements)} footprint(s), {len(nets)} weighted net(s); {convergence}."
-        + score_lines
-    )
 
 
 def _mounting_hole_block(
@@ -4102,7 +3983,6 @@ def _format_pcb_sync_report(
     payload: SyncPcbFromSchematicInput,
     net_note: str,
     force_note: str,
-    auto_place_note: str,
     reload_note: str,
 ) -> str:
     lines = [
@@ -4135,8 +4015,6 @@ def _format_pcb_sync_report(
         lines.append(net_note)
     if force_note:
         lines.append(force_note)
-    if auto_place_note:
-        lines.append(auto_place_note)
     if reload_note:
         lines.append(reload_note)
     return "\n".join(lines)
@@ -4215,21 +4093,17 @@ def _apply_pcb_sync_changes(
     payload: SyncPcbFromSchematicInput,
     additions: list[str],
     replacements: dict[str, str],
-) -> tuple[str, str]:
+) -> str:
     if not (additions or replacements):
-        return "", ""
+        return ""
     _transactional_board_write(
         lambda current: _replace_board_blocks(current, replacements, additions)
     )
-    auto_place_note = (
-        _auto_place_force_directed_board_file(grid_mm=1.0) if payload.auto_place else ""
-    )
-    reload_note = (
+    return (
         _reload_board_after_file_sync()
         if payload.allow_open_board
         else _MANUAL_BOARD_RELOAD_MESSAGE
     )
-    return auto_place_note, reload_note
 
 
 def _register_schematic_sync_tools(mcp: FastMCP) -> None:
@@ -4247,13 +4121,13 @@ def _register_schematic_sync_tools(mcp: FastMCP) -> None:
         use_net_names: bool = True,
         replace_mismatched: bool = False,
         force: bool = False,
-        auto_place: bool = True,
     ) -> str:
         """Sync missing PCB footprints from schematic footprint assignments.
 
         This is a file-based operation intended for initial board bring-up. It adds
         missing footprint instances to the `.kicad_pcb` file using schematic
         references, values, rotations, and assigned `Library:Footprint` names.
+        Only added footprints are placed; footprints already on the board never move.
         When `replace_mismatched=True`, existing footprints with the same
         reference but the wrong footprint name are replaced in place.
         """
@@ -4267,7 +4141,6 @@ def _register_schematic_sync_tools(mcp: FastMCP) -> None:
             use_net_names=use_net_names,
             replace_mismatched=replace_mismatched,
             force=force,
-            auto_place=auto_place,
         )
         components, force_note = _validate_pcb_sync_preconditions(payload)
 
@@ -4286,7 +4159,7 @@ def _register_schematic_sync_tools(mcp: FastMCP) -> None:
         if not additions and not mismatches:
             return "The PCB already contains all schematic footprint assignments."
 
-        auto_place_note, reload_note = _apply_pcb_sync_changes(payload, additions, replacements)
+        reload_note = _apply_pcb_sync_changes(payload, additions, replacements)
 
         return _format_pcb_sync_report(
             components=components,
@@ -4298,7 +4171,6 @@ def _register_schematic_sync_tools(mcp: FastMCP) -> None:
             payload=payload,
             net_note=net_note,
             force_note=force_note,
-            auto_place_note=auto_place_note,
             reload_note=reload_note,
         )
 
