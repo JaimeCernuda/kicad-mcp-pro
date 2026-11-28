@@ -34,7 +34,9 @@ classifiers = [
   "Topic :: Software Development :: Code Generators",
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-requires-python = ">=3.13"
+# pynng (via kicad-python) has wheels only through CPython 3.14; on a newer Python uv
+# falls back to a cmake source build that fails on a machine without a C toolchain.
+requires-python = ">=3.13,<3.15"
 dependencies = [
   "authlib>=1.7.1",
   "anyio>=4.4.0",
