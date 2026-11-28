@@ -161,14 +161,25 @@ def _own_private_temp(temp: Path) -> bool:
     return True
 
 
+def board_home(home: Path, board: Path) -> Path:
+    """The folder of the one KiCad any server with this instance home runs for ``board``.
+
+    Its temp folder, socket and record follow from the board, so a second server on the same
+    board finds the KiCad the first started (and attaches instead of starting another), and
+    KiCads on different boards never share a socket.
+    """
+    tag = hashlib.sha256(os.path.normcase(str(board)).encode()).hexdigest()[:12]
+    return home / "boards" / tag
+
+
 def started_socket(home: Path) -> str:
-    """The socket a KiCad window started by this server serves.
+    """The socket a KiCad started with instance folder ``home`` serves.
 
     KiCad puts its API socket under its temp folder (``<temp>/kicad/api.sock``), so every
     KiCad that shares a temp folder shares that path, and one that exits deletes the file,
     leaving another KiCad bound to a socket nobody can reach (seen when a second KiCad was
-    started with the same temp folder). The window started here gets a temp folder of its own
-    (:func:`private_temp`), so its socket is this server's alone.
+    started with the same temp folder). Each board's KiCad gets a temp folder of its own
+    (:func:`private_temp` of its :func:`board_home`), so its socket is that board's alone.
     """
     if platform.system() == "Windows":
         return f"ipc://{private_temp(home)}\\kicad\\api.sock"
@@ -405,7 +416,9 @@ class InstanceManager:
             started = self._started
             if started is not None and started.process.poll() is None and started.board == board:
                 return self._status
-            for url in self._attach_candidates():
+            # The person's KiCad, or the one any server sharing this instance home started
+            # for this board: a second server on the board attaches to it.
+            for url in [*self._attach_candidates(), started_socket(board_home(_home(), board))]:
                 found = probe(url)
                 if found.ready and _serves(found, board):
                     if started is not None and started.socket != url:
@@ -453,7 +466,7 @@ class InstanceManager:
             status.problem = _NOT_FOUND
             status.next_step = _NOT_FOUND_NEXT
             return status
-        home = _home()
+        home = board_home(_home(), board)
         removed = clear_stale_locks(board, _kicad_has_open)
         if removed:
             status.notes.append(f"Removed stale KiCad locks: {', '.join(removed)}.")
@@ -487,15 +500,9 @@ class InstanceManager:
     def _launch_headless(
         self, cli: Path, board: Path, home: Path, status: InstanceStatus
     ) -> InstanceStatus:
-        run_dir = home / "sockets"
-        run_dir.mkdir(parents=True, exist_ok=True)
-        sock = run_dir / f"api-{os.getpid()}.sock"
-        with contextlib.suppress(OSError):
-            sock.unlink()
-        argv = [str(cli), "api-server", "--socket", str(sock), str(board)]
-        return self._launch(
-            argv, HEADLESS, board, home, _version(cli), cli, f"ipc://{sock}", status
-        )
+        socket_url = started_socket(home)
+        argv = [str(cli), "api-server", "--socket", socket_url.removeprefix("ipc://"), str(board)]
+        return self._launch(argv, HEADLESS, board, home, _version(cli), cli, socket_url, status)
 
     def _launch(
         self,
@@ -509,29 +516,31 @@ class InstanceManager:
         status: InstanceStatus,
     ) -> InstanceStatus:
         stop_left_over(home)
-        config = home / "config"
+        config = _home() / "config"
         config_home.seed(config, version, cli)
         env = {**os.environ, "KICAD_CONFIG_HOME": str(config)}
-        if (documents := documents_home(home)) is not None:
+        if (documents := documents_home(_home())) is not None:
             env["KICAD_DOCUMENTS_HOME"] = str(documents)
         status.documents_home = env.get("KICAD_DOCUMENTS_HOME", "")
-        if case != HEADLESS:  # a window's socket follows its temp folder: give it its own
-            temp = private_temp(home)
-            sock_path = socket_url.removeprefix("ipc://")
-            if platform.system() != "Windows" and len(sock_path.encode()) > SOCKET_PATH_MAX:
-                status.case = NONE
-                status.problem = (
-                    f"KiCad's API socket path would be {len(sock_path.encode())} bytes "
-                    f"({sock_path}), longer than a Unix socket allows."
-                )
-                status.next_step = "Set KICAD_MCP_INSTANCE_HOME, or TMPDIR, to a shorter folder."
-                return status
-            if not _own_private_temp(temp):
-                status.case = NONE
-                status.problem = f"The private folder {temp} belongs to someone else or is a link."
-                status.next_step = "Remove it, or set KICAD_MCP_INSTANCE_HOME to another folder."
-                return status
-            env.update(TMPDIR=str(temp), TMP=str(temp), TEMP=str(temp))
+        # The board's socket is in the board's own temp folder (a window puts it there; the
+        # headless server is told it).
+        temp = private_temp(home)
+        sock_path = socket_url.removeprefix("ipc://")
+        if platform.system() != "Windows" and len(sock_path.encode()) > SOCKET_PATH_MAX:
+            status.case = NONE
+            status.problem = (
+                f"KiCad's API socket path would be {len(sock_path.encode())} bytes "
+                f"({sock_path}), longer than a Unix socket allows."
+            )
+            status.next_step = "Set KICAD_MCP_INSTANCE_HOME, or TMPDIR, to a shorter folder."
+            return status
+        if not _own_private_temp(temp):
+            status.case = NONE
+            status.problem = f"The private folder {temp} belongs to someone else or is a link."
+            status.next_step = "Remove it, or set KICAD_MCP_INSTANCE_HOME to another folder."
+            return status
+        (temp / "kicad").mkdir(exist_ok=True)
+        env.update(TMPDIR=str(temp), TMP=str(temp), TEMP=str(temp))
         log = home / f"kicad-{case}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         status.config_home, status.version, status.case = str(config), version, case
@@ -590,12 +599,13 @@ class InstanceManager:
         started, self._started = self._started, None
         if started is None or started.process.poll() is not None:
             return
-        _record_started(_home(), None)
+        home = board_home(_home(), started.board)
+        _record_started(home, None)
         processes.stop_tree(started.process.pid)  # its group (POSIX) or tree (Windows)
         # limit-ok: reaping after the forced stop
         with contextlib.suppress(OSError, subprocess.TimeoutExpired):
             started.process.wait(timeout=5)  # reaping after the forced stop, not a limit
-        temp = private_temp(_home())
+        temp = private_temp(home)
         if not temp.is_symlink():  # KiCad's own temp files: nothing in it outlives KiCad
             shutil.rmtree(temp, ignore_errors=True)
         watcher, self._watcher = self._watcher, None

@@ -113,6 +113,33 @@ def test_a_running_kicad_with_the_board_is_attached_not_started(
     assert status.started_by_server is False
 
 
+def test_a_second_server_attaches_to_the_kicad_another_started_for_the_board(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Two servers on one board share one KiCad: the second finds the first's socket."""
+    board = (tmp_path / "led.kicad_pcb").resolve()
+    board.write_text("(kicad_pcb)")
+    other = (tmp_path / "amp.kicad_pcb").resolve()
+    monkeypatch.setenv(instance_manager.INSTANCE_ENV, "auto")
+    monkeypatch.setenv(instance_manager.HOME_ENV, str(tmp_path / "home"))
+    monkeypatch.delenv("KICAD_API_SOCKET", raising=False)
+    monkeypatch.delenv("KICAD_MCP_KICAD_SOCKET_PATH", raising=False)
+    home = tmp_path / "home"
+    first = instance_manager.started_socket(instance_manager.board_home(home, board))
+    assert first != instance_manager.started_socket(instance_manager.board_home(home, other))
+
+    def probe(url: str) -> instance_manager.Probe:
+        if url == first:
+            return instance_manager.Probe(True, True, "10.0.8", (str(board),))
+        return instance_manager.Probe(False)
+
+    monkeypatch.setattr(instance_manager, "probe", probe)
+    started: list[object] = []
+    monkeypatch.setattr(InstanceManager, "_start", lambda *args: started.append(args))
+    status = InstanceManager().ensure(board)
+    assert status.case == "attached" and status.socket == first and not started
+
+
 def test_no_kicad_on_the_machine_says_where_it_looked(monkeypatch, tmp_path: Path) -> None:
     board = tmp_path / "led.kicad_pcb"
     board.write_text("(kicad_pcb)")
