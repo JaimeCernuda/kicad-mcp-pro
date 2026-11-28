@@ -46,7 +46,8 @@ def register(mcp: FastMCP, dependencies: PcbTransactionLifecycleDependencies) ->
 
         All subsequent mutations (add, remove, update operations) will be grouped
         into a single undo step in KiCad. Call pcb_push_commit to apply or
-        pcb_drop_commit to discard.
+        pcb_drop_commit to discard. The group belongs to the calling session: other
+        sessions' edits on the same board are not part of it.
 
         Returns:
             Confirmation message with commit status.
@@ -83,6 +84,7 @@ def register(mcp: FastMCP, dependencies: PcbTransactionLifecycleDependencies) ->
         """Revert the board to the last saved state, discarding all unsaved changes.
 
         WARNING: This is a destructive operation. All unsaved modifications will be lost.
+        Refused while any session has a transaction group open on the board.
 
         Returns:
             Confirmation message with revert status.

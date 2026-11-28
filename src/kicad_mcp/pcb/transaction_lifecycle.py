@@ -5,11 +5,12 @@ from __future__ import annotations
 import hashlib
 import threading
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from ..errors import ToolFailedError
+from ..errors import ToolFailedError, ToolValidationError
 from ..ipc.command_queue import AmbiguousMutationError
 from .live_edit_evidence import (
     LiveBoardIdentity,
@@ -78,13 +79,50 @@ def live_board_identity(board: Board) -> LiveBoardIdentity:
 
 
 @dataclass
+class SharedBoard:
+    """What every caller's edit group on the board shares.
+
+    One lock orders every change to the board, live or file-level, so a file edit never reads
+    the board, waits for another caller's live edit and save, and then writes over it. Each
+    caller's group is registered here, so a change by one caller is known to the others.
+    """
+
+    lock: threading.RLock = field(default_factory=threading.RLock)
+    groups: dict[str, PcbTransactionLifecycleService] = field(
+        default_factory=lambda: dict[str, PcbTransactionLifecycleService]()
+    )
+
+    def open_groups(self, owner: PcbTransactionLifecycleService | None) -> tuple[bool, int]:
+        """Whether ``owner`` has an open group, and how many other callers have one."""
+        with self.lock:
+            own = False
+            others = 0
+            for service in self.groups.values():
+                if service.has_open_group:
+                    if service is owner:
+                        own = True
+                    else:
+                        others += 1
+            return own, others
+
+    def changed_by(self, source: PcbTransactionLifecycleService) -> None:
+        """Record that ``source`` changed the board under every other caller's open group."""
+        with self.lock:
+            for service in self.groups.values():
+                if service is not source and service.has_open_group:
+                    service.note_change_by_another_caller()
+
+
+@dataclass
 class PcbTransactionLifecycleService:
-    """Own one board-bound native-live transaction and its verification evidence."""
+    """Own one caller's board-bound native-live transaction and its verification evidence."""
 
     get_board: GetBoard
     run_mutation: RunMutation
     connection_errors: ConnectionErrors
     get_connection_epoch: Callable[[], object] = _default_connection_epoch
+    shared: SharedBoard = field(default_factory=SharedBoard, repr=False)
+    _changed_by_others: bool = field(default=False, init=False, repr=False)
     _commit_handle: object | None = field(default=None, init=False, repr=False)
     _active_identity: LiveBoardIdentity | None = field(default=None, init=False, repr=False)
     _pre_state_digest: str | None = field(default=None, init=False, repr=False)
@@ -96,7 +134,23 @@ class PcbTransactionLifecycleService:
     )
     _recovery_required: bool = field(default=False, init=False, repr=False)
     _last_evidence: LiveEditEvidence | None = field(default=None, init=False, repr=False)
-    _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
+
+    @property
+    def _lock(self) -> threading.RLock:
+        return self.shared.lock
+
+    @property
+    def has_open_group(self) -> bool:
+        """Whether this caller has a KiCad commit open."""
+        return self._commit_handle is not None
+
+    def _published(self) -> None:
+        """This caller changed the board: other callers' groups can no longer prove a drop."""
+        self.shared.changed_by(self)
+
+    def note_change_by_another_caller(self) -> None:
+        """Another caller changed the board while this caller's group is open."""
+        self._changed_by_others = True
 
     @staticmethod
     def _identity_for(board: Board) -> LiveBoardIdentity:
@@ -149,6 +203,7 @@ class PcbTransactionLifecycleService:
         self._active_identity = None
         self._pre_state_digest = None
         self._connection_epoch = None
+        self._changed_by_others = False
         self._receipts.clear()
         self._pending_verifications.clear()
         self._recovery_required = False
@@ -172,7 +227,7 @@ class PcbTransactionLifecycleService:
         if self._active_identity is not None:
             self._last_evidence = self._terminal_evidence("recovery_required")
 
-    def _mark_receipts_recovered(self, succeeded: bool) -> None:
+    def _mark_receipts_recovered(self, succeeded: bool | None) -> None:
         self._receipts[:] = [
             replace(
                 receipt,
@@ -181,10 +236,20 @@ class PcbTransactionLifecycleService:
                 state_divergence_detected=(
                     False if succeeded else receipt.state_divergence_detected
                 ),
-                final_state_verified=succeeded,
+                final_state_verified=bool(succeeded),
             )
             for receipt in self._receipts
         ]
+
+    def _restored_after_drop(self, board: Board) -> bool | None:
+        """Whether the board is back to its state at begin; None when that can't be compared.
+
+        Other callers' edits since begin are on the board too, so the whole board can only be
+        compared when nobody else changed it.
+        """
+        if self._changed_by_others:
+            return None
+        return self._state_digest(board) == self._pre_state_digest
 
     def _drop_for_abort(self, board: Board) -> bool:
         """Drop the active commit on the verified board and prove pre-state equivalence."""
@@ -196,16 +261,24 @@ class PcbTransactionLifecycleService:
         if not callable(command):
             return False
         commit_handle = self._commit_handle
-        self.run_mutation("pcb_drop_commit", lambda: command(commit_handle))
+        try:
+            self.run_mutation("pcb_drop_commit", lambda: command(commit_handle))
+        finally:
+            self._published()
         fresh_board = self.get_board()
         self._assert_connection_epoch()
         self._assert_same_board(fresh_board)
-        restored = self._state_digest(fresh_board) == self._pre_state_digest
+        restored = self._restored_after_drop(fresh_board)
         self._commit_handle = None
         self._mark_receipts_recovered(restored)
-        if restored:
+        if restored is not False:
             self._last_evidence = self._terminal_evidence("aborted")
             self._clear_active()
+            # Another caller's save may have written this group's staged edits; the failed
+            # mutation stays the reported error, so a failed save here adds nothing to it.
+            if restored is None:
+                with suppress(Exception):
+                    self._save_board_file("Discarding the transaction", fresh_board)
             return True
         self._recovery_required = True
         self._last_evidence = self._terminal_evidence("recovery_required")
@@ -293,6 +366,7 @@ class PcbTransactionLifecycleService:
                 self._active_identity = identity
                 self._pre_state_digest = pre_state_digest
                 self._connection_epoch = connection_epoch
+                self._changed_by_others = False
                 self._receipts.clear()
                 self._pending_verifications.clear()
                 self._recovery_required = False
@@ -392,6 +466,8 @@ class PcbTransactionLifecycleService:
                 except AmbiguousMutationError:
                     self._mark_control_ambiguity()
                     raise
+                finally:
+                    self._published()
                 self._commit_handle = None
                 try:
                     fresh_board = self.get_board()
@@ -415,7 +491,9 @@ class PcbTransactionLifecycleService:
                 raise ToolFailedError(f"Failed to commit transaction: {exc}") from exc
 
     def drop(self) -> str:
-        """Discard the active transaction and prove the pre-operation state was restored."""
+        """Discard this caller's transaction and, when nobody else changed the board since it
+        began, prove the pre-operation state was restored. When others did, the board file is
+        saved so it matches what KiCad holds."""
         with self._lock:
             if self._recovery_required:
                 raise ToolFailedError(_AMBIGUOUS_TRANSACTION_MESSAGE)
@@ -438,13 +516,15 @@ class PcbTransactionLifecycleService:
                 except AmbiguousMutationError:
                     self._mark_control_ambiguity()
                     raise
+                finally:
+                    self._published()
                 fresh_board = self.get_board()
                 self._assert_connection_epoch()
                 self._assert_same_board(fresh_board)
-                restored = self._state_digest(fresh_board) == self._pre_state_digest
+                restored = self._restored_after_drop(fresh_board)
                 self._commit_handle = None
                 self._mark_receipts_recovered(restored)
-                if not restored:
+                if restored is False:
                     self._recovery_required = True
                     self._last_evidence = self._terminal_evidence("recovery_required")
                     raise RuntimeError(
@@ -453,6 +533,15 @@ class PcbTransactionLifecycleService:
                     )
                 self._last_evidence = self._terminal_evidence("dropped")
                 self._clear_active()
+                if restored is None:
+                    # KiCad applies some staged edits to its board at once, and another
+                    # caller's save may have written them; saving now puts the file back in step.
+                    self._save_board_file("Discarding the transaction", fresh_board)
+                    return (
+                        "Transaction group discarded: KiCad dropped its staged changes. Other "
+                        "sessions changed the board while it was open, so the whole board was "
+                        "not compared with its state at pcb_begin_commit."
+                    )
                 return "Transaction group discarded successfully."
             except self.connection_errors as exc:
                 raise ToolFailedError(f"Failed to discard transaction: {exc}") from exc
@@ -606,6 +695,7 @@ class PcbTransactionLifecycleService:
             try:
                 result = self.run_mutation(operation, lambda: command(board))
             except AmbiguousMutationError:
+                self._published()
                 if active:
                     self._abort_after_mutation_failure(
                         board=board,
@@ -615,6 +705,7 @@ class PcbTransactionLifecycleService:
                     )
                 raise
             except Exception:
+                self._published()
                 if active:
                     self._abort_after_mutation_failure(
                         board=board,
@@ -623,6 +714,9 @@ class PcbTransactionLifecycleService:
                         execution_state="failed",
                     )
                 raise
+            # Staged edits to tracks, vias and other non-footprint items change KiCad's board
+            # at once, so every mutation counts as a change for the other callers.
+            self._published()
 
             if active and verifier is not None:
                 return self._stage_mutation_verification(
@@ -639,10 +733,15 @@ class PcbTransactionLifecycleService:
             return result
 
     def revert(self) -> str:
-        """Revert the board to its last saved state when supported by KiCad."""
+        """Revert the board to its last saved state when supported by KiCad.
+
+        Reloading the file drops every open KiCad commit, so revert waits until no caller has
+        a group open.
+        """
         with self._lock:
             if self._recovery_required:
                 raise ToolFailedError(_AMBIGUOUS_TRANSACTION_MESSAGE)
+            refuse_reload_with_open_groups(self.shared, self, "Reverting the board")
             try:
                 board = self.get_board()
                 command = getattr(board, "revert", None)
@@ -658,6 +757,28 @@ class PcbTransactionLifecycleService:
                 )
             except self.connection_errors as exc:
                 raise ToolFailedError(f"Failed to revert board: {exc}") from exc
+
+
+def refuse_reload_with_open_groups(
+    shared: SharedBoard,
+    owner: PcbTransactionLifecycleService | None,
+    action: str,
+) -> None:
+    """Refuse an action that reloads the board file while any caller has a KiCad commit open:
+    the reload would drop that commit's staged changes."""
+    own, others = shared.open_groups(owner)
+    if own:
+        raise ToolValidationError(
+            "Your KiCad commit is open (pcb_begin_commit). Push it with pcb_push_commit or drop "
+            f"it with pcb_drop_commit first. {action} reloads the board file, which would drop "
+            "the commit's staged changes. Nothing was changed."
+        )
+    if others:
+        raise ToolValidationError(
+            f"{others} other session(s) have a KiCad commit open on this board. {action} "
+            "reloads the board file, which would drop their staged changes. Nothing was "
+            "changed; try again once they push or drop their commits."
+        )
 
 
 def _reloaded_contents(board: Board) -> str:

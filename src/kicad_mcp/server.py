@@ -73,6 +73,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from typer.models import OptionInfo
 
 from . import __version__
+from .caller import CallerMiddleware
 from .capabilities import AccessTier, RuntimeRequirement, all_protocol_metadata
 from .capabilities import get as get_capability_record
 from .cli_lifecycle import uninstall as uninstall_package
@@ -2163,7 +2164,7 @@ def build_server(profile: str | None = None, *, defer_registration: bool = False
     server.operating_mode = operating_mode
     server.allow_experimental_tools = operating_mode is OperatingMode.EXPERIMENTAL
     server.allowed_tool_names = set(tools_for_profile(selected_profile))
-
+    server.middleware.append(CallerMiddleware())
     # MCP SDK v2 removed the legacy experimental Tasks runtime. Configuration
     # rejects that superseded draft fail-closed; no task handlers are registered.
     _register_server_custom_routes(server, cfg, token_verifier)

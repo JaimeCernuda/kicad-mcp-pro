@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import math
 import re
-import threading
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
@@ -88,8 +87,10 @@ from ..pcb.footprint_transform import (
 )
 from ..pcb.groups_inspection import PcbGroupsInspectionService
 from ..pcb.live_edit_runtime import (
+    board_lock,
     execute_live_board_mutation,
     get_live_edit_service,
+    refuse_board_reload,
 )
 from ..pcb.origin_management import PcbOriginService
 from ..pcb.pad_mapping import pad_references, reference_of
@@ -138,7 +139,6 @@ from .schematic import _iter_child_sheet_paths, _symbol_property_values, parse_s
 from .schematic_transfer import _parse_netlist_text as _parse_netlist_text
 
 logger = structlog.get_logger(__name__)
-_BOARD_FILE_WRITE_LOCK = threading.RLock()
 _KeepoutRegion = Annotated[list[float], Field(min_length=4, max_length=4)]
 BOARD_FILE_VERSION = GENERATED_SEXPR_DIALECT_VERSION
 _DIAGNOSTICS_HEADER = "Diagnostics:"
@@ -1139,17 +1139,24 @@ def run_auto_refill_zones() -> str:
 
 
 def _transactional_board_write(mutator: Callable[[str], str]) -> str:
-    with _BOARD_FILE_WRITE_LOCK:
+    # The same lock as every live edit and save: a live edit saved between this read and the
+    # write below would otherwise be written over.
+    with board_lock():
         board_file = _get_pcb_file_for_sync()
         # An open KiCad holds the board: the edit starts from what it holds and KiCad reloads
         # the result, so the two never disagree (pcb/live_file_sync.py).
         open_board = live_file_sync.open_board_for(board_file)
         if open_board is not None:
-            live_file_sync.refuse_during_open_commit(_native_live_transaction_active())
+            refuse_board_reload("This file-level edit")
         base = open_board.text() if open_board is not None else board_file.read_text("utf-8")
         current = _normalize_board_content(base)
         updated = mutator(current)
         _validate_board_text(updated)
+        if open_board is None and board_file.read_text("utf-8") != base:
+            raise ToolFailedError(
+                "The board file changed while this edit was being prepared (another program "
+                "wrote it). Nothing was written; run the edit again on the current file."
+            )
         temp_path: Path | None = None
         try:
             with NamedTemporaryFile(

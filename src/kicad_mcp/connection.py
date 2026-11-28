@@ -12,6 +12,7 @@ import structlog
 from kipy.board import Board
 from kipy.kicad import KiCad
 
+from .caller import current_caller
 from .config import get_config
 from .errors import KiCadBoardNotOpenError, KiCadMcpError, KiCadNotRunningError
 from .kicad.session import KiCadSession
@@ -32,7 +33,7 @@ _IPC_LOCK = threading.Lock()
 
 
 class _OneRequestAtATime:
-    """Build kipy clients whose requests go to KiCad one at a time.
+    """Build kipy clients whose requests go to KiCad one at a time, each as its caller.
 
     KiCad's IPC API is one request/reply socket. Tool calls running at once (a client that
     moves 21 footprints in parallel) shared it, and replies were cancelled ("Error
@@ -40,6 +41,9 @@ class _OneRequestAtATime:
     the factory declares, so ``__init__`` carries kipy's own signature (a factory without
     ``socket_path`` silently connected to KiCad's default socket instead), and ``KiCad`` is
     looked up when a client is built, so it can be replaced.
+
+    KiCad keeps one commit per client name, so each request names its caller: one agent's
+    edits never land in, or end, another agent's edit group.
     """
 
     def __new__(cls, *args: object, **kwargs: object) -> KiCad:  # type: ignore[misc]
@@ -47,9 +51,12 @@ class _OneRequestAtATime:
         client = getattr(kicad, "_client", None)
         send = getattr(client, "send", None)
         if send is not None:
+            base_name = str(getattr(client, "_client_name", "kicad-mcp"))
 
             def serialized(command: object, response_type: object) -> object:
+                caller = current_caller()
                 with _IPC_LOCK:
+                    client._client_name = f"{base_name}/{caller}" if caller else base_name  # type: ignore[union-attr]
                     return send(command, response_type)
 
             client.send = serialized  # type: ignore[union-attr]

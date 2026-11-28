@@ -16,8 +16,6 @@ from typing import TYPE_CHECKING, cast
 
 import structlog
 
-from ..errors import ToolValidationError
-
 if TYPE_CHECKING:
     from kipy.board import Board
 
@@ -62,13 +60,3 @@ def open_board_for(board_file: Path) -> OpenBoard | None:
     if folder and Path(folder).resolve() != board_file.parent.resolve():
         return None
     return OpenBoard(board=board, path=board_file)
-
-
-def refuse_during_open_commit(transaction_active: bool) -> None:
-    """A file-level edit cannot land inside a KiCad commit that is still open: reloading the
-    file would drop the commit's staged changes."""
-    if transaction_active:
-        raise ToolValidationError(
-            "A KiCad commit is open (pcb_begin_commit). Push it with pcb_push_commit or drop "
-            "it with pcb_drop_commit before this change, which is written to the board file."
-        )

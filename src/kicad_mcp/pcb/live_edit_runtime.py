@@ -1,4 +1,4 @@
-"""Production accessor for the canonical native-live PCB mutation service."""
+"""Production accessor for each caller's native-live PCB mutation service."""
 
 from __future__ import annotations
 
@@ -8,9 +8,15 @@ from typing import Final
 
 from kipy.board import Board
 
+from ..caller import current_caller
 from ..connection import KiCadConnectionError, get_board_to_edit, get_connection_epoch
 from ..ipc.command_queue import get_command_queue
-from .transaction_lifecycle import PcbTransactionLifecycleService, PostconditionVerifier
+from .transaction_lifecycle import (
+    PcbTransactionLifecycleService,
+    PostconditionVerifier,
+    SharedBoard,
+    refuse_reload_with_open_groups,
+)
 
 REVIEWED_LIVE_MUTATIONS: Final[dict[str, bool]] = {
     "pcb_add_track": True,
@@ -37,8 +43,7 @@ REVIEWED_LIVE_MUTATIONS: Final[dict[str, bool]] = {
     "pcb_set_title_block_info": False,
 }
 
-_SERVICE_LOCK = threading.Lock()
-_SERVICE: PcbTransactionLifecycleService | None = None
+_BOARD = SharedBoard()
 
 
 def _run_mutation[T](operation: str, command: Callable[[], T]) -> T:
@@ -50,26 +55,41 @@ def _run_mutation[T](operation: str, command: Callable[[], T]) -> T:
     )
 
 
+def board_lock() -> threading.RLock:
+    """The lock every change to the board holds, live or written to the board file."""
+    return _BOARD.lock
+
+
 def get_live_edit_service() -> PcbTransactionLifecycleService:
-    """Return the process-wide board-bound native-live service."""
-    global _SERVICE
-    if _SERVICE is None:
-        with _SERVICE_LOCK:
-            if _SERVICE is None:
-                _SERVICE = PcbTransactionLifecycleService(
-                    get_board=get_board_to_edit,
-                    run_mutation=_run_mutation,
-                    connection_errors=(KiCadConnectionError, OSError),
-                    get_connection_epoch=get_connection_epoch,
-                )
-    return _SERVICE
+    """Return the calling session's board-bound native-live service.
+
+    Each caller owns its edit group; KiCad keeps each caller's commit apart by client name.
+    """
+    caller = current_caller()
+    with _BOARD.lock:
+        service = _BOARD.groups.get(caller)
+        if service is None:
+            service = PcbTransactionLifecycleService(
+                get_board=get_board_to_edit,
+                run_mutation=_run_mutation,
+                connection_errors=(KiCadConnectionError, OSError),
+                get_connection_epoch=get_connection_epoch,
+                shared=_BOARD,
+            )
+            _BOARD.groups[caller] = service
+        return service
+
+
+def refuse_board_reload(action: str) -> None:
+    """Refuse ``action``, which reloads the board file, while any caller has a commit open."""
+    with _BOARD.lock:
+        refuse_reload_with_open_groups(_BOARD, _BOARD.groups.get(current_caller()), action)
 
 
 def reset_live_edit_service() -> None:
     """Reset native-live session state after project/session changes and in tests."""
-    global _SERVICE
-    with _SERVICE_LOCK:
-        _SERVICE = None
+    with _BOARD.lock:
+        _BOARD.groups.clear()
 
 
 def execute_live_board_mutation[T](
@@ -89,7 +109,9 @@ def execute_live_board_mutation[T](
 
 __all__ = [
     "REVIEWED_LIVE_MUTATIONS",
+    "board_lock",
     "execute_live_board_mutation",
     "get_live_edit_service",
+    "refuse_board_reload",
     "reset_live_edit_service",
 ]

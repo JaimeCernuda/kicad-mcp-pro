@@ -106,7 +106,7 @@ def test_non_participating_runtime_operation_is_rejected_before_side_effect(
         run_mutation=lambda _operation, command: command(),
         connection_errors=(OSError,),
     )
-    monkeypatch.setattr(live_edit_runtime, "_SERVICE", service)
+    monkeypatch.setattr(live_edit_runtime, "get_live_edit_service", lambda: service)
     assert service.begin().startswith("Transaction group started.")
     effects: list[str] = []
 
