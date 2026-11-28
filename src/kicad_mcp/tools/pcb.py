@@ -97,6 +97,7 @@ from ..pcb.pad_mapping import pad_references, reference_of
 from ..pcb.session_inspection import PcbSessionInspectionService
 from ..pcb.stackup_management import PcbStackupManagementService
 from ..pcb.title_block_management import PcbTitleBlockService
+from ..pcb.transaction_lifecycle import PostconditionMismatchError
 from ..utils.cache import clear_ttl_cache
 from ..utils.impedance import TraceType, copper_thickness_mm, trace_impedance
 from ..utils.layers import CANONICAL_LAYER_NAMES, resolve_layer, resolve_layer_name
@@ -242,18 +243,24 @@ def _net_name(item: object) -> str:
     return str(getattr(getattr(item, "net", None), "name", ""))
 
 
-def _net_matches(actual: object, expected: object, assigned: list[str] | None) -> bool:
-    """Whether ``actual`` is on the requested net; any net when none was requested.
+def _net_outcome(kind: str, actual: object, expected: object, assigned: list[str] | None) -> str:
+    """What the re-read says about ``actual``'s net; a mismatch when another net was requested.
 
-    KiCad connects new items on Push: a via with no net inside a zone takes the zone's net and
-    a track touching a pad takes the pad's. The net KiCad gave the item goes into ``assigned``.
+    KiCad connects new items on Push: an item inside a zone or touching a pad takes that
+    copper's net, even when another one was requested. The net KiCad gave it goes into
+    ``assigned``.
     """
     requested = _net_name(expected)
-    if requested and _net_name(actual) != requested:
-        return False
+    held = _net_name(actual)
+    stated = f"on net {held}" if held else "with no net"
+    if requested and held != requested:
+        raise PostconditionMismatchError(
+            f"the {kind.lower()} is {stated}, not the requested {requested}: KiCad gives a new "
+            "item the net of the copper it connects to"
+        )
     if assigned is not None:
-        assigned.append(_net_name(actual))
-    return True
+        assigned.append(held)
+    return f"{kind} {stated}"
 
 
 def _net_note(assigned: list[str]) -> str:
@@ -264,43 +271,43 @@ def _net_note(assigned: list[str]) -> str:
 
 def _verify_created_track(
     board: Board, created: Iterable[object], expected: Track, assigned: list[str] | None = None
-) -> bool:
+) -> bool | str:
     reloaded = _reload_created_items(board, created)
     if len(reloaded) != 1:
         return False
     actual = cast(Any, reloaded[0])
     try:
-        return (
+        same = (
             _coord_nm(actual.start, "x") == _coord_nm(expected.start, "x")
             and _coord_nm(actual.start, "y") == _coord_nm(expected.start, "y")
             and _coord_nm(actual.end, "x") == _coord_nm(expected.end, "x")
             and _coord_nm(actual.end, "y") == _coord_nm(expected.end, "y")
             and int(actual.layer) == int(expected.layer)
             and int(actual.width) == int(expected.width)
-            and _net_matches(actual, expected, assigned)
         )
     except (AttributeError, TypeError, ValueError):
         return False
+    return same and _net_outcome("Track", actual, expected, assigned)
 
 
 def _verify_created_via(
     board: Board, created: Iterable[object], expected: Via, assigned: list[str] | None = None
-) -> bool:
+) -> bool | str:
     reloaded = _reload_created_items(board, created)
     if len(reloaded) != 1:
         return False
     actual = cast(Any, reloaded[0])
     try:
-        return (
+        same = (
             _coord_nm(actual.position, "x") == _coord_nm(expected.position, "x")
             and _coord_nm(actual.position, "y") == _coord_nm(expected.position, "y")
             and int(actual.diameter) == int(expected.diameter)
             and int(actual.drill_diameter) == int(expected.drill_diameter)
             and int(actual.type) == int(expected.type)
-            and _net_matches(actual, expected, assigned)
         )
     except (AttributeError, TypeError, ValueError):
         return False
+    return same and _net_outcome("Via", actual, expected, assigned)
 
 
 def _verify_deleted_items(board: Board, item_ids: tuple[object, ...]) -> bool:

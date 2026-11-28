@@ -36,14 +36,28 @@ class RunMutation(Protocol):
 
 type GetBoard = Callable[[], Board]
 type ConnectionErrors = tuple[type[Exception], ...]
-type PostconditionVerifier[T] = Callable[[Board, T], bool]
+# A verifier re-reads the live board. A string result means verified, stating what KiCad holds.
+type PostconditionVerifier[T] = Callable[[Board, T], bool | str]
+
+
+class PostconditionMismatchError(Exception):
+    """The re-read board is known and differs from the request; the message states how."""
+
+
+class PublishedMismatchError(ToolFailedError):
+    """The edit is on the board and saved, but KiCad holds something other than requested."""
+
+    hint = (
+        "The edit is already on the board. Keep it, or make a further edit to change it; "
+        "repeating the same request adds another item."
+    )
 
 
 @dataclass(frozen=True, slots=True)
 class _PendingVerification:
     mutation_id: str
     operation: str
-    verify: Callable[[Board], bool]
+    verify: Callable[[Board], bool | str]
 
 
 def _default_connection_epoch() -> object:
@@ -411,11 +425,25 @@ class PcbTransactionLifecycleService:
         self._recovery_required = True
         self._last_evidence = self._terminal_evidence("recovery_required")
 
-    def _verify_published_mutations(self, board: Board) -> None:
-        """Verify all staged mutations against the live board after native commit publication."""
+    def _verify_published_mutations(self, board: Board) -> tuple[list[str], list[str]]:
+        """Verify all staged mutations against the live board after native commit publication.
+
+        Returns what the re-read states about verified mutations, and the known differences.
+        """
+        notes: list[str] = []
+        differences: list[str] = []
         for pending in self._pending_verifications:
             try:
                 verified = pending.verify(board)
+            except PostconditionMismatchError as exc:
+                differences.append(str(exc))
+                self._receipts[:] = [
+                    replace(receipt, state_divergence_detected=True)
+                    if receipt.mutation_id == pending.mutation_id
+                    else receipt
+                    for receipt in self._receipts
+                ]
+                continue
             except Exception as exc:
                 self._mark_published_verification_failure(mutation_id=pending.mutation_id)
                 raise RuntimeError(
@@ -431,12 +459,15 @@ class PcbTransactionLifecycleService:
                     f"Native-live commit was published as one KiCad undo step, but "
                     f"{pending.operation} live postcondition verification failed. " + _RECOVERY_STEP
                 )
+            if isinstance(verified, str):
+                notes.append(verified)
             self._receipts[:] = [
                 replace(receipt, final_state_verified=True)
                 if receipt.mutation_id == pending.mutation_id
                 else receipt
                 for receipt in self._receipts
             ]
+        return notes, differences
 
     def push(self, *, save_to_file: bool = True) -> str:
         """Publish one native undo unit, then re-read every staged mutation before success.
@@ -484,13 +515,23 @@ class PcbTransactionLifecycleService:
                         "Native-live commit was published as one KiCad undo step, but the live "
                         "board could not be re-read safely. " + _RECOVERY_STEP
                     ) from exc
-                self._verify_published_mutations(fresh_board)
+                notes, differences = self._verify_published_mutations(fresh_board)
                 self._state_digest(fresh_board)
                 self._last_evidence = self._terminal_evidence("committed")
                 self._clear_active()
                 if save_to_file:
                     self._save_board_file("The committed transaction", fresh_board)
-                return "Transaction group committed successfully."
+                if differences:
+                    raise PublishedMismatchError(
+                        "Transaction group committed"
+                        + (" and saved to the board file" if save_to_file else "")
+                        + ", but "
+                        + "; ".join(differences)
+                        + ". The board stays as it is unless you change it."
+                    )
+                return "Transaction group committed successfully." + "".join(
+                    f" {note}." for note in notes
+                )
             except self.connection_errors as exc:
                 raise ToolFailedError(f"Failed to commit transaction: {exc}") from exc
 
@@ -609,6 +650,8 @@ class PcbTransactionLifecycleService:
         fresh_board = self.get_board()
         try:
             verified = verifier(fresh_board, result)
+        except PostconditionMismatchError:
+            raise
         except Exception as exc:
             raise RuntimeError(
                 f"{operation} completed but live postcondition verification could not complete."
@@ -730,9 +773,16 @@ class PcbTransactionLifecycleService:
                     verifier=verifier,
                 )
             if verifier is not None:
-                result = self._verify_immediate_mutation(
-                    operation=operation, result=result, verifier=verifier
-                )
+                try:
+                    result = self._verify_immediate_mutation(
+                        operation=operation, result=result, verifier=verifier
+                    )
+                except PostconditionMismatchError as exc:
+                    self._save_board_file(operation, board)
+                    raise PublishedMismatchError(
+                        f"{operation} was applied and saved to the board file, but {exc}. "
+                        "The board stays as it is unless you change it."
+                    ) from None
             self._save_board_file(operation, board)
             return result
 
