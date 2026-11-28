@@ -7,11 +7,15 @@ seeding the folder. This module seeds, under ``<home>/<major.minor>/``:
 
 * ``kicad_common.json`` with ``api.enable_server`` on and the first-run prompts
   (data collection, update check) marked as answered;
-* ``sym-lib-table`` and ``fp-lib-table`` copied from KiCad's template folder, or
-  empty tables when it cannot be found;
+* ``sym-lib-table`` and ``fp-lib-table`` with the libraries of KiCad's template folder
+  that the project's design uses, or empty tables when it cannot be found. KiCad loads
+  every library a global table lists as soon as a check or the editor needs one; the
+  full template (about 380 libraries) costs a DRC or ERC 1.4-1.9 GB, the design's own
+  libraries a few hundred MB, with the same findings;
 * ``design-block-lib-table``, an empty table (KiCad 10 ships no template for it).
 
-Existing files are kept, except that ``api.enable_server`` is turned back on.
+Existing settings are kept, except that ``api.enable_server`` is turned back on; the
+tables follow the design each time the folder is seeded.
 """
 
 from __future__ import annotations
@@ -19,6 +23,10 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+
+#: A quoted ``"nickname:item"`` in a design: a footprint, symbol or Footprint property.
+_LIBRARY_REFERENCE = re.compile(r'"([^":\s]+):[^"]+"')
+_TABLE_ENTRY = re.compile(r'\s*\(lib\s+\(name\s+"?([^")\s]+)')
 
 #: The settings key that turns on KiCad's IPC API server.
 API_SETTING = ("api", "enable_server")
@@ -56,8 +64,28 @@ def template_dirs(cli: Path | None) -> list[Path]:
     return found
 
 
-def seed(home: Path, version_text: str | None, cli: Path | None = None) -> Path:
-    """Seed ``home`` for this KiCad version and return the version folder."""
+def used_libraries(project_dir: Path | None) -> set[str]:
+    """The library nicknames the boards and schematics in ``project_dir`` name."""
+    names: set[str] = set()
+    if project_dir is None:
+        return names
+    for design in (*project_dir.rglob("*.kicad_pcb"), *project_dir.rglob("*.kicad_sch")):
+        if any(part.startswith(".") for part in design.relative_to(project_dir).parts):
+            continue
+        try:
+            names.update(_LIBRARY_REFERENCE.findall(design.read_text("utf-8", errors="ignore")))
+        except OSError:
+            continue
+    return names
+
+
+def seed(
+    home: Path,
+    version_text: str | None,
+    cli: Path | None = None,
+    project_dir: Path | None = None,
+) -> Path:
+    """Seed ``home`` for this KiCad version and ``project_dir``; return the version folder."""
     folder = home / settings_version(version_text)
     folder.mkdir(parents=True, exist_ok=True)
     common = folder / "kicad_common.json"
@@ -75,27 +103,30 @@ def seed(home: Path, version_text: str | None, cli: Path | None = None) -> Path:
     if isinstance(prompts, dict):
         for key in _PROMPTS_ANSWERED:
             prompts.setdefault(key, True)
-    common.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _write(common, json.dumps(data, indent=2))
     template = next((d for d in template_dirs(cli) if (d / "sym-lib-table").is_file()), None)
+    used = used_libraries(project_dir)
     for name, empty in _EMPTY_TABLES.items():
-        target = folder / name
         source = template / name if template is not None else None
-        has_source = source is not None and source.is_file()
-        # An empty table seeded before KiCad was installed is replaced once its template is.
-        if target.exists() and not (has_source and _is_empty_table(target, empty)):
-            continue
-        if source is not None and has_source:
-            target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-        else:
-            target.write_text(empty, encoding="utf-8")
+        text = source.read_text(encoding="utf-8") if source and source.is_file() else empty
+        kept = (line for line in text.splitlines(keepends=True) if _keeps(line, used))
+        _write(folder / name, "".join(kept))
     return folder
 
 
-def _is_empty_table(path: Path, empty: str) -> bool:
+def _keeps(line: str, used: set[str]) -> bool:
+    entry = _TABLE_ENTRY.match(line)
+    return entry is None or entry.group(1) in used
+
+
+def _write(path: Path, text: str) -> None:
+    """Write ``text`` unless the file already holds it (a running KiCad may be reading it)."""
     try:
-        return path.read_text(encoding="utf-8") == empty
+        if path.read_text(encoding="utf-8") == text:
+            return
     except OSError:
-        return False
+        pass
+    path.write_text(text, encoding="utf-8")
 
 
 def api_enabled(home: Path, version_text: str | None) -> bool:

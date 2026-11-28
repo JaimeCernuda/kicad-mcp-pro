@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import contextlib
+import functools
 import getpass
 import hashlib
 import json
@@ -170,6 +171,25 @@ def board_home(home: Path, board: Path) -> Path:
     """
     tag = hashlib.sha256(os.path.normcase(str(board)).encode()).hexdigest()[:12]
     return home / "boards" / tag
+
+
+def project_settings(home: Path, project_dir: Path) -> Path:
+    """The private settings folder of every KiCad the server runs on ``project_dir``.
+
+    Its global library tables list only the libraries the project's design uses
+    (:func:`config_home.seed`), so each project has a folder of its own: servers on
+    different projects never rewrite one another's tables.
+    """
+    tag = hashlib.sha256(os.path.normcase(str(project_dir)).encode()).hexdigest()[:12]
+    return home / "projects" / tag / "config"
+
+
+_SEED_LOCK = threading.Lock()
+
+
+@functools.lru_cache(maxsize=4)
+def _known_version(cli: Path) -> str:
+    return _version(cli)
 
 
 def started_socket(home: Path) -> str:
@@ -349,9 +369,10 @@ class InstanceManager:
         this points ``KICAD_CONFIG_HOME`` there for the whole process too, so ``kicad-cli``
         exports, checks and the 3D model do not rewrite the person's ``pcbnew.json`` and
         friends, and ``KICAD_DOCUMENTS_HOME`` to a private documents folder
-        (:func:`documents_home`). A ``KICAD_CONFIG_HOME`` or ``KICAD_DOCUMENTS_HOME`` the
-        person set is kept. Returns the settings folder used, or ``""`` when it was not
-        changed.
+        (:func:`documents_home`). Its library tables are empty: a run that needs libraries
+        gets the project's own folder (:meth:`settings_for`). A ``KICAD_CONFIG_HOME`` or
+        ``KICAD_DOCUMENTS_HOME`` the person set is kept. Returns the settings folder used,
+        or ``""`` when it was not changed.
         """
         if _mode() != "auto":
             return ""
@@ -359,7 +380,7 @@ class InstanceManager:
             os.environ["KICAD_DOCUMENTS_HOME"] = str(documents)
         config = _home() / "config"
         # A folder the person set is theirs; this server's own is seeded again, so a KiCad
-        # installed after the server started gets its version's folder and library tables.
+        # installed after the server started gets its version's folder.
         if os.environ.get("KICAD_CONFIG_HOME") not in (None, "", str(config)):
             return ""
         clis = _cli_candidates(configured_cli)
@@ -367,6 +388,19 @@ class InstanceManager:
         config_home.seed(config, _version(cli) if cli is not None else None, cli)
         os.environ["KICAD_CONFIG_HOME"] = str(config)
         return str(config)
+
+    def settings_for(self, project_dir: Path | None, cli: Path | None) -> Path | None:
+        """The private settings folder for a ``kicad-cli`` run on ``project_dir``.
+
+        Seeded with the libraries the project's design uses now. ``None`` when kicad-cli
+        uses the person's settings (attach mode, or a ``KICAD_CONFIG_HOME`` they set).
+        """
+        if project_dir is None or os.environ.get("KICAD_CONFIG_HOME") != str(_home() / "config"):
+            return None
+        config = project_settings(_home(), project_dir)
+        with _SEED_LOCK:
+            config_home.seed(config, _known_version(cli) if cli else None, cli, project_dir)
+        return config
 
     # ------------------------------------------------------------------ reading
 
@@ -516,8 +550,9 @@ class InstanceManager:
         status: InstanceStatus,
     ) -> InstanceStatus:
         stop_left_over(home)
-        config = _home() / "config"
-        config_home.seed(config, version, cli)
+        config = project_settings(_home(), board.parent)
+        with _SEED_LOCK:
+            config_home.seed(config, version, cli, board.parent)
         env = {**os.environ, "KICAD_CONFIG_HOME": str(config)}
         if (documents := documents_home(_home())) is not None:
             env["KICAD_DOCUMENTS_HOME"] = str(documents)

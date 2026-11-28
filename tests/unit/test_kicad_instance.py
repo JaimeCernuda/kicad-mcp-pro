@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import socket
 import subprocess  # nosec B404 - test processes
@@ -15,38 +16,60 @@ from kicad_mcp.instance import manager as instance_manager
 from kicad_mcp.instance.manager import InstanceManager, clear_stale_locks
 
 
-def test_seeded_settings_skip_the_first_run_wizard_and_enable_the_api(tmp_path: Path) -> None:
+def _template(tmp_path: Path, *names: str) -> Path:
+    """A KiCad install whose template tables list ``names``; returns its kicad-cli."""
     template = tmp_path / "share" / "kicad" / "template"
-    template.mkdir(parents=True)
-    (template / "sym-lib-table").write_text("(sym_lib_table (version 7) (lib (name X)))\n")
-    (template / "fp-lib-table").write_text("(fp_lib_table (version 7))\n")
+    template.mkdir(parents=True, exist_ok=True)
+    for table, kind in (("sym-lib-table", "sym_lib_table"), ("fp-lib-table", "fp_lib_table")):
+        rows = "".join(f'  (lib (name "{n}")(type "KiCad")(uri "${{D}}/{n}"))\n' for n in names)
+        (template / table).write_text(f"({kind}\n  (version 7)\n{rows})\n")
     cli = tmp_path / "bin" / "kicad-cli"
-    cli.parent.mkdir()
+    cli.parent.mkdir(exist_ok=True)
     cli.write_text("")
-    folder = config_home.seed(tmp_path / "cfg", "10.0.8", cli)
+    return cli
+
+
+def _libraries(folder: Path, table: str) -> list[str]:
+    return re.findall(r'\(name "([^"]+)"', (folder / table).read_text())
+
+
+def test_seeded_settings_skip_the_first_run_wizard_and_enable_the_api(tmp_path: Path) -> None:
+    cli = _template(tmp_path, "Device")
+    project = tmp_path / "led"
+    project.mkdir()
+    (project / "led.kicad_sch").write_text('(lib_id "Device:R")')
+    folder = config_home.seed(tmp_path / "cfg", "10.0.8", cli, project)
     assert folder.name == "10.0"
     common = json.loads((folder / "kicad_common.json").read_text())
     assert common["api"]["enable_server"] is True
     assert common["do_not_show_again"]["data_collection_prompt"] is True
-    assert "(name X)" in (folder / "sym-lib-table").read_text()
+    assert _libraries(folder, "sym-lib-table") == ["Device"]
     # KiCad 10 ships no design-block template; an empty table is what skips the wizard.
     assert "(design_block_lib_table" in (folder / "design-block-lib-table").read_text()
     assert config_home.api_enabled(tmp_path / "cfg", "10.0.8")
 
 
-def test_tables_seeded_before_kicad_was_installed_are_filled_in_once_it_is(
-    tmp_path: Path,
-) -> None:
-    folder = config_home.seed(tmp_path / "cfg", None, None)
-    assert "(lib " not in (folder / "sym-lib-table").read_text()
-    template = tmp_path / "share" / "kicad" / "template"
-    template.mkdir(parents=True)
-    (template / "sym-lib-table").write_text("(sym_lib_table (version 7) (lib (name X)))\n")
-    cli = tmp_path / "bin" / "kicad-cli"
-    cli.parent.mkdir()
-    cli.write_text("")
-    config_home.seed(tmp_path / "cfg", "10.0.8", cli)
-    assert "(name X)" in (folder / "sym-lib-table").read_text()
+def test_tables_list_only_the_libraries_the_design_uses_and_follow_it(tmp_path: Path) -> None:
+    project = tmp_path / "led"
+    (project / "power").mkdir(parents=True)
+    (project / ".history").mkdir()
+    board = project / "led.kicad_pcb"
+    board.write_text('(footprint "Resistor_SMD:R_0402_1005Metric")')
+    (project / "power" / "supply.kicad_sch").write_text('(lib_id "Device:LED")')
+    (project / ".history" / "old.kicad_pcb").write_text('(footprint "Crystal:Y1")')
+    # Before KiCad is installed there is no template: the tables are empty but present.
+    folder = config_home.seed(tmp_path / "cfg", None, None, project)
+    assert _libraries(folder, "fp-lib-table") == []
+    cli = _template(tmp_path, "Crystal", "Device", "Inductor_SMD", "Resistor_SMD")
+    config_home.seed(tmp_path / "cfg", "10.0.8", cli, project)
+    assert _libraries(folder, "fp-lib-table") == ["Device", "Resistor_SMD"]
+    assert (folder / "fp-lib-table").read_text().startswith("(fp_lib_table\n  (version 7)\n")
+    board.write_text('(footprint "Inductor_SMD:L_0603")')
+    config_home.seed(tmp_path / "cfg", "10.0.8", cli, project)
+    assert _libraries(folder, "fp-lib-table") == ["Device", "Inductor_SMD"]
+    # The server-wide folder, used by runs with no project, lists none.
+    config_home.seed(tmp_path / "shared", "10.0.8", cli)
+    assert _libraries(tmp_path / "shared" / "10.0", "sym-lib-table") == []
 
 
 def test_seeding_keeps_existing_settings_but_turns_the_api_back_on(tmp_path: Path) -> None:
@@ -317,10 +340,18 @@ def test_auto_mode_keeps_every_kicad_the_server_runs_off_the_persons_settings(
     assert used == str(tmp_path / "home" / "config")
     assert os.environ["KICAD_CONFIG_HOME"] == used
     assert any((tmp_path / "home" / "config").glob("*/kicad_common.json"))
+    # A run on a project gets that project's folder, whose tables follow its design.
+    project = tmp_path / "led"
+    project.mkdir()
+    settings = manager.InstanceManager().settings_for(project, None)
+    assert settings == manager.project_settings(tmp_path / "home", project)
+    assert settings is not None
+    assert any(settings.glob("*/fp-lib-table"))
 
     monkeypatch.setenv("KICAD_CONFIG_HOME", str(tmp_path / "mine"))
     assert manager.InstanceManager().isolate_settings(None) == ""
     assert os.environ["KICAD_CONFIG_HOME"] == str(tmp_path / "mine")
+    assert manager.InstanceManager().settings_for(project, None) is None
 
 
 def test_auto_mode_gives_kicad_a_private_documents_folder(monkeypatch, tmp_path: Path) -> None:

@@ -7,6 +7,7 @@ same CLI behavior without creating import cycles between tool modules.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -46,8 +47,12 @@ def _run_cli(*args: str) -> tuple[int, str, str]:
                     "install-kicad."
                 )
             try:
+                from ..instance import get_instance_manager  # noqa: PLC0415 - import cycle
+
+                settings = get_instance_manager().settings_for(cfg.project_dir, cfg.kicad_cli)
+                env = {**os.environ, "KICAD_CONFIG_HOME": str(settings)} if settings else None
                 result = run_to_end.run(
-                    [str(cfg.kicad_cli), *args], what=f"kicad-cli {' '.join(args[:2])}"
+                    [str(cfg.kicad_cli), *args], what=f"kicad-cli {' '.join(args[:2])}", env=env
                 )
                 last_result = (
                     result.returncode,
